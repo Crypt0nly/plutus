@@ -13,7 +13,7 @@ import { useAppStore, type View } from "../../stores/appStore";
 
 interface NavSection {
   label: string;
-  items: { id: View; label: string; icon: React.ElementType; badge?: string }[];
+  items: { id: View; label: string; icon: React.ElementType; badge?: string; primary?: boolean }[];
 }
 
 const navSections: NavSection[] = [
@@ -21,6 +21,7 @@ const navSections: NavSection[] = [
     label: "Main",
     items: [
       { id: "chat", label: "Chat", icon: MessageSquare },
+      { id: "pc-control", label: "Computer Use", icon: Monitor, primary: true },
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },
@@ -29,8 +30,7 @@ const navSections: NavSection[] = [
     items: [
       { id: "tools", label: "Tools", icon: Wrench },
       { id: "workers", label: "Workers", icon: Cpu },
-      { id: "tool-creator", label: "Tool Creator", icon: Sparkles, badge: "New" },
-      { id: "pc-control", label: "PC Control", icon: Monitor, badge: "New" },
+      { id: "tool-creator", label: "Tool Creator", icon: Sparkles },
     ],
   },
   {
@@ -95,7 +95,11 @@ export function Sidebar() {
                     onClick={() => setView(item.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                       active
-                        ? "bg-plutus-600/20 text-plutus-400 shadow-sm"
+                        ? item.primary
+                          ? "bg-blue-600/20 text-blue-400 shadow-sm shadow-blue-500/10"
+                          : "bg-plutus-600/20 text-plutus-400 shadow-sm"
+                        : item.primary
+                        ? "text-blue-400/70 hover:text-blue-300 hover:bg-blue-900/20"
                         : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
                     }`}
                   >

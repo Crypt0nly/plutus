@@ -2,7 +2,7 @@ import { useRef, useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { MessageSquare, KeyRound, FileEdit, GitBranch, Zap, Wrench } from "lucide-react";
+import { Monitor, Mouse, Keyboard, AppWindow, KeyRound, Zap } from "lucide-react";
 
 interface Props {
   send: (data: Record<string, unknown>) => void;
@@ -41,7 +41,7 @@ export function ChatView({ send }: Props) {
               <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
               <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
-            <span>Plutus is thinking...</span>
+            <span>Plutus is working...</span>
           </div>
         )}
       </div>
@@ -78,51 +78,52 @@ function SetupPrompt() {
 function EmptyState({ onSend }: { onSend: (text: string) => void }) {
   const capabilities = [
     {
-      icon: FileEdit,
-      color: "text-emerald-400 bg-emerald-500/10",
-      label: "Edit Code",
-      description: "Create, edit, and manage files with surgical precision",
-    },
-    {
-      icon: GitBranch,
+      icon: Monitor,
       color: "text-blue-400 bg-blue-500/10",
-      label: "Analyze Code",
-      description: "Find functions, check complexity, trace dependencies",
+      label: "See the Screen",
+      description: "Takes screenshots and reads text with OCR",
     },
     {
-      icon: Zap,
+      icon: Mouse,
       color: "text-purple-400 bg-purple-500/10",
-      label: "Run Tasks",
-      description: "Execute commands and run parallel subprocesses",
+      label: "Click & Drag",
+      description: "Smooth mouse movement, clicks, scrolling",
     },
     {
-      icon: Wrench,
-      color: "text-pink-400 bg-pink-500/10",
-      label: "Create Tools",
-      description: "Build new capabilities on the fly when needed",
+      icon: Keyboard,
+      color: "text-emerald-400 bg-emerald-500/10",
+      label: "Type & Shortcut",
+      description: "Natural typing, 37+ keyboard shortcuts",
+    },
+    {
+      icon: AppWindow,
+      color: "text-amber-400 bg-amber-500/10",
+      label: "Manage Windows",
+      description: "Open, snap, tile, and switch between apps",
     },
   ];
 
   const suggestions = [
-    "Analyze the code in my project and find potential issues",
-    "Create a Python script that monitors disk usage",
-    "Help me refactor this function to be more efficient",
-    "Create a custom tool that validates JSON files",
-    "Show me what files are in the current directory",
-    "Write unit tests for my Python module",
+    "Open Chrome and search for the latest news",
+    "Take a screenshot and tell me what's on my screen",
+    "Open VS Code and create a new Python project",
+    "Snap Chrome to the left and Terminal to the right",
+    "Find the Submit button on screen and click it",
+    "Create a Python script that monitors CPU usage",
   ];
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-plutus-500/20 to-purple-500/20 flex items-center justify-center mb-6 shadow-lg shadow-plutus-500/10">
-        <MessageSquare className="w-8 h-8 text-plutus-400" />
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center mb-6 shadow-lg shadow-blue-500/10">
+        <Zap className="w-8 h-8 text-blue-400" />
       </div>
       <h3 className="text-xl font-semibold text-gray-200 mb-2">
-        What can I help you with?
+        Tell me what to do on your computer
       </h3>
       <p className="text-gray-500 max-w-lg text-sm leading-relaxed mb-8">
-        I'm an AI agent that can edit code, analyze projects, run commands, and even
-        create new tools on the fly. Everything runs in isolated subprocesses for safety.
+        I'm Plutus — a friendly ghost living inside your PC. I can see your screen,
+        move the mouse, type on the keyboard, open apps, browse the web, write code,
+        and automate anything. Just tell me what you need.
       </p>
 
       {/* Capabilities */}
@@ -151,7 +152,7 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
           <button
             key={suggestion}
             onClick={() => onSend(suggestion)}
-            className="text-left px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-800 hover:border-plutus-500/30 hover:bg-gray-800 text-sm text-gray-400 hover:text-gray-200 transition-all"
+            className="text-left px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-800 hover:border-blue-500/30 hover:bg-gray-800 text-sm text-gray-400 hover:text-gray-200 transition-all"
           >
             {suggestion}
           </button>

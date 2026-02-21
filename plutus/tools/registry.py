@@ -1,4 +1,8 @@
-"""Tool registry — discovers and manages available tools, including dynamic hot-reload."""
+"""Tool registry — discovers and manages available tools, including dynamic hot-reload.
+
+The `pc` tool is always registered FIRST and is the primary tool for all desktop
+interaction. Other tools are secondary and support the main PC control workflow.
+"""
 
 from __future__ import annotations
 
@@ -104,7 +108,11 @@ class ToolRegistry:
 
 
 def create_default_registry() -> ToolRegistry:
-    """Create a registry with all built-in tools, including subprocess and PC control tools."""
+    """Create a registry with all built-in tools.
+
+    The `pc` tool is registered FIRST — it is the primary tool for all desktop
+    interaction. Everything else is secondary.
+    """
     from plutus.core.subprocess_manager import SubprocessManager
     from plutus.tools.app_manager import AppManagerTool
     from plutus.tools.browser import BrowserTool
@@ -125,13 +133,22 @@ def create_default_registry() -> ToolRegistry:
 
     registry = ToolRegistry()
 
-    # Core tools
+    # ═══════════════════════════════════════════════════════════
+    # PRIMARY TOOL — registered first, used for all desktop interaction
+    # ═══════════════════════════════════════════════════════════
+    registry.register(PCControlTool())
+
+    # ═══════════════════════════════════════════════════════════
+    # CORE TOOLS — shell, files, processes
+    # ═══════════════════════════════════════════════════════════
     registry.register(ShellTool())
     registry.register(FilesystemTool())
     registry.register(ProcessTool())
     registry.register(SystemInfoTool())
 
-    # Subprocess-powered tools
+    # ═══════════════════════════════════════════════════════════
+    # CODE TOOLS — subprocess-powered editing and analysis
+    # ═══════════════════════════════════════════════════════════
     registry.register(CodeEditorTool(subprocess_mgr))
     registry.register(CodeAnalysisTool(subprocess_mgr))
     registry.register(SubprocessTool(subprocess_mgr))
@@ -140,11 +157,9 @@ def create_default_registry() -> ToolRegistry:
     tool_creator = ToolCreatorTool(subprocess_mgr, registry)
     registry.register(tool_creator)
 
-    # PC Control — the unified "friendly ghost" interface
-    # This is the PRIMARY tool for all desktop interaction
-    registry.register(PCControlTool())
-
-    # Legacy desktop/GUI tools (kept for backward compatibility)
+    # ═══════════════════════════════════════════════════════════
+    # LEGACY TOOLS — kept for backward compatibility
+    # ═══════════════════════════════════════════════════════════
     registry.register(BrowserTool())
     registry.register(ClipboardTool())
     registry.register(DesktopTool())

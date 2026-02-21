@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../../lib/api";
+import { useAppStore } from "../../stores/appStore";
 
 interface Capability {
   label: string;
@@ -42,7 +43,6 @@ const CAPABILITY_COLORS: Record<string, string> = {
 };
 
 const OP_DESCRIPTIONS: Record<string, string> = {
-  // Mouse
   move: "Move cursor smoothly to a position",
   click: "Click at a position",
   double_click: "Double-click at a position",
@@ -50,7 +50,6 @@ const OP_DESCRIPTIONS: Record<string, string> = {
   drag: "Drag from one point to another",
   scroll: "Scroll up or down",
   hover: "Hover to trigger tooltips",
-  // Keyboard
   type: "Type text naturally",
   press: "Press a single key",
   hotkey: "Press a key combination",
@@ -58,7 +57,6 @@ const OP_DESCRIPTIONS: Record<string, string> = {
   key_down: "Hold a key down",
   key_up: "Release a held key",
   list_shortcuts: "Show all available shortcuts",
-  // Screen
   screenshot: "Capture the screen",
   read_screen: "Read all text on screen (OCR)",
   find_text: "Find text and get its position",
@@ -68,7 +66,6 @@ const OP_DESCRIPTIONS: Record<string, string> = {
   wait_for_text: "Wait for text to appear",
   wait_for_change: "Wait for screen to update",
   screen_info: "Get screen resolution and info",
-  // Windows
   list_windows: "List all open windows",
   find_window: "Find a window by name",
   focus: "Bring a window to front",
@@ -84,13 +81,15 @@ const OP_DESCRIPTIONS: Record<string, string> = {
   snap_quarter: "Snap window to a quarter",
   tile: "Tile multiple windows",
   active_window: "Get the focused window",
-  // Workflows
   run_workflow: "Run a saved workflow",
   save_workflow: "Save a new workflow",
   list_workflows: "List all workflows",
   list_templates: "List workflow templates",
   get_template: "Get a template's details",
   delete_workflow: "Delete a saved workflow",
+  smart_click: "Find text on screen and click it",
+  smart_click_near: "Click near a text label",
+  type_into: "Find a field by label and type into it",
 };
 
 export default function PCControlView() {
@@ -107,16 +106,34 @@ export default function PCControlView() {
   const fetchData = useCallback(async () => {
     try {
       const [statusRes, shortcutsRes, workflowsRes] = await Promise.all([
-        api.getPCStatus(),
+        api.getPCStatus().catch(() => ({ available: false, capabilities: {} })),
         api.getPCShortcuts().catch(() => ({ shortcuts: [] })),
         api.getPCWorkflows().catch(() => ({ workflows: [], templates: [] })),
       ]);
 
       setAvailable(statusRes.available ?? false);
       setCapabilities(statusRes.capabilities ?? {});
-      setShortcuts(shortcutsRes.shortcuts ?? []);
-      setWorkflows(workflowsRes.workflows ?? []);
-      setTemplates(workflowsRes.templates ?? []);
+
+      // Defensive: ensure shortcuts is always an array of objects
+      const rawShortcuts = shortcutsRes.shortcuts;
+      if (Array.isArray(rawShortcuts)) {
+        setShortcuts(rawShortcuts);
+      } else if (rawShortcuts && typeof rawShortcuts === "object") {
+        // Convert dict {name: keys} to array [{name, keys, description}]
+        setShortcuts(
+          Object.entries(rawShortcuts).map(([name, keys]) => ({
+            name,
+            keys: String(keys),
+            description: name.replace(/_/g, " "),
+          }))
+        );
+      } else {
+        setShortcuts([]);
+      }
+
+      // Defensive: ensure workflows and templates are arrays
+      setWorkflows(Array.isArray(workflowsRes.workflows) ? workflowsRes.workflows : []);
+      setTemplates(Array.isArray(workflowsRes.templates) ? workflowsRes.templates : []);
     } catch {
       setAvailable(false);
     } finally {
@@ -128,13 +145,15 @@ export default function PCControlView() {
     fetchData();
   }, [fetchData]);
 
-  const filteredShortcuts = shortcuts.filter(
-    (s) =>
-      !shortcutSearch ||
-      s.name.toLowerCase().includes(shortcutSearch.toLowerCase()) ||
-      s.description.toLowerCase().includes(shortcutSearch.toLowerCase()) ||
-      s.keys.toLowerCase().includes(shortcutSearch.toLowerCase())
-  );
+  const filteredShortcuts = Array.isArray(shortcuts)
+    ? shortcuts.filter(
+        (s) =>
+          !shortcutSearch ||
+          (s.name || "").toLowerCase().includes(shortcutSearch.toLowerCase()) ||
+          (s.description || "").toLowerCase().includes(shortcutSearch.toLowerCase()) ||
+          (s.keys || "").toLowerCase().includes(shortcutSearch.toLowerCase())
+      )
+    : [];
 
   if (loading) {
     return (
@@ -153,24 +172,33 @@ export default function PCControlView() {
             👻
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">PC Control</h1>
+            <h1 className="text-2xl font-bold text-white">Computer Use</h1>
             <p className="text-white/60 text-sm">
-              Your friendly ghost — sees the screen, moves the mouse, types on the keyboard
+              Plutus sees your screen, moves the mouse, types on the keyboard, and controls your PC
             </p>
           </div>
         </div>
 
+        <p className="text-white/50 text-sm max-w-2xl mb-4">
+          This is how Plutus primarily operates. When you give it a task, it automatically uses
+          these capabilities to interact with your computer — just like a person sitting at the keyboard.
+          You don't need to configure anything here. Just go to <button
+            onClick={() => useAppStore.getState().setView("chat")}
+            className="text-blue-400 hover:text-blue-300 underline"
+          >Chat</button> and tell Plutus what to do.
+        </p>
+
         {available ? (
-          <div className="flex items-center gap-2 mt-4">
+          <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-emerald-400 text-sm font-medium">System Active</span>
             <span className="text-white/40 text-sm ml-2">
               {Object.keys(capabilities).length} capability groups •{" "}
-              {Object.values(capabilities).reduce((a, c) => a + c.operations.length, 0)} operations
+              {Object.values(capabilities).reduce((a, c) => a + (c.operations?.length || 0), 0)} operations
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-2 mt-4">
+          <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
             <span className="text-amber-400 text-sm font-medium">
               Requires desktop environment (pyautogui, Pillow)
@@ -178,11 +206,11 @@ export default function PCControlView() {
           </div>
         )}
 
-        {/* Quick guide */}
+        {/* See → Think → Act → Verify loop */}
         <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-3">
           {[
-            { step: "1", label: "See", desc: "Take a screenshot to see the screen", color: "text-blue-400" },
-            { step: "2", label: "Find", desc: "Locate buttons or text with OCR", color: "text-purple-400" },
+            { step: "1", label: "See", desc: "Screenshot to see the screen", color: "text-blue-400" },
+            { step: "2", label: "Think", desc: "Find buttons/text with OCR", color: "text-purple-400" },
             { step: "3", label: "Act", desc: "Click, type, or use shortcuts", color: "text-pink-400" },
             { step: "4", label: "Verify", desc: "Screenshot again to confirm", color: "text-emerald-400" },
           ].map((s) => (
@@ -196,9 +224,27 @@ export default function PCControlView() {
         </div>
       </div>
 
+      {/* Quick Start — go to chat */}
+      <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/20 rounded-xl p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-white font-semibold">Ready to go</h3>
+            <p className="text-white/50 text-sm mt-1">
+              Just tell Plutus what to do in the chat. It will automatically use the computer.
+            </p>
+          </div>
+          <button
+            onClick={() => useAppStore.getState().setView("chat")}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            Open Chat
+          </button>
+        </div>
+      </div>
+
       {/* Capability Cards */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-white/90">Capabilities</h2>
+        <h2 className="text-lg font-semibold text-white/90">What Plutus Can Do</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.entries(capabilities).map(([key, cap]) => (
             <div
@@ -215,13 +261,13 @@ export default function PCControlView() {
                   </div>
                 </div>
                 <span className="text-white/30 text-xs bg-white/5 px-2 py-1 rounded-full">
-                  {cap.operations.length} ops
+                  {cap.operations?.length || 0} ops
                 </span>
               </div>
 
-              {expandedCap === key && (
+              {expandedCap === key && cap.operations && (
                 <div className="mt-4 space-y-1.5 border-t border-white/10 pt-3">
-                  {cap.operations.map((op) => (
+                  {cap.operations.map((op: string) => (
                     <div
                       key={op}
                       className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
@@ -235,9 +281,9 @@ export default function PCControlView() {
                 </div>
               )}
 
-              {expandedCap !== key && (
+              {expandedCap !== key && cap.operations && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
-                  {cap.operations.slice(0, 5).map((op) => (
+                  {cap.operations.slice(0, 5).map((op: string) => (
                     <span
                       key={op}
                       className="text-xs bg-white/10 text-white/60 px-2 py-0.5 rounded-full"
@@ -254,6 +300,32 @@ export default function PCControlView() {
               )}
             </div>
           ))}
+
+          {/* If no capabilities loaded, show static cards */}
+          {Object.keys(capabilities).length === 0 && (
+            <>
+              {[
+                { icon: "🖱️", label: "Mouse Control", desc: "Smooth bezier-curve movement, clicking, dragging, scrolling", color: CAPABILITY_COLORS.mouse },
+                { icon: "⌨️", label: "Keyboard Control", desc: "Natural typing, 37 shortcuts, hotkeys, cross-platform", color: CAPABILITY_COLORS.keyboard },
+                { icon: "🖥️", label: "Screen Reading", desc: "Screenshots, OCR text reading, element detection", color: CAPABILITY_COLORS.screen },
+                { icon: "🪟", label: "Window Management", desc: "Snap, tile, resize, focus, and manage app windows", color: CAPABILITY_COLORS.windows },
+                { icon: "⚡", label: "Workflow Automation", desc: "Chain actions into replayable multi-step sequences", color: CAPABILITY_COLORS.workflows },
+              ].map((cap) => (
+                <div
+                  key={cap.label}
+                  className={`bg-gradient-to-br ${cap.color} border rounded-xl p-5`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-2xl">{cap.icon}</span>
+                    <div>
+                      <h3 className="font-semibold text-white">{cap.label}</h3>
+                      <p className="text-white/50 text-xs">{cap.desc}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -319,7 +391,7 @@ export default function PCControlView() {
 
         {!showShortcuts && (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            {["copy", "paste", "save", "undo", "redo", "new_tab", "close_tab", "find", "select_all", "screenshot", "switch_app", "lock"].map(
+            {["copy", "paste", "save", "undo", "redo", "new_tab", "close_tab", "find", "select_all", "screenshot", "switch_app", "lock_screen"].map(
               (name) => {
                 const s = shortcuts.find((sc) => sc.name === name);
                 return (
@@ -342,9 +414,7 @@ export default function PCControlView() {
       {/* Workflows Section */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-white/90">Workflows</h2>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Templates */}
           <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-white/70 mb-3 flex items-center gap-2">
               <span className="text-amber-400">📋</span> Templates
@@ -365,11 +435,10 @@ export default function PCControlView() {
                 ))}
               </div>
             ) : (
-              <p className="text-white/30 text-sm">Templates load when the PC tool is active</p>
+              <p className="text-white/30 text-sm">Templates load when the agent runs</p>
             )}
           </div>
 
-          {/* Saved Workflows */}
           <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-white/70 mb-3 flex items-center gap-2">
               <span className="text-emerald-400">💾</span> Saved Workflows
@@ -387,18 +456,6 @@ export default function PCControlView() {
                         {w.description || `${w.step_count} steps`}
                       </p>
                     </div>
-                    {w.tags && w.tags.length > 0 && (
-                      <div className="flex gap-1">
-                        {w.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="text-[10px] bg-emerald-500/10 text-emerald-400/60 px-1.5 py-0.5 rounded-full"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -406,7 +463,7 @@ export default function PCControlView() {
               <div className="text-center py-6">
                 <p className="text-white/30 text-sm">No saved workflows yet</p>
                 <p className="text-white/20 text-xs mt-1">
-                  Ask the AI to create a workflow in chat
+                  Ask Plutus in chat to create a workflow
                 </p>
               </div>
             )}
@@ -414,61 +471,62 @@ export default function PCControlView() {
         </div>
       </div>
 
-      {/* How to Use Section */}
+      {/* How it works */}
       <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white/90 mb-4">How to Use PC Control</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <h2 className="text-lg font-semibold text-white/90 mb-4">How It Works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-blue-400">💬 Via Chat (Recommended)</h3>
-            <div className="space-y-2 text-sm text-white/50">
-              <p>Just tell the AI what you want in natural language:</p>
-              <div className="space-y-1.5">
-                {[
-                  '"Open Chrome and go to google.com"',
-                  '"Click the Submit button"',
-                  '"Take a screenshot and tell me what you see"',
-                  '"Snap VS Code to the left and Chrome to the right"',
-                  '"Type my email address into the login field"',
-                ].map((example) => (
-                  <div
-                    key={example}
-                    className="bg-white/5 rounded-lg px-3 py-2 text-white/60 text-xs font-mono"
-                  >
-                    {example}
-                  </div>
-                ))}
-              </div>
+            <h3 className="text-sm font-semibold text-blue-400">Just tell Plutus what to do</h3>
+            <div className="space-y-1.5">
+              {[
+                '"Open Chrome and go to google.com"',
+                '"Click the Submit button"',
+                '"Take a screenshot and tell me what you see"',
+                '"Snap VS Code to the left and Chrome to the right"',
+                '"Type my email address into the login field"',
+                '"Create a new folder on the desktop called Projects"',
+              ].map((example) => (
+                <div
+                  key={example}
+                  className="bg-white/5 rounded-lg px-3 py-2 text-white/60 text-xs font-mono cursor-pointer hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    useAppStore.getState().setView("chat");
+                  }}
+                >
+                  {example}
+                </div>
+              ))}
             </div>
           </div>
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-purple-400">⚡ How It Works</h3>
+            <h3 className="text-sm font-semibold text-purple-400">What happens behind the scenes</h3>
             <div className="space-y-2 text-sm text-white/50">
               <div className="flex items-start gap-2">
                 <span className="text-blue-400 mt-0.5">🖱️</span>
                 <p>
                   <strong className="text-white/70">Mouse</strong> moves along smooth bezier curves
-                  — no teleporting. Looks natural and avoids bot detection.
+                  — no teleporting. Looks natural.
                 </p>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">⌨️</span>
                 <p>
                   <strong className="text-white/70">Keyboard</strong> types at natural speed with
-                  slight randomization. Supports 30+ cross-platform shortcuts.
+                  slight randomization. 37+ cross-platform shortcuts.
                 </p>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-purple-400 mt-0.5">🖥️</span>
                 <p>
                   <strong className="text-white/70">Screen</strong> uses OCR to read text and find
-                  UI elements by their labels — no hardcoded coordinates.
+                  UI elements — no hardcoded coordinates.
                 </p>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-amber-400 mt-0.5">🪟</span>
                 <p>
                   <strong className="text-white/70">Windows</strong> can snap, tile, resize, and
-                  focus any application — like a power user.
+                  focus any application.
                 </p>
               </div>
             </div>

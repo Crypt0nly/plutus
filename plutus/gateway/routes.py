@@ -813,6 +813,29 @@ def create_router() -> APIRouter:
     async def list_pc_shortcuts() -> dict[str, Any]:
         """List all available keyboard shortcuts."""
         from plutus.pc.keyboard import KeyboardController
-        return {"shortcuts": KeyboardController.list_shortcuts()}
+        raw = KeyboardController.list_shortcuts()  # dict {name: keys}
+        SHORTCUT_DESCRIPTIONS = {
+            "copy": "Copy selection", "paste": "Paste from clipboard", "cut": "Cut selection",
+            "undo": "Undo last action", "redo": "Redo last action", "save": "Save file",
+            "save_as": "Save file as", "find": "Find in page", "replace": "Find and replace",
+            "select_all": "Select all", "new_tab": "Open new tab", "close_tab": "Close current tab",
+            "reopen_tab": "Reopen closed tab", "next_tab": "Switch to next tab",
+            "prev_tab": "Switch to previous tab", "switch_window": "Switch between windows",
+            "switch_app": "Switch between apps", "minimize": "Minimize all windows",
+            "maximize": "Maximize window", "lock_screen": "Lock the screen",
+            "screenshot": "Take screenshot", "screenshot_area": "Screenshot selected area",
+            "task_manager": "Open task manager", "file_explorer": "Open file explorer",
+            "terminal": "Open terminal", "address_bar": "Focus browser address bar",
+            "refresh": "Refresh page", "hard_refresh": "Hard refresh (clear cache)",
+            "dev_tools": "Open developer tools", "zoom_in": "Zoom in", "zoom_out": "Zoom out",
+            "zoom_reset": "Reset zoom", "go_back": "Go back", "go_forward": "Go forward",
+            "new_window": "Open new window", "close_window": "Close window",
+            "spotlight": "Open search / spotlight",
+        }
+        shortcuts = [
+            {"name": name, "keys": keys, "description": SHORTCUT_DESCRIPTIONS.get(name, name.replace("_", " ").title())}
+            for name, keys in raw.items()
+        ]
+        return {"shortcuts": shortcuts}
 
     return router
