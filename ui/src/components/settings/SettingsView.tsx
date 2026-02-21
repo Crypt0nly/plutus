@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
-import { Save, Key, Brain, Server, Database } from "lucide-react";
+import { Save, Key, Brain, Server, Database, Bot } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
+import { HeartbeatConfig } from "./HeartbeatConfig";
 import { useAppStore } from "../../stores/appStore";
 
 export function SettingsView() {
@@ -71,6 +72,50 @@ export function SettingsView() {
         keyStatus={keyStatus}
         onKeyStatusChange={fetchKeyStatus}
       />
+
+      {/* Heartbeat Configuration */}
+      <HeartbeatConfig
+        config={config.heartbeat || {}}
+        onSave={handleSave}
+        saving={saving}
+      />
+
+      {/* Agent settings */}
+      <div className="card">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <Bot className="w-4 h-4 text-plutus-400" />
+          Agent
+        </h3>
+        <div>
+          <label className="text-xs text-gray-500 mb-1.5 block">
+            Max tool rounds per message ({config.agent?.max_tool_rounds || 25})
+          </label>
+          <input
+            type="range"
+            min="5"
+            max="100"
+            step="5"
+            className="w-full accent-plutus-500"
+            defaultValue={config.agent?.max_tool_rounds || 25}
+            onChange={(e) =>
+              handleSave({
+                agent: { max_tool_rounds: parseInt(e.target.value) || 25 },
+              })
+            }
+          />
+          <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+            <span>5</span>
+            <span>25</span>
+            <span>50</span>
+            <span>75</span>
+            <span>100</span>
+          </div>
+          <p className="text-[10px] text-gray-600 mt-2">
+            How many external tool calls (browser, shell, etc.) the agent can
+            make before stopping. Plan tool calls don't count toward this limit.
+          </p>
+        </div>
+      </div>
 
       {/* Gateway settings */}
       <div className="card">

@@ -60,11 +60,33 @@ class MemoryConfig(BaseModel):
     context_window_messages: int = 20
 
 
+class HeartbeatConfig(BaseModel):
+    enabled: bool = False
+    interval_seconds: int = 300  # default: 5 minutes
+    quiet_hours_start: str | None = None  # e.g. "23:00" — pause heartbeats
+    quiet_hours_end: str | None = None  # e.g. "07:00" — resume heartbeats
+    max_consecutive: int = 50  # stop after N heartbeats with no user interaction
+    prompt: str = ""  # custom heartbeat prompt; empty = use default
+
+
+class AgentConfig(BaseModel):
+    max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
+
+
+class PlannerConfig(BaseModel):
+    enabled: bool = True
+    auto_plan: bool = True  # agent creates a plan automatically for complex tasks
+    show_progress: bool = True  # emit plan progress events to UI
+
+
 class PlutusConfig(BaseSettings):
     model: ModelConfig = Field(default_factory=ModelConfig)
     guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
+    planner: PlannerConfig = Field(default_factory=PlannerConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
 
     @classmethod

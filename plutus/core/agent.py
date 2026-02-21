@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any, AsyncIterator, Callable
 
@@ -10,9 +11,63 @@ from plutus.config import PlutusConfig, SecretsStore
 from plutus.core.conversation import ConversationManager
 from plutus.core.llm import LLMClient, LLMResponse, ToolDefinition
 from plutus.core.memory import MemoryStore
+from plutus.core.planner import PlanManager
 from plutus.guardrails.engine import GuardrailEngine
 
 logger = logging.getLogger("plutus.agent")
+
+# Tool definition for the built-in plan tool (handled by the agent, not the registry)
+PLAN_TOOL_DEF = ToolDefinition(
+    name="plan",
+    description=(
+        "Create or update an execution plan. Use 'create' to make a new plan with steps, "
+        "'update_step' to mark a step's status, 'get' to retrieve the current plan, "
+        "or 'complete'/'cancel' to finish a plan."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["create", "update_step", "get", "complete", "cancel"],
+                "description": "The plan action to take.",
+            },
+            "title": {
+                "type": "string",
+                "description": "Plan title (required for 'create').",
+            },
+            "goal": {
+                "type": "string",
+                "description": "High-level goal (optional, for 'create').",
+            },
+            "steps": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string"},
+                    },
+                    "required": ["description"],
+                },
+                "description": "List of step objects (required for 'create').",
+            },
+            "step_index": {
+                "type": "integer",
+                "description": "Step index to update (for 'update_step').",
+            },
+            "status": {
+                "type": "string",
+                "enum": ["pending", "in_progress", "done", "failed", "skipped"],
+                "description": "New status for the step (for 'update_step').",
+            },
+            "result": {
+                "type": "string",
+                "description": "Short result summary (optional, for 'update_step').",
+            },
+        },
+        "required": ["action"],
+    },
+)
 
 
 class AgentEvent:
@@ -38,7 +93,7 @@ class AgentRuntime:
       6. Repeat until LLM returns a final text response
     """
 
-    MAX_TOOL_ROUNDS = 10  # prevent infinite loops
+    DEFAULT_MAX_TOOL_ROUNDS = 25  # fallback if not set in config
 
     def __init__(
         self,
@@ -49,12 +104,16 @@ class AgentRuntime:
         secrets: SecretsStore | None = None,
     ):
         self._config = config
+        self._max_tool_rounds = config.agent.max_tool_rounds
         self._secrets = secrets or SecretsStore()
         self._llm = LLMClient(config.model, secrets=self._secrets)
         self._guardrails = guardrails
         self._memory = memory
+        self._planner = PlanManager(memory)
         self._conversation = ConversationManager(
-            memory, context_window=config.memory.context_window_messages
+            memory,
+            context_window=config.memory.context_window_messages,
+            planner=self._planner,
         )
         self._tool_registry = tool_registry
         self._event_handlers: list[Callable[[AgentEvent], Any]] = []
@@ -62,6 +121,10 @@ class AgentRuntime:
     @property
     def conversation(self) -> ConversationManager:
         return self._conversation
+
+    @property
+    def planner(self) -> PlanManager:
+        return self._planner
 
     @property
     def guardrails(self) -> GuardrailEngine:
@@ -86,8 +149,9 @@ class AgentRuntime:
                 await result
 
     async def initialize(self) -> None:
-        """Initialize memory store."""
+        """Initialize memory store and planner."""
         await self._memory.initialize()
+        await self._planner.initialize()
 
     async def shutdown(self) -> None:
         await self._memory.close()
@@ -128,7 +192,11 @@ class AgentRuntime:
 
         tool_defs = self._get_tool_definitions()
 
-        for round_num in range(self.MAX_TOOL_ROUNDS):
+        external_rounds = 0  # only count rounds with real (non-plan) tool calls
+
+        max_rounds = self._max_tool_rounds or self.DEFAULT_MAX_TOOL_ROUNDS
+
+        for round_num in range(max_rounds):
             messages = await self._conversation.build_messages()
 
             try:
@@ -140,19 +208,27 @@ class AgentRuntime:
             # If there's text content, emit it
             if response.content:
                 yield AgentEvent("text", {"content": response.content})
-                await self._conversation.add_assistant_message(content=response.content)
 
             # If no tool calls, we're done
             if not response.tool_calls:
+                await self._conversation.add_assistant_message(content=response.content)
                 yield AgentEvent("done", {})
                 return
 
-            # Process tool calls
+            # Track whether this round has any external (non-plan) tool calls
+            has_external_call = any(tc.name != "plan" for tc in response.tool_calls)
+            if has_external_call:
+                external_rounds += 1
+
+            # Process tool calls — store content and tool_calls together
+            # in a single assistant message to maintain proper pairing
             tool_call_dicts = [
                 {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in response.tool_calls
             ]
-            await self._conversation.add_assistant_message(tool_calls=tool_call_dicts)
+            await self._conversation.add_assistant_message(
+                content=response.content, tool_calls=tool_call_dicts
+            )
 
             for tc in response.tool_calls:
                 yield AgentEvent(
@@ -201,10 +277,16 @@ class AgentRuntime:
                         await self._conversation.add_tool_result(tc.id, result_text)
                         continue
 
-                # Execute the tool
+                # Execute the tool (plan tool handled internally)
                 try:
-                    result = await self._execute_tool(tc.name, tc.arguments)
-                    result_text = str(result)
+                    if tc.name == "plan":
+                        result = await self._handle_plan_tool(tc.arguments)
+                        result_text = str(result)
+                        # Emit plan update event for UI
+                        await self._emit(AgentEvent("plan_update", {"result": result_text}))
+                    else:
+                        result = await self._execute_tool(tc.name, tc.arguments)
+                        result_text = str(result)
                 except Exception as e:
                     result_text = f"[ERROR] Tool execution failed: {e}"
                     logger.exception(f"Tool {tc.name} failed")
@@ -229,8 +311,65 @@ class AgentRuntime:
 
         return await tool.execute(**arguments)
 
+    async def _handle_plan_tool(self, arguments: dict[str, Any]) -> str:
+        """Handle the built-in plan tool."""
+        action = arguments.get("action", "get")
+        conv_id = self._conversation.conversation_id
+
+        if action == "create":
+            title = arguments.get("title", "Untitled Plan")
+            steps = arguments.get("steps", [])
+            goal = arguments.get("goal")
+            plan = await self._planner.create_plan(
+                title=title, steps=steps, goal=goal, conversation_id=conv_id
+            )
+            return json.dumps({"created": plan["id"], "title": title, "steps": len(steps)})
+
+        elif action == "update_step":
+            plan = await self._planner.get_active_plan(conv_id)
+            if not plan:
+                return "[ERROR] No active plan to update."
+            step_index = arguments.get("step_index", 0)
+            status = arguments.get("status", "done")
+            result = arguments.get("result")
+            updated = await self._planner.update_step(plan["id"], step_index, status, result)
+            if not updated:
+                return f"[ERROR] Could not update step {step_index}."
+            return json.dumps({
+                "plan": updated["id"],
+                "step": step_index,
+                "status": status,
+                "plan_status": updated["status"],
+            })
+
+        elif action == "get":
+            plan = await self._planner.get_active_plan(conv_id)
+            if not plan:
+                return "No active plan."
+            return self._planner.format_plan_for_context(plan)
+
+        elif action == "complete":
+            plan = await self._planner.get_active_plan(conv_id)
+            if not plan:
+                return "No active plan to complete."
+            await self._planner.set_plan_status(plan["id"], "completed")
+            return f"Plan '{plan['title']}' marked as completed."
+
+        elif action == "cancel":
+            plan = await self._planner.get_active_plan(conv_id)
+            if not plan:
+                return "No active plan to cancel."
+            await self._planner.set_plan_status(plan["id"], "cancelled")
+            return f"Plan '{plan['title']}' cancelled."
+
+        return f"[ERROR] Unknown plan action: {action}"
+
     def _get_tool_definitions(self) -> list[ToolDefinition]:
         """Get tool definitions from the registry for LLM function calling."""
-        if not self._tool_registry:
-            return []
-        return self._tool_registry.get_definitions()
+        defs: list[ToolDefinition] = []
+        if self._tool_registry:
+            defs = self._tool_registry.get_definitions()
+        # Always include the built-in plan tool
+        if self._config.planner.enabled:
+            defs.append(PLAN_TOOL_DEF)
+        return defs

@@ -71,7 +71,7 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "browser": ToolPolicy(
             tool_name="browser",
             permission=ToolPermission.ALLOWED,
-            allowed_operations=["navigate", "screenshot", "extract"],
+            allowed_operations=["navigate", "screenshot", "extract", "wait"],
         ),
         "process": ToolPolicy(
             tool_name="process",
@@ -84,6 +84,16 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
             permission=ToolPermission.ALLOWED,
             allowed_operations=["read"],
         ),
+        "desktop": ToolPolicy(
+            tool_name="desktop",
+            permission=ToolPermission.ALLOWED,
+            allowed_operations=["screenshot", "get_mouse_position", "get_screen_size"],
+        ),
+        "app_manager": ToolPolicy(
+            tool_name="app_manager",
+            permission=ToolPermission.ALLOWED,
+            allowed_operations=["list_windows"],
+        ),
     },
     Tier.ASSISTANT: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.REQUIRES_APPROVAL),
@@ -94,6 +104,10 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "process": ToolPolicy(tool_name="process", permission=ToolPermission.REQUIRES_APPROVAL),
         "system_info": ToolPolicy(tool_name="system_info", permission=ToolPermission.ALLOWED),
         "clipboard": ToolPolicy(tool_name="clipboard", permission=ToolPermission.REQUIRES_APPROVAL),
+        "desktop": ToolPolicy(tool_name="desktop", permission=ToolPermission.REQUIRES_APPROVAL),
+        "app_manager": ToolPolicy(
+            tool_name="app_manager", permission=ToolPermission.REQUIRES_APPROVAL
+        ),
     },
     Tier.OPERATOR: {
         "shell": ToolPolicy(
@@ -110,6 +124,12 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         ),
         "system_info": ToolPolicy(tool_name="system_info", permission=ToolPermission.ALLOWED),
         "clipboard": ToolPolicy(tool_name="clipboard", permission=ToolPermission.ALLOWED),
+        "desktop": ToolPolicy(tool_name="desktop", permission=ToolPermission.ALLOWED),
+        "app_manager": ToolPolicy(
+            tool_name="app_manager",
+            permission=ToolPermission.ALLOWED,
+            allowed_operations=["launch", "list_windows", "focus_window", "minimize_window", "maximize_window"],
+        ),
     },
     Tier.AUTONOMOUS: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.ALLOWED),
@@ -118,6 +138,8 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "process": ToolPolicy(tool_name="process", permission=ToolPermission.ALLOWED),
         "system_info": ToolPolicy(tool_name="system_info", permission=ToolPermission.ALLOWED),
         "clipboard": ToolPolicy(tool_name="clipboard", permission=ToolPermission.ALLOWED),
+        "desktop": ToolPolicy(tool_name="desktop", permission=ToolPermission.ALLOWED),
+        "app_manager": ToolPolicy(tool_name="app_manager", permission=ToolPermission.ALLOWED),
     },
 }
 

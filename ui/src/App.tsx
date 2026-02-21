@@ -74,6 +74,26 @@ export default function App() {
           clearMessages();
           msg.messages.forEach((m) => addMessage(m));
           break;
+
+        case "heartbeat":
+          addMessage({
+            role: "system",
+            content: `Heartbeat #${msg.beat}/${msg.max}`,
+          });
+          setProcessing(true);
+          break;
+
+        case "heartbeat_paused":
+          addMessage({
+            role: "system",
+            content: `Heartbeat paused: ${msg.reason} (after ${msg.count} beats)`,
+          });
+          break;
+
+        case "plan_update":
+          // Plan updates flow through tool_call/tool_result already;
+          // this is an extra event for the UI to refresh plan display
+          break;
       }
     },
     [addMessage, setProcessing, setConversationId, clearMessages]

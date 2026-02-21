@@ -23,7 +23,6 @@ env/
 
 # Node.js / UI
 ui/node_modules/
-ui/dist/
 ui/.vite/
 
 # Plutus runtime
