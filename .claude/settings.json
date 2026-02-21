@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest tests*)",
+      "Bash(ruff check*)",
+      "Bash(pip install*)",
+      "Bash(cd ui && npm*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(plutus*)"
+    ],
+    "deny": []
+  }
+}
