@@ -135,4 +135,10 @@ export const api = {
     request<Record<string, any>>(category ? `/skills?category=${category}` : "/skills"),
   getSkillDetail: (skillName: string) =>
     request<Record<string, any>>(`/skills/${skillName}`),
+
+  // Self-Improvement
+  getImprovementLog: (limit = 50) =>
+    request<Record<string, any>>(`/improvement/log?limit=${limit}`),
+  getImprovementStats: () =>
+    request<Record<string, any>>("/improvement/stats"),
 };

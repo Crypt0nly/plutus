@@ -13,6 +13,7 @@ Skills are defined as Python classes with:
 
 from plutus.skills.engine import SkillEngine, SkillDefinition, SkillStep, SkillResult
 from plutus.skills.registry import SkillRegistry, create_default_registry
+from plutus.skills.creator import SkillCreator, get_skill_creator
 
 __all__ = [
     "SkillEngine",
@@ -21,4 +22,6 @@ __all__ = [
     "SkillResult",
     "SkillRegistry",
     "create_default_registry",
+    "SkillCreator",
+    "get_skill_creator",
 ]

@@ -129,6 +129,167 @@ const OP_DESCRIPTIONS: Record<string, string> = {
   delete_workflow: "Delete a saved workflow",
 };
 
+// ── Self-Improvement Section ──
+function SelfImprovementSection() {
+  const [stats, setStats] = useState<Record<string, any>>({});
+  const [log, setLog] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showLog, setShowLog] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statsRes, logRes] = await Promise.all([
+          api.getImprovementStats().catch(() => ({})),
+          api.getImprovementLog(20).catch(() => ({ log: [] })),
+        ]);
+        setStats(statsRes || {});
+        setLog(Array.isArray(logRes.log) ? logRes.log : []);
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const totalCreated = stats.total_created || 0;
+  const totalUpdated = stats.total_updated || 0;
+  const totalDeleted = stats.total_deleted || 0;
+  const categories = stats.categories || {};
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white/90 flex items-center gap-2">
+          <span className="text-rose-400">🧬</span> Self-Improvement
+          <span className="text-xs font-normal text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
+            {totalCreated} skills learned
+          </span>
+        </h2>
+      </div>
+
+      <p className="text-white/40 text-sm">
+        Plutus learns from experience. When it completes a complex task, it can save the steps as a
+        reusable skill — making it faster and more reliable over time. Skills are saved permanently
+        and available in all future conversations.
+      </p>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/20 rounded-xl p-4 text-center">
+          <div className="text-2xl font-bold text-emerald-400">{totalCreated}</div>
+          <div className="text-white/40 text-xs mt-1">Skills Created</div>
+        </div>
+        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/20 rounded-xl p-4 text-center">
+          <div className="text-2xl font-bold text-blue-400">{totalUpdated}</div>
+          <div className="text-white/40 text-xs mt-1">Skills Updated</div>
+        </div>
+        <div className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-xl p-4 text-center">
+          <div className="text-2xl font-bold text-amber-400">{Object.keys(categories).length}</div>
+          <div className="text-white/40 text-xs mt-1">Categories</div>
+        </div>
+        <div className="bg-gradient-to-br from-red-500/10 to-red-600/5 border border-red-500/20 rounded-xl p-4 text-center">
+          <div className="text-2xl font-bold text-red-400">{totalDeleted}</div>
+          <div className="text-white/40 text-xs mt-1">Skills Removed</div>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-4">
+        <h3 className="text-sm font-semibold text-white/70 mb-3">How Self-Improvement Works</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="flex items-start gap-2">
+            <span className="text-emerald-400 text-lg">1️⃣</span>
+            <div>
+              <div className="text-white/70 text-xs font-semibold">Learn</div>
+              <div className="text-white/40 text-[11px]">Plutus completes a multi-step task and recognizes a reusable pattern</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-blue-400 text-lg">2️⃣</span>
+            <div>
+              <div className="text-white/70 text-xs font-semibold">Save</div>
+              <div className="text-white/40 text-[11px]">It creates a skill with validated steps, parameters, and triggers</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-violet-400 text-lg">3️⃣</span>
+            <div>
+              <div className="text-white/70 text-xs font-semibold">Reuse</div>
+              <div className="text-white/40 text-[11px]">Next time a similar task comes up, it uses the skill instantly</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Category breakdown */}
+      {Object.keys(categories).length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(categories).map(([cat, count]) => (
+            <div key={cat} className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 flex items-center gap-2">
+              <span className="text-sm">{CATEGORY_ICONS[cat] || '📦'}</span>
+              <span className="text-white/60 text-xs capitalize">{cat}</span>
+              <span className="text-white/30 text-xs">{String(count)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Improvement Log */}
+      <div>
+        <button
+          onClick={() => setShowLog(!showLog)}
+          className="flex items-center gap-2 text-sm text-white/50 hover:text-white/70 transition-colors"
+        >
+          <span>{showLog ? '▼' : '▶'}</span>
+          <span>Improvement History ({log.length} entries)</span>
+        </button>
+
+        {showLog && (
+          <div className="mt-3 space-y-2 max-h-80 overflow-y-auto">
+            {loading ? (
+              <div className="text-white/30 text-sm text-center py-4">Loading...</div>
+            ) : log.length === 0 ? (
+              <div className="text-center py-6 text-white/30 text-sm">
+                <div className="text-2xl mb-2">🌱</div>
+                No improvements yet. As Plutus completes tasks, it will learn and create new skills automatically.
+              </div>
+            ) : (
+              log.map((entry, i) => (
+                <div key={i} className="bg-white/[0.03] border border-white/5 rounded-lg p-3 flex items-start gap-3">
+                  <span className="text-lg">
+                    {entry.action === 'created' ? '🌟' : entry.action === 'updated' ? '🔧' : '🗑️'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/70 text-xs font-semibold">{entry.skill_name || 'Unknown'}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        entry.action === 'created' ? 'bg-emerald-500/10 text-emerald-400' :
+                        entry.action === 'updated' ? 'bg-blue-500/10 text-blue-400' :
+                        'bg-red-500/10 text-red-400'
+                      }`}>
+                        {entry.action || 'unknown'}
+                      </span>
+                    </div>
+                    {entry.reason && (
+                      <div className="text-white/30 text-[11px] mt-0.5">{entry.reason}</div>
+                    )}
+                    {entry.timestamp && (
+                      <div className="text-white/20 text-[10px] mt-1">{new Date(entry.timestamp).toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PCControlView() {
   const [capabilities, setCapabilities] = useState<Record<string, Capability>>({});
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
@@ -827,6 +988,9 @@ export default function PCControlView() {
           </div>
         )}
       </div>
+
+      {/* ── Self-Improvement ── */}
+      <SelfImprovementSection />
 
       {/* ── How it works ── */}
       <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-6">

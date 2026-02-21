@@ -155,6 +155,9 @@ class PCControlTool(Tool):
                         "screenshot", "read_screen", "find_text_on_screen",
                         # Skill operations (pre-built app workflows)
                         "run_skill", "list_skills",
+                        # Self-improvement operations (create/manage skills)
+                        "create_skill", "update_skill", "delete_skill",
+                        "improvement_log", "improvement_stats",
                     ],
                     "description": "The operation to perform",
                 },
@@ -212,6 +215,13 @@ class PCControlTool(Tool):
                     "description": "Parameters for the skill (e.g., {contact: 'Mom', message: 'Hello!'} for whatsapp_send_message)",
                 },
                 "category": {"type": "string", "description": "Filter skills by category for list_skills"},
+                # Self-improvement params
+                "skill_definition": {
+                    "type": "object",
+                    "description": "Full skill definition for create_skill/update_skill. Must include: name, description, app, category, triggers (list), required_params (list), optional_params (list), steps (list of {description, operation, params, wait_after?, optional?, retry_on_fail?}). Use {{param_name}} in step params/descriptions for parameter substitution.",
+                },
+                "reason": {"type": "string", "description": "Why this skill is being created (for improvement tracking)"},
+                "limit": {"type": "integer", "description": "Limit for improvement_log entries"},
             },
             "required": ["operation"],
         }
@@ -521,6 +531,70 @@ class PCControlTool(Tool):
                 return {"skills": [s.to_dict() for s in skills], "category": category}
             return {"skills": registry.list_all(), "categories": registry.list_categories()}
 
+        # ═══════════════════════════════════════════════
+        # SELF-IMPROVEMENT: Create and manage skills autonomously
+        # ═══════════════════════════════════════════════
+
+        elif op == "create_skill":
+            skill_def = kwargs.get("skill_definition", {})
+            if not skill_def:
+                return {
+                    "error": "Provide skill_definition with: name, description, app, category, triggers, required_params, optional_params, steps",
+                    "example": {
+                        "name": "twitter_post_tweet",
+                        "description": "Post a tweet on Twitter/X",
+                        "app": "Twitter",
+                        "category": "social",
+                        "triggers": ["tweet", "post on twitter", "post on x"],
+                        "required_params": ["tweet_text"],
+                        "optional_params": [],
+                        "steps": [
+                            {"description": "Open Twitter", "operation": "open_url", "params": {"url": "https://twitter.com/compose/tweet"}, "wait_after": 3.0},
+                            {"description": "Type the tweet", "operation": "browser_type", "params": {"text": "{{tweet_text}}", "selector": "[data-testid='tweetTextarea_0']"}, "wait_after": 1.0},
+                            {"description": "Click Post button", "operation": "browser_click", "params": {"text": "Post"}, "wait_after": 2.0},
+                        ],
+                    },
+                }
+            skill_def["reason"] = kwargs.get("reason", "Agent created this skill to better serve the user")
+            from plutus.skills.creator import get_skill_creator
+            creator = get_skill_creator()
+            registry = _ensure_skills()
+            success, message, skill = creator.create_from_dict(skill_def, registry=registry)
+            return {"success": success, "message": message}
+
+        elif op == "update_skill":
+            # Same as create — the creator auto-increments version if skill exists
+            skill_def = kwargs.get("skill_definition", {})
+            if not skill_def:
+                return {"error": "Provide skill_definition (same format as create_skill)"}
+            skill_def["reason"] = kwargs.get("reason", "Agent updated this skill to improve reliability")
+            from plutus.skills.creator import get_skill_creator
+            creator = get_skill_creator()
+            registry = _ensure_skills()
+            success, message, skill = creator.create_from_dict(skill_def, registry=registry)
+            return {"success": success, "message": message}
+
+        elif op == "delete_skill":
+            skill_name = kwargs.get("skill_name", "")
+            if not skill_name:
+                return {"error": "Provide skill_name to delete"}
+            from plutus.skills.creator import get_skill_creator
+            creator = get_skill_creator()
+            registry = _ensure_skills()
+            success, message = creator.delete_skill(skill_name, registry=registry)
+            return {"success": success, "message": message}
+
+        elif op == "improvement_log":
+            from plutus.skills.creator import get_skill_creator
+            creator = get_skill_creator()
+            limit = kwargs.get("limit", 50)
+            return {"log": creator.get_improvement_log(limit=limit)}
+
+        elif op == "improvement_stats":
+            from plutus.skills.creator import get_skill_creator
+            creator = get_skill_creator()
+            return creator.get_improvement_stats()
+
         else:
             return {
                 "error": f"Unknown operation: {op}",
@@ -539,5 +613,7 @@ class PCControlTool(Tool):
                                "keyboard_shortcut", "screenshot", "read_screen",
                                "find_text_on_screen"],
                     "skills": ["run_skill", "list_skills"],
+                    "self_improvement": ["create_skill", "update_skill", "delete_skill",
+                                         "improvement_log", "improvement_stats"],
                 },
             }

@@ -953,4 +953,29 @@ def create_router() -> APIRouter:
         ]
         return {"shortcuts": shortcuts}
 
+    # ── Self-Improvement ────────────────────────────────────────────
+
+    @router.get("/improvement/log")
+    async def get_improvement_log(limit: int = 50) -> dict[str, Any]:
+        """Get the self-improvement log — all skills created/updated/deleted by the agent."""
+        try:
+            from plutus.skills.creator import get_skill_creator
+            creator = get_skill_creator()
+            return {"log": creator.get_improvement_log(limit=limit)}
+        except Exception as e:
+            return {"log": [], "error": str(e)}
+
+    @router.get("/improvement/stats")
+    async def get_improvement_stats() -> dict[str, Any]:
+        """Get self-improvement statistics."""
+        try:
+            from plutus.skills.creator import get_skill_creator
+            creator = get_skill_creator()
+            return creator.get_improvement_stats()
+        except Exception as e:
+            return {
+                "total_created": 0, "total_updated": 0, "total_deleted": 0,
+                "categories": {}, "recent": [], "error": str(e),
+            }
+
     return router
