@@ -904,6 +904,26 @@ def create_router() -> APIRouter:
             "templates": pc_tool._workflow.list_templates(),
         }
 
+    @router.get("/skills")
+    async def list_skills(category: str | None = None) -> dict[str, Any]:
+        """List all available skills."""
+        from plutus.skills.registry import create_default_registry
+        registry = create_default_registry()
+        if category:
+            skills = registry.find_by_category(category)
+            return {"skills": [s.to_dict() for s in skills], "category": category}
+        return {"skills": registry.list_all(), "categories": registry.list_categories()}
+
+    @router.get("/skills/{skill_name}")
+    async def get_skill_detail(skill_name: str) -> dict[str, Any]:
+        """Get details about a specific skill."""
+        from plutus.skills.registry import create_default_registry
+        registry = create_default_registry()
+        skill = registry.get(skill_name)
+        if not skill:
+            raise HTTPException(status_code=404, detail=f"Skill not found: {skill_name}")
+        return skill.to_dict()
+
     @router.get("/pc/shortcuts")
     async def list_pc_shortcuts() -> dict[str, Any]:
         """List all available keyboard shortcuts."""

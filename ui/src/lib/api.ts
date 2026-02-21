@@ -130,4 +130,9 @@ export const api = {
   getPCContext: () => request<Record<string, any>>("/pc/context"),
   getPCWorkflows: () => request<Record<string, any>>("/pc/workflows"),
   getPCShortcuts: () => request<Record<string, any>>("/pc/shortcuts"),
+  // Skills
+  getSkills: (category?: string) =>
+    request<Record<string, any>>(category ? `/skills?category=${category}` : "/skills"),
+  getSkillDetail: (skillName: string) =>
+    request<Record<string, any>>(`/skills/${skillName}`),
 };

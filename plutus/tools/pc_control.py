@@ -21,6 +21,28 @@ from plutus.tools.base import Tool
 
 logger = logging.getLogger("plutus.pc.control")
 
+# Lazy-loaded skill system
+_skill_engine = None
+_skill_registry = None
+
+
+def _ensure_skills():
+    """Lazy-load the skill system."""
+    global _skill_engine, _skill_registry
+    if _skill_registry is None:
+        from plutus.skills.registry import create_default_registry
+        _skill_registry = create_default_registry()
+    return _skill_registry
+
+
+def _get_skill_engine(pc_tool):
+    """Get or create the skill engine with the pc tool as executor."""
+    global _skill_engine
+    if _skill_engine is None:
+        from plutus.skills.engine import SkillEngine
+        _skill_engine = SkillEngine(pc_tool.execute)
+    return _skill_engine
+
 
 class PCControlTool(Tool):
     """
@@ -131,6 +153,8 @@ class PCControlTool(Tool):
                         "mouse_click", "mouse_move", "mouse_scroll",
                         "keyboard_type", "keyboard_press", "keyboard_hotkey", "keyboard_shortcut",
                         "screenshot", "read_screen", "find_text_on_screen",
+                        # Skill operations (pre-built app workflows)
+                        "run_skill", "list_skills",
                     ],
                     "description": "The operation to perform",
                 },
@@ -181,6 +205,13 @@ class PCControlTool(Tool):
                 "cwd": {"type": "string", "description": "Working directory for run_command"},
                 "double_click": {"type": "boolean", "description": "Double-click for browser_click"},
                 "right_click": {"type": "boolean", "description": "Right-click for browser_click"},
+                # Skill params
+                "skill_name": {"type": "string", "description": "Skill name for run_skill (e.g., 'whatsapp_send_message', 'calendar_create_event')"},
+                "skill_params": {
+                    "type": "object",
+                    "description": "Parameters for the skill (e.g., {contact: 'Mom', message: 'Hello!'} for whatsapp_send_message)",
+                },
+                "category": {"type": "string", "description": "Filter skills by category for list_skills"},
             },
             "required": ["operation"],
         }
@@ -464,6 +495,32 @@ class PCControlTool(Tool):
                 kwargs.get("text", ""),
             )
 
+        # ═══════════════════════════════════════════════
+        # SKILLS: Pre-built app workflows
+        # ═══════════════════════════════════════════════
+
+        elif op == "run_skill":
+            skill_name = kwargs.get("skill_name", "")
+            skill_params = kwargs.get("skill_params", {})
+            if not skill_name:
+                return {"error": "Provide skill_name. Use list_skills to see available skills."}
+            registry = _ensure_skills()
+            skill = registry.get(skill_name)
+            if not skill:
+                available = registry.list_names()
+                return {"error": f"Unknown skill: {skill_name}", "available_skills": available}
+            engine = _get_skill_engine(self)
+            result = await engine.run(skill, skill_params)
+            return result.to_dict()
+
+        elif op == "list_skills":
+            registry = _ensure_skills()
+            category = kwargs.get("category")
+            if category:
+                skills = registry.find_by_category(category)
+                return {"skills": [s.to_dict() for s in skills], "category": category}
+            return {"skills": registry.list_all(), "categories": registry.list_categories()}
+
         else:
             return {
                 "error": f"Unknown operation: {op}",
@@ -481,5 +538,6 @@ class PCControlTool(Tool):
                                "keyboard_type", "keyboard_press", "keyboard_hotkey",
                                "keyboard_shortcut", "screenshot", "read_screen",
                                "find_text_on_screen"],
+                    "skills": ["run_skill", "list_skills"],
                 },
             }

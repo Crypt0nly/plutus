@@ -26,6 +26,16 @@ interface SavedWorkflow {
   tags?: string[];
 }
 
+interface Skill {
+  name: string;
+  description: string;
+  app: string;
+  category: string;
+  required_params: string[];
+  optional_params: string[];
+  triggers: string[];
+}
+
 interface PCContext {
   active_app: string;
   active_window: string;
@@ -131,14 +141,19 @@ export default function PCControlView() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutSearch, setShortcutSearch] = useState("");
   const [contextLive, setContextLive] = useState(true);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skillCategories, setSkillCategories] = useState<string[]>([]);
+  const [selectedSkillCat, setSelectedSkillCat] = useState<string>("all");
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
 
   // Fetch main data once
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, shortcutsRes, workflowsRes] = await Promise.all([
+      const [statusRes, shortcutsRes, workflowsRes, skillsRes] = await Promise.all([
         api.getPCStatus().catch(() => ({ available: false, capabilities: {}, context: null })),
         api.getPCShortcuts().catch(() => ({ shortcuts: [] })),
         api.getPCWorkflows().catch(() => ({ workflows: [], templates: [] })),
+        api.getSkills().catch(() => ({ skills: [], categories: [] })),
       ]);
 
       setAvailable(statusRes.available ?? false);
@@ -167,6 +182,9 @@ export default function PCControlView() {
 
       setWorkflows(Array.isArray(workflowsRes.workflows) ? workflowsRes.workflows : []);
       setTemplates(Array.isArray(workflowsRes.templates) ? workflowsRes.templates : []);
+
+      setSkills(Array.isArray(skillsRes.skills) ? skillsRes.skills : []);
+      setSkillCategories(Array.isArray(skillsRes.categories) ? skillsRes.categories : []);
     } catch {
       setAvailable(false);
     } finally {
@@ -677,6 +695,137 @@ export default function PCControlView() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── App Skills ── */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-white/90 flex items-center gap-2">
+            <span className="text-violet-400">🎯</span> App Skills
+            <span className="text-xs font-normal text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
+              {skills.length} available
+            </span>
+          </h2>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setSelectedSkillCat("all")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                selectedSkillCat === "all"
+                  ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
+                  : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+              }`}
+            >
+              All
+            </button>
+            {skillCategories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedSkillCat(cat)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors capitalize ${
+                  selectedSkillCat === cat
+                    ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
+                    : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+                }`}
+              >
+                {CATEGORY_ICONS[cat] || "📦"} {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-white/40 text-sm">
+          Pre-built, tested workflows for common apps. When you ask Plutus to do something,
+          it automatically uses the right skill if one exists — no manual selection needed.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {skills
+            .filter((s) => selectedSkillCat === "all" || s.category === selectedSkillCat)
+            .map((skill) => (
+              <div
+                key={skill.name}
+                className={`bg-[#1a1a2e] border rounded-xl overflow-hidden transition-all cursor-pointer ${
+                  expandedSkill === skill.name
+                    ? "border-violet-500/40 shadow-lg shadow-violet-500/10"
+                    : "border-white/10 hover:border-white/20"
+                }`}
+                onClick={() => setExpandedSkill(expandedSkill === skill.name ? null : skill.name)}
+              >
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">
+                        {CATEGORY_ICONS[skill.category] || "📦"}
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">{skill.app}</h3>
+                        <code className="text-[10px] font-mono text-violet-400/70">{skill.name}</code>
+                      </div>
+                    </div>
+                    <span className="text-white/20 text-xs">
+                      {expandedSkill === skill.name ? "▲" : "▼"}
+                    </span>
+                  </div>
+                  <p className="text-white/50 text-xs">{skill.description}</p>
+                </div>
+
+                {expandedSkill === skill.name && (
+                  <div className="border-t border-white/10 p-4 bg-white/[0.02] space-y-3">
+                    {skill.required_params.length > 0 && (
+                      <div>
+                        <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Required</div>
+                        <div className="flex flex-wrap gap-1">
+                          {skill.required_params.map((p) => (
+                            <span key={p} className="text-xs bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded font-mono">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {skill.optional_params.length > 0 && (
+                      <div>
+                        <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Optional</div>
+                        <div className="flex flex-wrap gap-1">
+                          {skill.optional_params.map((p) => (
+                            <span key={p} className="text-xs bg-white/5 text-white/40 px-2 py-0.5 rounded font-mono">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Triggers</div>
+                      <div className="flex flex-wrap gap-1">
+                        {skill.triggers.slice(0, 5).map((t) => (
+                          <span key={t} className="text-[10px] bg-white/5 text-white/30 px-1.5 py-0.5 rounded">
+                            "{t}"
+                          </span>
+                        ))}
+                        {skill.triggers.length > 5 && (
+                          <span className="text-[10px] text-white/20">+{skill.triggers.length - 5} more</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="bg-violet-500/5 border border-violet-500/10 rounded-lg p-2">
+                      <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Example</div>
+                      <code className="text-[10px] text-violet-400/80 font-mono break-all">
+                        pc(operation="run_skill", skill_name="{skill.name}",
+                        skill_params=&#123;{skill.required_params.map(p => `"${p}": "..."`).join(", ")}&#125;)
+                      </code>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+        </div>
+
+        {skills.filter((s) => selectedSkillCat === "all" || s.category === selectedSkillCat).length === 0 && (
+          <div className="text-center py-8 text-white/30 text-sm">
+            No skills available for this category
+          </div>
+        )}
       </div>
 
       {/* ── How it works ── */}

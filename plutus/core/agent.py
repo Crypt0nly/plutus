@@ -148,6 +148,38 @@ Slack, Telegram, Notepad, Calculator, Terminal, File Explorer, and more.
 5. pc(operation="keyboard_type", text="...")          → Type into them
 
 ═══════════════════════════════════════════════════════════════
+ PRE-BUILT SKILLS — RELIABLE APP WORKFLOWS
+═══════════════════════════════════════════════════════════════
+
+For common tasks, use pre-built skills. These are tested, step-by-step
+workflows that are MORE RELIABLE than manual navigation.
+
+  pc(operation="list_skills")  → See all available skills
+  pc(operation="list_skills", category="messaging")  → Filter by category
+
+  pc(operation="run_skill", skill_name="whatsapp_send_message",
+     skill_params={"contact": "Mom", "message": "Hello!"})  → Send WhatsApp message
+
+  pc(operation="run_skill", skill_name="calendar_create_event",
+     skill_params={"title": "Team meeting", "date": "2026-02-21",
+                   "start_time": "14:00", "end_time": "15:00"})  → Create calendar event
+
+  pc(operation="run_skill", skill_name="gmail_send_email",
+     skill_params={"to": "boss@company.com", "subject": "Report",
+                   "body": "Please find attached..."})  → Send email
+
+  pc(operation="run_skill", skill_name="spotify_play_song",
+     skill_params={"query": "Bohemian Rhapsody"})  → Play a song
+
+  pc(operation="run_skill", skill_name="google_search",
+     skill_params={"query": "weather today"})  → Google search
+
+### WHEN TO USE SKILLS vs MANUAL
+- If a skill exists for the task → USE THE SKILL (it's tested and reliable)
+- If no skill exists → use the 3-layer approach (OS → Browser → Desktop)
+- To check: pc(operation="list_skills") shows all available skills
+
+═══════════════════════════════════════════════════════════════
  SECONDARY TOOLS — FOR CODE AND FILES
 ═══════════════════════════════════════════════════════════════
 
