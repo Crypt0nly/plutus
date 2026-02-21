@@ -135,6 +135,17 @@ export const api = {
     request<Record<string, any>>(category ? `/skills?category=${category}` : "/skills"),
   getSkillDetail: (skillName: string) =>
     request<Record<string, any>>(`/skills/${skillName}`),
+  exportSkill: (skillName: string) =>
+    request<Record<string, any>>(`/skills/${skillName}/export`),
+  importSkill: (skillData: Record<string, any>) =>
+    request<Record<string, any>>("/skills/import", {
+      method: "POST",
+      body: JSON.stringify({ skill_data: skillData }),
+    }),
+  deleteSkill: (skillName: string) =>
+    request<Record<string, any>>(`/skills/${skillName}`, { method: "DELETE" }),
+  getSavedSkills: () =>
+    request<Record<string, any>>("/skills/saved"),
 
   // Self-Improvement
   getImprovementLog: (limit = 50) =>

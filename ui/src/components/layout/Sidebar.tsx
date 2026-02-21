@@ -8,6 +8,7 @@ import {
   Cpu,
   Sparkles,
   Monitor,
+  Brain,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 
@@ -22,6 +23,7 @@ const navSections: NavSection[] = [
     items: [
       { id: "chat", label: "Chat", icon: MessageSquare },
       { id: "pc-control", label: "Computer Use", icon: Monitor, primary: true },
+      { id: "skills", label: "Skills", icon: Brain, badge: "New" },
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Message, Tier, ApprovalRequest } from "../lib/types";
 
-export type View = "chat" | "dashboard" | "guardrails" | "settings" | "tools" | "workers" | "tool-creator" | "pc-control";
+export type View = "chat" | "dashboard" | "guardrails" | "settings" | "tools" | "workers" | "tool-creator" | "pc-control" | "skills";
 
 interface ChatMessage extends Message {
   // Extended with UI-specific fields

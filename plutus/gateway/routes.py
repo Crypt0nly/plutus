@@ -953,6 +953,99 @@ def create_router() -> APIRouter:
         ]
         return {"shortcuts": shortcuts}
 
+    # ── Skill Import / Export / Community ──────────────────────────
+
+    @router.get("/skills/{skill_name}/export")
+    async def export_skill(skill_name: str) -> dict[str, Any]:
+        """Export a skill as a shareable JSON package."""
+        from plutus.skills.creator import get_skill_creator
+        creator = get_skill_creator()
+        source = creator.get_skill_source(skill_name)
+        if not source:
+            # Try built-in skills
+            from plutus.skills.registry import create_default_registry
+            registry = create_default_registry()
+            skill = registry.get(skill_name)
+            if not skill:
+                raise HTTPException(status_code=404, detail=f"Skill not found: {skill_name}")
+            source = skill.to_dict()
+
+        # Add export metadata
+        import time
+        export_pkg = {
+            "plutus_skill": True,
+            "export_version": 1,
+            "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "skill": source,
+        }
+        return export_pkg
+
+    class SkillImportRequest(BaseModel):
+        skill_data: dict
+
+    @router.post("/skills/import")
+    async def import_skill(req: SkillImportRequest) -> dict[str, Any]:
+        """Import a skill from a JSON package (uploaded by user or from community)."""
+        from plutus.skills.creator import get_skill_creator
+        from plutus.skills.registry import create_default_registry
+
+        data = req.skill_data
+
+        # Handle both raw skill dicts and export packages
+        if data.get("plutus_skill") and "skill" in data:
+            skill_dict = data["skill"]
+        else:
+            skill_dict = data
+
+        # Validate required fields
+        required = ["name", "description", "steps"]
+        missing = [f for f in required if not skill_dict.get(f)]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required fields: {', '.join(missing)}",
+            )
+
+        # Ensure defaults
+        skill_dict.setdefault("app", skill_dict.get("name", "Custom"))
+        skill_dict.setdefault("category", "custom")
+        skill_dict.setdefault("triggers", [skill_dict["name"]])
+        skill_dict.setdefault("required_params", [])
+        skill_dict.setdefault("optional_params", [])
+        skill_dict.setdefault("reason", "Imported by user")
+
+        creator = get_skill_creator()
+        registry = create_default_registry()
+        success, msg, skill = creator.create_from_dict(skill_dict, registry=registry)
+
+        if not success:
+            raise HTTPException(status_code=400, detail=msg)
+
+        return {
+            "success": True,
+            "message": msg,
+            "skill_name": skill_dict["name"],
+        }
+
+    @router.delete("/skills/{skill_name}")
+    async def delete_skill_endpoint(skill_name: str) -> dict[str, Any]:
+        """Delete a user-created skill."""
+        from plutus.skills.creator import get_skill_creator
+        from plutus.skills.registry import create_default_registry
+        creator = get_skill_creator()
+        registry = create_default_registry()
+        success, msg = creator.delete_skill(skill_name, registry=registry)
+        if not success:
+            raise HTTPException(status_code=404, detail=msg)
+        return {"success": True, "message": msg}
+
+    @router.get("/skills/saved")
+    async def list_saved_skills() -> dict[str, Any]:
+        """List all user-created / AI-created skills (not built-in)."""
+        from plutus.skills.creator import get_skill_creator
+        creator = get_skill_creator()
+        return {"skills": creator.list_saved_skills()}
+
     # ── Self-Improvement ────────────────────────────────────────────
 
     @router.get("/improvement/log")

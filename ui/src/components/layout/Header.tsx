@@ -10,6 +10,7 @@ const viewTitles: Record<string, { title: string; subtitle: string }> = {
   workers: { title: "Workers", subtitle: "Subprocess monitor" },
   "tool-creator": { title: "Tool Creator", subtitle: "Build custom tools" },
   "pc-control": { title: "Computer Use", subtitle: "Plutus sees your screen, clicks, types, and controls your PC" },
+  skills: { title: "Skills", subtitle: "Browse, import, and share app skills" },
 };
 
 export function Header() {
