@@ -1,4 +1,4 @@
-import { Shield, Activity } from "lucide-react";
+import { Shield, Activity, Key } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 
 const viewTitles: Record<string, string> = {
@@ -9,7 +9,8 @@ const viewTitles: Record<string, string> = {
 };
 
 export function Header() {
-  const { view, currentTier, pendingApprovals, isProcessing } = useAppStore();
+  const { view, currentTier, pendingApprovals, isProcessing, keyConfigured } =
+    useAppStore();
 
   return (
     <header className="h-14 border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm flex items-center justify-between px-6">
@@ -18,6 +19,17 @@ export function Header() {
       </h2>
 
       <div className="flex items-center gap-4">
+        {/* Missing API key warning */}
+        {!keyConfigured && (
+          <button
+            onClick={() => useAppStore.getState().setView("settings")}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs font-medium animate-gentle-pulse"
+          >
+            <Key className="w-3 h-3" />
+            No API key — click to configure
+          </button>
+        )}
+
         {/* Processing indicator */}
         {isProcessing && (
           <div className="flex items-center gap-2 text-xs text-plutus-400">

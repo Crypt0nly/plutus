@@ -1,16 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Save, Key, Brain, Server, Database } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
+import { useAppStore } from "../../stores/appStore";
 
 export function SettingsView() {
   const [config, setConfig] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
+
+  const fetchKeyStatus = useCallback(() => {
+    api.getKeyStatus().then((data) => {
+      setKeyStatus(data.providers || {});
+      useAppStore.getState().setKeyConfigured(data.current_provider_configured);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => {});
-  }, []);
+    fetchKeyStatus();
+  }, [fetchKeyStatus]);
 
   const handleSave = async (patch: Record<string, any>) => {
     setSaving(true);
@@ -43,7 +53,7 @@ export function SettingsView() {
         <div>
           <h2 className="text-xl font-bold text-gray-100 mb-1">Settings</h2>
           <p className="text-sm text-gray-500">
-            Configure your LLM provider, gateway, and memory settings
+            Configure your LLM provider, API key, and system settings
           </p>
         </div>
         {saved && (
@@ -53,11 +63,13 @@ export function SettingsView() {
         )}
       </div>
 
-      {/* Model Configuration */}
+      {/* Model + API Key Configuration */}
       <ModelConfig
         config={config.model || {}}
         onSave={(model) => handleSave({ model })}
         saving={saving}
+        keyStatus={keyStatus}
+        onKeyStatusChange={fetchKeyStatus}
       />
 
       {/* Gateway settings */}

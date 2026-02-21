@@ -110,22 +110,36 @@ def setup() -> None:
     config.model.model = model
 
     # API key
-    if provider not in ("ollama", "custom"):
-        default_env = {
-            "anthropic": "ANTHROPIC_API_KEY",
-            "openai": "OPENAI_API_KEY",
-        }
-        env_var = default_env.get(provider, "API_KEY")
-        config.model.api_key_env = env_var
+    if provider not in ("ollama",):
+        from plutus.config import SecretsStore, PROVIDER_ENV_VARS
 
-        current_key = os.environ.get(env_var, "")
-        if not current_key:
-            console.print(
-                f"\n  [yellow]Warning:[/yellow] {env_var} is not set. "
-                f"Set it before running `plutus start`."
-            )
+        secrets = SecretsStore()
+        default_env = PROVIDER_ENV_VARS.get(provider, f"{provider.upper()}_API_KEY")
+        config.model.api_key_env = default_env
+
+        has_key = secrets.has_key(provider)
+        if has_key:
+            console.print(f"  [green]API key already configured for {provider}[/green]")
+            change_key = click.confirm("  Change it?", default=False)
         else:
-            console.print(f"  [green]Found {env_var}[/green]")
+            console.print(f"\n  [yellow]No API key found for {provider}[/yellow]")
+            change_key = True
+
+        if change_key:
+            api_key = click.prompt(
+                f"  Enter your {provider} API key",
+                hide_input=True,
+                default="",
+                show_default=False,
+            )
+            if api_key.strip():
+                secrets.set_key(provider, api_key.strip())
+                console.print(f"  [green]API key saved securely[/green]")
+            else:
+                console.print(
+                    f"  [dim]Skipped. You can set it later via the web UI or "
+                    f"by setting the {default_env} environment variable.[/dim]"
+                )
 
     if provider == "custom":
         base_url = click.prompt("  Base URL", default=config.model.base_url or "")
@@ -172,12 +186,15 @@ def status() -> None:
     table.add_row("Memory DB", config.resolve_memory_db())
     table.add_row("Skills Dir", str(config.resolve_skills_dir()))
 
-    api_key_set = bool(os.environ.get(config.model.api_key_env))
+    from plutus.config import SecretsStore
+
+    secrets = SecretsStore()
+    key_available = secrets.has_key(config.model.provider)
     table.add_row(
         "API Key",
-        f"[green]set[/green] ({config.model.api_key_env})"
-        if api_key_set
-        else f"[red]not set[/red] ({config.model.api_key_env})",
+        f"[green]configured[/green]"
+        if key_available
+        else f"[red]not set[/red] — run `plutus setup` or use the web UI",
     )
 
     console.print()

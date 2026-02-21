@@ -18,6 +18,7 @@ export default function App() {
     setConnected,
     setCurrentTier,
     setConversationId,
+    setKeyConfigured,
     clearMessages,
   } = useAppStore();
 
@@ -90,8 +91,11 @@ export default function App() {
       if (status?.guardrails?.tier) {
         setCurrentTier(status.guardrails.tier);
       }
+      if (status?.key_configured !== undefined) {
+        setKeyConfigured(status.key_configured);
+      }
     }).catch(() => {});
-  }, [setCurrentTier]);
+  }, [setCurrentTier, setKeyConfigured]);
 
   const viewComponents = {
     chat: <ChatView send={send} />,

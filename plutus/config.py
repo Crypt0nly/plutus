@@ -1,11 +1,14 @@
 """Configuration management for Plutus.
 
 Config is stored at ~/.plutus/config.json and managed via the CLI or web UI.
+API keys are stored separately in ~/.plutus/.secrets.json with restricted permissions.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -107,3 +110,82 @@ def _deep_merge(base: dict, override: dict) -> None:
             _deep_merge(base[k], v)
         else:
             base[k] = v
+
+
+# Provider name → environment variable name mapping
+PROVIDER_ENV_VARS: dict[str, str] = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "custom": "API_KEY",
+}
+
+
+class SecretsStore:
+    """Secure storage for API keys in ~/.plutus/.secrets.json (chmod 600).
+
+    Keys are never stored in the main config.json and never returned via the API.
+    On set, keys are also injected into os.environ so LiteLLM picks them up.
+    """
+
+    def __init__(self, path: Path | None = None):
+        self._path = path or (plutus_dir() / ".secrets.json")
+
+    def _read(self) -> dict[str, str]:
+        if not self._path.exists():
+            return {}
+        return json.loads(self._path.read_text())
+
+    def _write(self, data: dict[str, str]) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(data, indent=2))
+        # Restrict to owner read/write only
+        self._path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    def get_key(self, provider: str) -> str | None:
+        """Get the API key for a provider. Checks env var first, then secrets file."""
+        env_var = PROVIDER_ENV_VARS.get(provider, f"{provider.upper()}_API_KEY")
+        # Environment variable takes priority
+        env_key = os.environ.get(env_var)
+        if env_key:
+            return env_key
+        # Fall back to secrets file
+        data = self._read()
+        return data.get(provider)
+
+    def set_key(self, provider: str, key: str) -> None:
+        """Store a key and inject it into os.environ for the current process."""
+        data = self._read()
+        data[provider] = key
+        self._write(data)
+        # Inject into environment so LiteLLM picks it up immediately
+        env_var = PROVIDER_ENV_VARS.get(provider, f"{provider.upper()}_API_KEY")
+        os.environ[env_var] = key
+
+    def has_key(self, provider: str) -> bool:
+        """Check if a key is available (from env or secrets file)."""
+        return self.get_key(provider) is not None
+
+    def delete_key(self, provider: str) -> None:
+        """Remove a key from the secrets file (does not unset env vars)."""
+        data = self._read()
+        data.pop(provider, None)
+        self._write(data)
+
+    def key_status(self) -> dict[str, bool]:
+        """Return which providers have keys configured."""
+        all_providers = list(PROVIDER_ENV_VARS.keys())
+        # Also include any providers in the secrets file
+        data = self._read()
+        for p in data:
+            if p not in all_providers:
+                all_providers.append(p)
+        return {p: self.has_key(p) for p in all_providers}
+
+    def inject_all(self) -> None:
+        """Inject all stored keys into os.environ (called at startup)."""
+        data = self._read()
+        for provider, key in data.items():
+            env_var = PROVIDER_ENV_VARS.get(provider, f"{provider.upper()}_API_KEY")
+            # Don't overwrite existing env vars
+            if not os.environ.get(env_var):
+                os.environ[env_var] = key

@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, AsyncIterator, Callable
 
-from plutus.config import PlutusConfig
+from plutus.config import PlutusConfig, SecretsStore
 from plutus.core.conversation import ConversationManager
 from plutus.core.llm import LLMClient, LLMResponse, ToolDefinition
 from plutus.core.memory import MemoryStore
@@ -46,9 +46,11 @@ class AgentRuntime:
         guardrails: GuardrailEngine,
         memory: MemoryStore,
         tool_registry: Any = None,  # ToolRegistry, set after import
+        secrets: SecretsStore | None = None,
     ):
         self._config = config
-        self._llm = LLMClient(config.model)
+        self._secrets = secrets or SecretsStore()
+        self._llm = LLMClient(config.model, secrets=self._secrets)
         self._guardrails = guardrails
         self._memory = memory
         self._conversation = ConversationManager(
@@ -64,6 +66,14 @@ class AgentRuntime:
     @property
     def guardrails(self) -> GuardrailEngine:
         return self._guardrails
+
+    @property
+    def key_configured(self) -> bool:
+        return self._llm.key_configured
+
+    def reload_key(self) -> bool:
+        """Re-check API key after user configures one via the UI."""
+        return self._llm.reload_key()
 
     def on_event(self, handler: Callable[[AgentEvent], Any]) -> None:
         """Register an event handler for agent events."""
@@ -97,6 +107,17 @@ class AgentRuntime:
           - error: Something went wrong
           - done: Processing complete
         """
+        # Check if API key is configured
+        if not self._llm.key_configured:
+            yield AgentEvent(
+                "error",
+                {
+                    "message": "No API key configured. Go to Settings to add your API key.",
+                    "key_missing": True,
+                },
+            )
+            return
+
         # Ensure we have an active conversation
         if not self._conversation.conversation_id:
             await self._conversation.start_conversation(title=user_message[:50])

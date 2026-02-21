@@ -22,10 +22,12 @@ def create_router() -> APIRouter:
         state = get_state()
         guardrails = state.get("guardrails")
         tool_registry = state.get("tool_registry")
+        agent = state.get("agent")
 
         return {
             "version": "0.1.0",
             "status": "running",
+            "key_configured": agent.key_configured if agent else False,
             "guardrails": guardrails.get_status() if guardrails else None,
             "tools": tool_registry.list_tools() if tool_registry else [],
         }
@@ -179,6 +181,74 @@ def create_router() -> APIRouter:
         state = get_state()
         registry = state.get("tool_registry")
         return registry.get_tool_info() if registry else []
+
+    # ── API Keys ─────────────────────────────────────────────
+
+    @router.get("/keys/status")
+    async def get_key_status() -> dict[str, Any]:
+        """Return which providers have API keys configured (never returns actual keys)."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        secrets = state.get("secrets")
+        agent = state.get("agent")
+
+        if not secrets:
+            return {"providers": {}, "current_provider_configured": False}
+
+        status = secrets.key_status()
+        config = state.get("config")
+        current_provider = config.model.provider if config else "anthropic"
+
+        return {
+            "providers": status,
+            "current_provider": current_provider,
+            "current_provider_configured": status.get(current_provider, False),
+        }
+
+    class SetKeyRequest(BaseModel):
+        provider: str
+        key: str
+
+    @router.post("/keys")
+    async def set_api_key(body: SetKeyRequest) -> dict[str, Any]:
+        """Store an API key and make it available to the agent immediately."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        secrets = state.get("secrets")
+        agent = state.get("agent")
+
+        if not secrets:
+            raise HTTPException(500, "Secrets store not initialized")
+
+        if not body.key.strip():
+            raise HTTPException(400, "API key cannot be empty")
+
+        secrets.set_key(body.provider, body.key.strip())
+
+        # Reload the key in the running agent
+        key_available = False
+        if agent:
+            key_available = agent.reload_key()
+
+        return {
+            "message": f"API key saved for {body.provider}",
+            "key_configured": key_available,
+        }
+
+    @router.delete("/keys/{provider}")
+    async def delete_api_key(provider: str) -> dict[str, str]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        secrets = state.get("secrets")
+
+        if not secrets:
+            raise HTTPException(500, "Secrets store not initialized")
+
+        secrets.delete_key(provider)
+        return {"message": f"API key removed for {provider}"}
 
     # ── Config ──────────────────────────────────────────────
 

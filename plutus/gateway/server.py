@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from plutus.config import PlutusConfig
+from plutus.config import PlutusConfig, SecretsStore
 from plutus.core.agent import AgentRuntime
 from plutus.core.memory import MemoryStore
 from plutus.gateway.routes import create_router
@@ -34,6 +34,10 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     config = PlutusConfig.load()
 
+    # Initialize secrets store and inject stored keys into environment
+    secrets = SecretsStore()
+    secrets.inject_all()
+
     # Initialize memory
     memory = MemoryStore(config.resolve_memory_db())
     await memory.initialize()
@@ -44,24 +48,28 @@ async def lifespan(app: FastAPI):
     # Initialize tool registry
     tool_registry = create_default_registry()
 
-    # Initialize agent
+    # Initialize agent (no longer crashes if key is missing)
     agent = AgentRuntime(
         config=config,
         guardrails=guardrails,
         memory=memory,
         tool_registry=tool_registry,
+        secrets=secrets,
     )
     await agent.initialize()
 
     _state["config"] = config
+    _state["secrets"] = secrets
     _state["memory"] = memory
     _state["guardrails"] = guardrails
     _state["tool_registry"] = tool_registry
     _state["agent"] = agent
 
+    key_status = "configured" if agent.key_configured else "NOT configured"
     logger.info(
         f"Plutus started — tier={config.guardrails.tier}, "
-        f"model={config.model.provider}/{config.model.model}"
+        f"model={config.model.provider}/{config.model.model}, "
+        f"api_key={key_status}"
     )
 
     yield

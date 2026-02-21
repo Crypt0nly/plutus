@@ -5,13 +5,16 @@ Supports Anthropic, OpenAI, local models (Ollama), and any OpenAI-compatible end
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, AsyncIterator
 
 import litellm
 from pydantic import BaseModel
 
-from plutus.config import ModelConfig
+from plutus.config import ModelConfig, SecretsStore
+
+logger = logging.getLogger("plutus.llm")
 
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
@@ -51,10 +54,16 @@ class LLMResponse(BaseModel):
 class LLMClient:
     """Unified LLM client with tool-calling support."""
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, secrets: SecretsStore | None = None):
         self._config = config
+        self._secrets = secrets or SecretsStore()
         self._model = self._resolve_model()
-        self._ensure_api_key()
+        self._key_available = self._ensure_api_key()
+
+    @property
+    def key_configured(self) -> bool:
+        """Whether an API key is available for the current provider."""
+        return self._key_available
 
     def _resolve_model(self) -> str:
         """Map provider/model to litellm model string."""
@@ -70,14 +79,34 @@ class LLMClient:
         # Custom / OpenAI-compatible
         return model
 
-    def _ensure_api_key(self) -> None:
-        """Verify the API key env var is set."""
-        key = os.environ.get(self._config.api_key_env, "")
-        if not key and self._config.provider not in ("ollama", "local"):
-            raise EnvironmentError(
-                f"Missing API key: set the {self._config.api_key_env} environment variable. "
-                f"Run `plutus setup` to configure."
-            )
+    def _ensure_api_key(self) -> bool:
+        """Resolve the API key from env var or secrets store.
+
+        Returns True if a key is available, False otherwise.
+        Does NOT crash — the server can start without a key and prompt the user.
+        """
+        if self._config.provider in ("ollama", "local"):
+            return True
+
+        # Try secrets store (checks env var first, then file)
+        key = self._secrets.get_key(self._config.provider)
+        if key:
+            # Ensure it's in os.environ for LiteLLM
+            env_var = self._config.api_key_env
+            if not os.environ.get(env_var):
+                os.environ[env_var] = key
+            return True
+
+        logger.warning(
+            f"No API key found for {self._config.provider}. "
+            f"Set {self._config.api_key_env} or use the web UI to configure."
+        )
+        return False
+
+    def reload_key(self) -> bool:
+        """Re-check for API key availability (called after user sets a key via UI)."""
+        self._key_available = self._ensure_api_key()
+        return self._key_available
 
     def _build_kwargs(self, **overrides: Any) -> dict[str, Any]:
         kwargs: dict[str, Any] = {

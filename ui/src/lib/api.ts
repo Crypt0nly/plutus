@@ -60,6 +60,21 @@ export const api = {
   // Tools
   getTools: () => request<Record<string, unknown>[]>("/tools"),
 
+  // API Keys
+  getKeyStatus: () =>
+    request<{
+      providers: Record<string, boolean>;
+      current_provider: string;
+      current_provider_configured: boolean;
+    }>("/keys/status"),
+  setKey: (provider: string, key: string) =>
+    request<{ message: string; key_configured: boolean }>("/keys", {
+      method: "POST",
+      body: JSON.stringify({ provider, key }),
+    }),
+  deleteKey: (provider: string) =>
+    request<Record<string, string>>(`/keys/${provider}`, { method: "DELETE" }),
+
   // Config
   getConfig: () => request<Record<string, unknown>>("/config"),
   updateConfig: (patch: Record<string, unknown>) =>

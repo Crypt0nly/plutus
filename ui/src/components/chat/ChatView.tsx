@@ -2,14 +2,14 @@ import { useRef, useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare, KeyRound } from "lucide-react";
 
 interface Props {
   send: (data: Record<string, unknown>) => void;
 }
 
 export function ChatView({ send }: Props) {
-  const { messages, isProcessing } = useAppStore();
+  const { messages, isProcessing, keyConfigured } = useAppStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
@@ -29,7 +29,7 @@ export function ChatView({ send }: Props) {
       {/* Messages area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 ? (
-          <EmptyState />
+          keyConfigured ? <EmptyState /> : <SetupPrompt />
         ) : (
           messages.map((msg, i) => <MessageBubble key={i} message={msg} send={send} />)
         )}
@@ -47,7 +47,30 @@ export function ChatView({ send }: Props) {
       </div>
 
       {/* Input area */}
-      <ChatInput onSend={handleSend} disabled={isProcessing} />
+      <ChatInput onSend={handleSend} disabled={isProcessing || !keyConfigured} />
+    </div>
+  );
+}
+
+function SetupPrompt() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center text-center py-20">
+      <div className="w-16 h-16 rounded-2xl bg-amber-500/20 flex items-center justify-center mb-6">
+        <KeyRound className="w-8 h-8 text-amber-400" />
+      </div>
+      <h3 className="text-xl font-semibold text-gray-200 mb-2">
+        API Key Required
+      </h3>
+      <p className="text-gray-500 max-w-md text-sm leading-relaxed mb-6">
+        To get started, configure your API key for Claude, ChatGPT, or another
+        LLM provider. Your key is stored locally and never leaves your machine.
+      </p>
+      <button
+        onClick={() => useAppStore.getState().setView("settings")}
+        className="px-5 py-2.5 rounded-xl bg-plutus-600 hover:bg-plutus-500 text-white text-sm font-medium transition-colors"
+      >
+        Go to Settings
+      </button>
     </div>
   );
 }

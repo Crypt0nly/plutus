@@ -33,6 +33,10 @@ interface AppState {
   addApproval: (a: ApprovalRequest) => void;
   removeApproval: (id: string) => void;
 
+  // API Key status
+  keyConfigured: boolean;
+  setKeyConfigured: (v: boolean) => void;
+
   // Connection
   connected: boolean;
   setConnected: (v: boolean) => void;
@@ -73,6 +77,10 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => ({
       pendingApprovals: s.pendingApprovals.filter((a) => a.id !== id),
     })),
+
+  // API Key status
+  keyConfigured: true, // assume true until proven otherwise
+  setKeyConfigured: (keyConfigured) => set({ keyConfigured }),
 
   // Connection
   connected: false,
