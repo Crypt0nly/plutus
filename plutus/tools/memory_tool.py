@@ -22,75 +22,85 @@ logger = logging.getLogger("plutus.tools.memory")
 class MemoryTool(Tool):
     """Tool for persistent memory operations."""
 
-    name = "memory"
-    description = (
-        "Save and recall persistent information across conversation boundaries. "
-        "Use this to remember important facts, track goals, and create checkpoints. "
-        "Information saved here survives even when the conversation gets very long."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "action": {
-                "type": "string",
-                "enum": [
-                    "save_fact",
-                    "recall_facts",
-                    "search_facts",
-                    "delete_fact",
-                    "add_goal",
-                    "list_goals",
-                    "complete_goal",
-                    "fail_goal",
-                    "checkpoint",
-                    "get_checkpoint",
-                    "stats",
-                ],
-                "description": "The memory action to perform.",
-            },
-            "category": {
-                "type": "string",
-                "description": (
-                    "Category for the fact. Suggested categories: "
-                    "'user_preference', 'technical', 'decision', 'progress', "
-                    "'file_path', 'credential', 'environment', 'task_context'."
-                ),
-            },
-            "content": {
-                "type": "string",
-                "description": "The content to save (for save_fact) or search query (for search_facts).",
-            },
-            "goal_description": {
-                "type": "string",
-                "description": "Description of the goal (for add_goal).",
-            },
-            "goal_id": {
-                "type": "integer",
-                "description": "ID of the goal to update (for complete_goal, fail_goal).",
-            },
-            "fact_id": {
-                "type": "integer",
-                "description": "ID of the fact to delete (for delete_fact).",
-            },
-            "checkpoint_data": {
-                "type": "object",
-                "description": (
-                    "State data to save in a checkpoint. Should include: "
-                    "what you were doing, what's done, what's next."
-                ),
-            },
-            "limit": {
-                "type": "integer",
-                "description": "Maximum number of results to return.",
-                "default": 10,
-            },
-        },
-        "required": ["action"],
-    }
-
     def __init__(self, memory_store: Any, conversation_manager: Any = None):
         self._memory = memory_store
         self._conversation = conversation_manager
+
+    @property
+    def name(self) -> str:
+        return "memory"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Save and recall persistent information across conversation boundaries. "
+            "Use this to remember important facts, track goals, and create checkpoints. "
+            "Information saved here survives even when the conversation gets very long. "
+            "IMPORTANT: Use this tool at the START of every complex task to save the user's goal, "
+            "and periodically during long tasks to save progress."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "save_fact",
+                        "recall_facts",
+                        "search_facts",
+                        "delete_fact",
+                        "add_goal",
+                        "list_goals",
+                        "complete_goal",
+                        "fail_goal",
+                        "checkpoint",
+                        "get_checkpoint",
+                        "stats",
+                    ],
+                    "description": "The memory action to perform.",
+                },
+                "category": {
+                    "type": "string",
+                    "description": (
+                        "Category for the fact. Suggested categories: "
+                        "'user_preference', 'technical', 'decision', 'progress', "
+                        "'file_path', 'credential', 'environment', 'task_context'."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The content to save (for save_fact) or search query (for search_facts).",
+                },
+                "goal_description": {
+                    "type": "string",
+                    "description": "Description of the goal (for add_goal).",
+                },
+                "goal_id": {
+                    "type": "integer",
+                    "description": "ID of the goal to update (for complete_goal, fail_goal).",
+                },
+                "fact_id": {
+                    "type": "integer",
+                    "description": "ID of the fact to delete (for delete_fact).",
+                },
+                "checkpoint_data": {
+                    "type": "object",
+                    "description": (
+                        "State data to save in a checkpoint. Should include: "
+                        "what you were doing, what's done, what's next."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return.",
+                    "default": 10,
+                },
+            },
+            "required": ["action"],
+        }
 
     async def execute(self, **kwargs: Any) -> str:
         action = kwargs.get("action", "stats")

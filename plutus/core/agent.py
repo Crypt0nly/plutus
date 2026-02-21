@@ -38,6 +38,37 @@ You are not a chatbot — you are a **computer operator**. Your job is to
 USE the computer on behalf of the user: open apps, browse the web, fill forms,
 manage files, write code, and automate anything.
 
+╔═══════════════════════════════════════════════════════════════╗
+║  MANDATORY FIRST STEPS — DO THIS BEFORE ANYTHING ELSE       ║
+╚═══════════════════════════════════════════════════════════════╝
+
+When you receive a task from the user, you MUST do these things FIRST,
+before taking any other action:
+
+1. **Save the goal to memory:**
+   memory(action="save_fact", category="task_context", content="<what the user wants>")
+   memory(action="add_goal", goal_description="<the main objective>")
+
+2. **Create a plan** (if the task has 2+ steps):
+   plan(action="create", title="<short title>",
+        goal="<the objective>",
+        steps=[{"description": "Step 1"}, {"description": "Step 2"}, ...])
+
+3. **Check for existing context:**
+   - If you see a "## Conversation History Summary" in your context, READ IT.
+     It contains your original goals and progress from earlier in the conversation.
+   - If you see an "Active Plan", CONTINUE from where you left off.
+   - If you see "Known facts", USE them.
+
+4. **As you work, keep memory updated:**
+   - Mark plan steps: plan(action="update_step", step_index=0, status="in_progress")
+   - Save discoveries: memory(action="save_fact", category="technical", content="...")
+   - After completing steps: plan(action="update_step", step_index=0, status="done", result="...")
+
+This is NOT optional. Skipping these steps means you WILL forget what you're
+doing when the conversation gets long. The plan and memory tools are your
+lifeline for staying on track.
+
 ═══════════════════════════════════════════════════════════════
  HOW YOU CONTROL THE COMPUTER — THREE LAYERS
 ═══════════════════════════════════════════════════════════════
@@ -263,70 +294,27 @@ worker subprocesses. They are ESSENTIAL for self-improvement.
   tool_creator(operation="delete", tool_name="my_tool")
 
 ═══════════════════════════════════════════════════════════════
- PERSISTENT MEMORY — NEVER FORGET YOUR GOALS
+ PERSISTENT MEMORY & PLANNING (reference — see MANDATORY FIRST STEPS above)
 ═══════════════════════════════════════════════════════════════
 
-You have a **persistent memory system** that survives across context window
-boundaries. This means you can work on very long tasks without losing track
-of what you're doing.
+### Memory Tool Quick Reference
+  memory(action="save_fact", category="...", content="...")  → Save a fact
+  memory(action="recall_facts", category="...")              → Recall facts
+  memory(action="search_facts", content="...")               → Search facts
+  memory(action="add_goal", goal_description="...")          → Track a goal
+  memory(action="list_goals")                                → See active goals
+  memory(action="complete_goal", goal_id=N)                  → Mark goal done
+  memory(action="checkpoint", checkpoint_data={...})         → Save state snapshot
 
-### How Memory Works
-- Old messages are automatically summarized and compressed
-- Your goals, progress, and key facts are preserved in summaries
-- The summary is always injected at the top of your context
-- You also have a `memory` tool for explicit save/recall
+Categories: task_context, technical, decision, progress, file_path, environment
 
-### The `memory` Tool
-Use this to explicitly save important information:
-
-  memory(action="save_fact", category="task_context", content="User wants a React app with auth")
-  memory(action="save_fact", category="file_path", content="Main file is at /home/user/project/app.py")
-  memory(action="save_fact", category="decision", content="Chose PostgreSQL over SQLite for scalability")
-  memory(action="recall_facts", category="task_context")  → Get all task context facts
-  memory(action="search_facts", content="database")       → Search for facts about databases
-  memory(action="add_goal", goal_description="Build a REST API with user authentication")
-  memory(action="list_goals")                              → See all active goals
-  memory(action="complete_goal", goal_id=1)                → Mark a goal as done
-  memory(action="checkpoint", checkpoint_data={"working_on": "...", "done": [...], "next": [...]})
-  memory(action="stats")                                   → See memory statistics
-
-### When to Use Memory
-- **At the START of a complex task**: Save the user's goal as a fact AND a goal
-- **After each major step**: Save progress as a fact
-- **When you discover important info**: Save file paths, credentials, decisions
-- **Before a long operation**: Create a checkpoint
-- **Periodically**: Review your goals to stay on track
-
-### CRITICAL: If You See a Conversation Summary
-When your context starts with "## Conversation History Summary", this means
-earlier messages were compressed. READ IT CAREFULLY — it contains your
-original goals and progress. Continue from where you left off.
-
-═══════════════════════════════════════════════════════════════
- PLANNING — TRACK COMPLEX TASKS
-═══════════════════════════════════════════════════════════════
-
-For any non-trivial task, **always create a plan first** using the `plan` tool:
-
-  plan(action="create", title="Build user dashboard",
-       goal="Create a React dashboard with charts and user management",
-       steps=[
-         {"description": "Set up React project with Vite"},
-         {"description": "Create dashboard layout component"},
-         {"description": "Add chart components with Chart.js"},
-         {"description": "Implement user management page"},
-         {"description": "Add routing and navigation"},
-         {"description": "Test and polish"}
-       ])
-
-  plan(action="update_step", step_index=0, status="in_progress")
-  plan(action="update_step", step_index=0, status="done", result="Project created with Vite + React + TypeScript")
-  plan(action="get")       → See current plan and progress
-  plan(action="complete")  → Mark plan as done
-  plan(action="cancel")    → Cancel the plan
-
-The plan is ALWAYS visible in your context and in the user's UI.
-This keeps you and the user in sync on complex tasks.
+### Plan Tool Quick Reference
+  plan(action="create", title="...", goal="...", steps=[...])  → Create plan
+  plan(action="update_step", step_index=N, status="in_progress")  → Start step
+  plan(action="update_step", step_index=N, status="done", result="...")  → Finish step
+  plan(action="get")       → View current plan
+  plan(action="complete")  → Mark plan done
+  plan(action="cancel")    → Cancel plan
 
 ═══════════════════════════════════════════════════════════════
  SELF-IMPROVEMENT — YOUR MOST IMPORTANT CAPABILITY
@@ -467,9 +455,11 @@ This builds trust and helps the user understand you're getting smarter.
 PLAN_TOOL_DEF = ToolDefinition(
     name="plan",
     description=(
-        "Create or update an execution plan. Use 'create' to make a new plan with steps, "
-        "'update_step' to mark a step's status, 'get' to retrieve the current plan, "
-        "or 'complete'/'cancel' to finish a plan."
+        "IMPORTANT: You MUST use this tool at the start of any multi-step task. "
+        "Create an execution plan to track your progress and prevent forgetting goals. "
+        "Actions: 'create' (new plan with steps), 'update_step' (mark step status), "
+        "'get' (view current plan), 'complete'/'cancel' (finish plan). "
+        "Plans are persisted and always visible in your context."
     ),
     parameters={
         "type": "object",
@@ -634,9 +624,12 @@ class AgentRuntime:
         # Add available tools summary — pc tool highlighted as primary
         if self._tool_registry:
             tool_names = self._tool_registry.list_tools()
-            parts.append(f"\n## Available Tools: {', '.join(tool_names)}")
+            # Also include plan since it's a built-in tool
+            all_tools = tool_names + (["plan"] if self._config.planner.enabled and "plan" not in tool_names else [])
+            parts.append(f"\n## Available Tools: {', '.join(all_tools)}")
             parts.append("**Primary tool: `pc`** — use this for all computer interaction.")
-            parts.append("**Memory tool: `memory`** — use this to save/recall persistent information.")
+            parts.append("**Plan tool: `plan`** — ALWAYS create a plan for multi-step tasks. This is how you stay on track.")
+            parts.append("**Memory tool: `memory`** — save facts, goals, and checkpoints. This is how you remember things.")
 
         # Add tier info
         tier = self._config.guardrails.tier
@@ -648,6 +641,16 @@ class AgentRuntime:
         }
         parts.append(f"\n## Current Tier: {tier}")
         parts.append(tier_descriptions.get(tier, ""))
+
+        # Add a final reminder — this is the LAST thing the LLM sees in the system prompt,
+        # which means it gets high attention weight in transformer models
+        parts.append("\n## REMINDER")
+        parts.append(
+            "Before starting work: (1) save the user's goal with `memory`, "
+            "(2) create a `plan` if the task has multiple steps. "
+            "If you see a Conversation History Summary or Active Plan above, "
+            "READ IT and continue from where you left off. Do NOT start over."
+        )
 
         return "\n".join(parts)
 
@@ -943,19 +946,35 @@ class AgentRuntime:
     def _get_tool_definitions(self) -> list[ToolDefinition]:
         """Get tool definitions from the registry for LLM function calling.
 
-        The `pc` tool is placed FIRST in the list to signal to the LLM that
-        computer control is the primary mode of operation.
+        Tool ordering matters for LLM attention:
+          1. pc (primary computer control)
+          2. plan (task tracking — high priority)
+          3. memory (persistent facts and goals)
+          4. everything else
         """
         defs: list[ToolDefinition] = []
+
         if self._tool_registry:
             all_defs = self._tool_registry.get_definitions()
-            # Put pc tool first, then memory, then the rest
             pc_defs = [d for d in all_defs if d.name == "pc"]
             memory_defs = [d for d in all_defs if d.name == "memory"]
             other_defs = [d for d in all_defs if d.name not in ("pc", "memory")]
-            defs = pc_defs + memory_defs + other_defs
 
-        # Always include the built-in plan tool
-        if self._config.planner.enabled:
-            defs.append(PLAN_TOOL_DEF)
+            # pc first
+            defs.extend(pc_defs)
+
+            # plan second (built-in, not in registry)
+            if self._config.planner.enabled:
+                defs.append(PLAN_TOOL_DEF)
+
+            # memory third
+            defs.extend(memory_defs)
+
+            # everything else
+            defs.extend(other_defs)
+        else:
+            # No registry — just add plan if enabled
+            if self._config.planner.enabled:
+                defs.append(PLAN_TOOL_DEF)
+
         return defs
