@@ -109,9 +109,14 @@ export type WSMessage =
   | { type: "text"; content: string }
   | { type: "tool_call"; id: string; tool: string; arguments: Record<string, unknown> }
   | { type: "tool_approval_needed"; tool: string; arguments: Record<string, unknown>; reason: string }
-  | { type: "tool_result"; id: string; tool: string; result: string; denied?: boolean; rejected?: boolean }
+  | { type: "tool_result"; id: string; tool: string; result: string; denied?: boolean; rejected?: boolean; screenshot?: boolean; image_base64?: string; error?: boolean }
   | { type: "error"; message: string }
-  | { type: "done" }
+  | { type: "done"; iterations?: number }
+  | { type: "mode"; mode: string; message: string }
+  | { type: "iteration"; number: number; max: number }
+  | { type: "cancelled"; message: string }
+  | { type: "task_stopped"; message: string }
+  | { type: "info"; message: string }
   | { type: "conversation_started"; conversation_id: string }
   | { type: "conversation_resumed"; conversation_id: string; messages: Message[] }
   | { type: "approval_resolved"; approval_id: string; approved: boolean; success: boolean }

@@ -27,7 +27,7 @@ export default function App() {
   } = useAppStore();
 
   const handleWSMessage = useCallback(
-    (msg: WSMessage) => {
+    (msg: any) => {
       switch (msg.type) {
         case "thinking":
           setProcessing(true);
@@ -37,13 +37,66 @@ export default function App() {
           addMessage({ role: "assistant", content: msg.content });
           break;
 
-        case "tool_call":
-          addMessage({
-            role: "assistant",
-            content: `Using tool: **${msg.tool}**`,
-            tool_calls: [{ id: msg.id, name: msg.tool, arguments: msg.arguments }],
-          });
+        case "tool_call": {
+          // Handle both standard tool calls and computer use actions
+          const toolName = msg.tool || "";
+          const args = msg.arguments || {};
+
+          // Computer use actions (computer.screenshot, computer.click, etc.)
+          if (toolName.startsWith("computer.")) {
+            const action = toolName.replace("computer.", "");
+            const actionLabels: Record<string, string> = {
+              screenshot: "📸 Taking screenshot...",
+              click: `🖱️ Clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              left_click: `🖱️ Clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              right_click: `🖱️ Right-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              double_click: `🖱️ Double-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              type: `⌨️ Typing: "${(args.text || "").slice(0, 50)}${(args.text || "").length > 50 ? "..." : ""}"`,
+              key: `⌨️ Pressing: ${args.text}`,
+              scroll: `📜 Scrolling ${args.coordinate ? `at (${args.coordinate[0]}, ${args.coordinate[1]})` : ""} ${args.delta_x || args.delta_y ? `by (${args.delta_x || 0}, ${args.delta_y || 0})` : ""}`,
+              move: `🖱️ Moving to (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              wait: "⏳ Waiting...",
+              triple_click: `🖱️ Triple-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+            };
+
+            addMessage({
+              role: "assistant",
+              content: actionLabels[action] || `🖥️ ${action}`,
+              tool_calls: [{ id: msg.id || "", name: toolName, arguments: args }],
+            });
+          } else {
+            addMessage({
+              role: "assistant",
+              content: `Using tool: **${toolName}**`,
+              tool_calls: [{ id: msg.id || "", name: toolName, arguments: args }],
+            });
+          }
           break;
+        }
+
+        case "tool_result": {
+          // Handle screenshot results with images
+          if (msg.screenshot && msg.image_base64) {
+            addMessage({
+              role: "tool",
+              content: `__SCREENSHOT__:${msg.image_base64}`,
+              tool_call_id: msg.id,
+            });
+          } else if (msg.error) {
+            addMessage({
+              role: "tool",
+              content: `[ERROR] ${msg.result || "Unknown error"}`,
+              tool_call_id: msg.id,
+            });
+          } else {
+            addMessage({
+              role: "tool",
+              content: msg.result || "Done",
+              tool_call_id: msg.id,
+            });
+          }
+          break;
+        }
 
         case "tool_approval_needed":
           addMessage({
@@ -52,11 +105,21 @@ export default function App() {
           });
           break;
 
-        case "tool_result":
+        case "mode":
+          // Computer use mode indicator
           addMessage({
-            role: "tool",
-            content: msg.result,
-            tool_call_id: msg.id,
+            role: "system",
+            content: msg.mode === "computer_use"
+              ? "🖥️ Computer Use mode — I can see and control your screen"
+              : "💻 Standard mode — code and file operations",
+          });
+          break;
+
+        case "iteration":
+          // Progress indicator for computer use loops
+          addMessage({
+            role: "system",
+            content: `Step ${msg.number}/${msg.max}`,
           });
           break;
 
@@ -69,6 +132,12 @@ export default function App() {
           setProcessing(false);
           break;
 
+        case "cancelled":
+        case "task_stopped":
+          addMessage({ role: "system", content: `⏹️ ${msg.message || "Task stopped"}` });
+          setProcessing(false);
+          break;
+
         case "conversation_started":
           setConversationId(msg.conversation_id);
           break;
@@ -76,7 +145,7 @@ export default function App() {
         case "conversation_resumed":
           setConversationId(msg.conversation_id);
           clearMessages();
-          msg.messages.forEach((m) => addMessage(m));
+          msg.messages.forEach((m: any) => addMessage(m));
           break;
 
         case "heartbeat":
@@ -95,8 +164,6 @@ export default function App() {
           break;
 
         case "plan_update":
-          // Plan updates flow through tool_call/tool_result already;
-          // this is an extra event for the UI to refresh plan display
           break;
       }
     },

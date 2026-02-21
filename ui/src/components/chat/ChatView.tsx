@@ -24,6 +24,10 @@ export function ChatView({ send }: Props) {
     send({ type: "chat", content });
   };
 
+  const handleStop = () => {
+    send({ type: "stop_task" });
+  };
+
   return (
     <div className="flex flex-col h-full -m-6">
       {/* Messages area */}
@@ -37,17 +41,17 @@ export function ChatView({ send }: Props) {
         {isProcessing && (
           <div className="flex items-center gap-2 text-sm text-gray-500 animate-fade-in">
             <div className="flex gap-1">
-              <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
-            <span>Plutus is working...</span>
+            <span>Plutus is controlling your computer...</span>
           </div>
         )}
       </div>
 
       {/* Input area */}
-      <ChatInput onSend={handleSend} disabled={isProcessing || !keyConfigured} />
+      <ChatInput onSend={handleSend} onStop={handleStop} disabled={isProcessing || !keyConfigured} />
     </div>
   );
 }
@@ -61,9 +65,13 @@ function SetupPrompt() {
       <h3 className="text-xl font-semibold text-gray-200 mb-2">
         API Key Required
       </h3>
-      <p className="text-gray-500 max-w-md text-sm leading-relaxed mb-6">
-        To get started, configure your API key for Claude, ChatGPT, or another
-        LLM provider. Your key is stored locally and never leaves your machine.
+      <p className="text-gray-500 max-w-md text-sm leading-relaxed mb-4">
+        To get started, configure your <strong className="text-gray-300">Anthropic API key</strong> for
+        Claude computer use. Your key is stored locally and never leaves your machine.
+      </p>
+      <p className="text-gray-600 max-w-md text-xs leading-relaxed mb-6">
+        Plutus uses Claude's native Computer Use Tool to see your screen and control your computer.
+        An Anthropic API key is required for this to work.
       </p>
       <button
         onClick={() => useAppStore.getState().setView("settings")}
@@ -80,36 +88,36 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
     {
       icon: Monitor,
       color: "text-blue-400 bg-blue-500/10",
-      label: "See the Screen",
-      description: "Takes screenshots and reads text with OCR",
+      label: "See Your Screen",
+      description: "Takes screenshots and understands what's on screen using Claude's vision",
     },
     {
       icon: Mouse,
       color: "text-purple-400 bg-purple-500/10",
-      label: "Click & Drag",
-      description: "Smooth mouse movement, clicks, scrolling",
+      label: "Click & Navigate",
+      description: "Clicks buttons, links, menus — anywhere on screen",
     },
     {
       icon: Keyboard,
       color: "text-emerald-400 bg-emerald-500/10",
       label: "Type & Shortcut",
-      description: "Natural typing, 37+ keyboard shortcuts",
+      description: "Types text, presses keys, uses keyboard shortcuts",
     },
     {
       icon: AppWindow,
       color: "text-amber-400 bg-amber-500/10",
-      label: "Manage Windows",
-      description: "Open, snap, tile, and switch between apps",
+      label: "Open & Switch Apps",
+      description: "Opens applications, switches between windows and tabs",
     },
   ];
 
   const suggestions = [
-    "Open Chrome and search for the latest news",
-    "Take a screenshot and tell me what's on my screen",
-    "Open VS Code and create a new Python project",
-    "Snap Chrome to the left and Terminal to the right",
-    "Find the Submit button on screen and click it",
-    "Create a Python script that monitors CPU usage",
+    "Open WhatsApp and send a message to Mom",
+    "Take a screenshot and tell me what you see",
+    "Open Chrome and search for the latest AI news",
+    "Open Notepad and write a quick to-do list",
+    "Find the Settings app and change the wallpaper",
+    "Open Spotify and play some relaxing music",
   ];
 
   return (
@@ -118,12 +126,11 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
         <Zap className="w-8 h-8 text-blue-400" />
       </div>
       <h3 className="text-xl font-semibold text-gray-200 mb-2">
-        Tell me what to do on your computer
+        What should I do on your computer?
       </h3>
       <p className="text-gray-500 max-w-lg text-sm leading-relaxed mb-8">
-        I'm Plutus — a friendly ghost living inside your PC. I can see your screen,
-        move the mouse, type on the keyboard, open apps, browse the web, write code,
-        and automate anything. Just tell me what you need.
+        I can see your screen, move the mouse, click buttons, type text, open apps,
+        browse the web, and automate anything. Just describe what you need in plain English.
       </p>
 
       {/* Capabilities */}

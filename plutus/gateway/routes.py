@@ -842,6 +842,48 @@ def create_router() -> APIRouter:
             },
         }
 
+    @router.get("/pc/computer-use")
+    async def get_computer_use_status() -> dict[str, Any]:
+        """Get the Computer Use agent status."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        cu_agent = state.get("cu_agent")
+
+        if not cu_agent:
+            return {
+                "available": False,
+                "reason": "No Anthropic API key configured or anthropic package not installed",
+            }
+
+        return {
+            "available": True,
+            "running": cu_agent.is_running,
+            "iterations": cu_agent.iteration_count,
+            "model": cu_agent._model,
+            "max_iterations": cu_agent._max_iterations,
+        }
+
+    @router.get("/pc/screenshot")
+    async def get_latest_screenshot() -> dict[str, Any]:
+        """Get the latest screenshot as base64."""
+        from pathlib import Path
+        import base64
+
+        screenshot_path = Path.home() / ".plutus" / "screenshots" / "latest.png"
+        if not screenshot_path.exists():
+            return {"available": False}
+
+        try:
+            b64 = base64.b64encode(screenshot_path.read_bytes()).decode("utf-8")
+            return {
+                "available": True,
+                "image_base64": b64,
+                "media_type": "image/png",
+            }
+        except Exception as e:
+            return {"available": False, "error": str(e)}
+
     @router.get("/pc/workflows")
     async def list_pc_workflows() -> dict[str, Any]:
         """List all saved workflows and templates."""

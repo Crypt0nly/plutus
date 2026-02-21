@@ -19,6 +19,16 @@ import {
   FileEdit,
   Search,
   Play,
+  Monitor,
+  MousePointer,
+  Keyboard,
+  Camera,
+  Move,
+  Hand,
+  Scroll,
+  Timer,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import type { Message } from "../../lib/types";
 import { ToolApproval } from "./ToolApproval";
@@ -38,6 +48,19 @@ const toolIconMap: Record<string, React.ElementType> = {
   shell: Terminal,
   filesystem: FileCode,
   browser: Search,
+  pc: Monitor,
+  // Computer use actions
+  "computer.screenshot": Camera,
+  "computer.click": MousePointer,
+  "computer.left_click": MousePointer,
+  "computer.right_click": Hand,
+  "computer.double_click": MousePointer,
+  "computer.triple_click": MousePointer,
+  "computer.type": Keyboard,
+  "computer.key": Keyboard,
+  "computer.scroll": Scroll,
+  "computer.move": Move,
+  "computer.wait": Timer,
 };
 
 const toolColorMap: Record<string, string> = {
@@ -47,6 +70,19 @@ const toolColorMap: Record<string, string> = {
   tool_creator: "text-pink-400 bg-pink-500/10 border-pink-500/20",
   shell: "text-amber-400 bg-amber-500/10 border-amber-500/20",
   filesystem: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+  pc: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  // Computer use actions — all use a consistent blue theme
+  "computer.screenshot": "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  "computer.click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  "computer.left_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  "computer.right_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  "computer.double_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  "computer.triple_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  "computer.type": "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  "computer.key": "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  "computer.scroll": "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  "computer.move": "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+  "computer.wait": "text-gray-400 bg-gray-500/10 border-gray-500/20",
 };
 
 // ── Friendly operation labels ───────────────────────────────
@@ -97,13 +133,50 @@ function ToolCallCard({
   const [iconColor, bgColor, borderColor] = colors.split(" ");
 
   const operation = args.operation as string | undefined;
-  const friendlyLabel = operation
-    ? operationLabels[operation] || operation
-    : name.replace(/_/g, " ");
+  const action = args.action as string | undefined;
+
+  // For computer use, show the action; for standard tools, show the operation
+  let friendlyLabel: string;
+  if (name.startsWith("computer.")) {
+    const cuAction = name.replace("computer.", "");
+    const cuLabels: Record<string, string> = {
+      screenshot: "Taking screenshot",
+      click: "Clicking",
+      left_click: "Clicking",
+      right_click: "Right-clicking",
+      double_click: "Double-clicking",
+      triple_click: "Triple-clicking",
+      type: "Typing",
+      key: "Pressing key",
+      scroll: "Scrolling",
+      move: "Moving cursor",
+      wait: "Waiting",
+    };
+    friendlyLabel = cuLabels[cuAction] || cuAction;
+  } else {
+    friendlyLabel = operation
+      ? operationLabels[operation] || operation
+      : action
+        ? operationLabels[action] || action
+        : name.replace(/_/g, " ");
+  }
 
   // Extract key info for preview
   const path = (args.path || args.file_path || args.directory || "") as string;
   const command = (args.command || "") as string;
+  const text = (args.text || "") as string;
+  const coordinate = args.coordinate as number[] | undefined;
+
+  let preview = "";
+  if (path) {
+    preview = path.length > 50 ? "..." + path.slice(-47) : path;
+  } else if (command) {
+    preview = `$ ${command.slice(0, 50)}`;
+  } else if (text && name.startsWith("computer.")) {
+    preview = text.length > 40 ? `"${text.slice(0, 37)}..."` : `"${text}"`;
+  } else if (coordinate) {
+    preview = `(${coordinate[0]}, ${coordinate[1]})`;
+  }
 
   return (
     <div
@@ -120,14 +193,9 @@ function ToolCallCard({
           <span className={`text-xs font-medium ${iconColor}`}>
             {friendlyLabel}
           </span>
-          {path && (
+          {preview && (
             <span className="text-[10px] text-gray-500 ml-2 font-mono truncate">
-              {path.length > 50 ? "..." + path.slice(-47) : path}
-            </span>
-          )}
-          {command && !path && (
-            <span className="text-[10px] text-gray-500 ml-2 font-mono truncate">
-              $ {command.slice(0, 50)}
+              {preview}
             </span>
           )}
         </div>
@@ -168,11 +236,50 @@ function ToolCallCard({
   );
 }
 
+// ── Screenshot Display ─────────────────────────────────────
+
+function ScreenshotDisplay({ base64 }: { base64: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="bg-gray-900 border border-blue-500/20 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-blue-500/10 hover:bg-blue-500/15 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Camera className="w-3.5 h-3.5 text-blue-400" />
+          <span className="text-xs font-medium text-blue-400">Screenshot</span>
+        </div>
+        {expanded ? (
+          <Minimize2 className="w-3.5 h-3.5 text-gray-500" />
+        ) : (
+          <Maximize2 className="w-3.5 h-3.5 text-gray-500" />
+        )}
+      </button>
+      <div className={`transition-all duration-300 ${expanded ? "max-h-[600px]" : "max-h-48"} overflow-hidden`}>
+        <img
+          src={`data:image/png;base64,${base64}`}
+          alt="Screenshot"
+          className="w-full h-auto cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Tool Result Card ────────────────────────────────────────
 
 function ToolResultContent({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Check if this is a screenshot
+  if (content.startsWith("__SCREENSHOT__:")) {
+    const base64 = content.replace("__SCREENSHOT__:", "");
+    return <ScreenshotDisplay base64={base64} />;
+  }
 
   const isLong = content.length > 300;
   const isDiff = content.includes("@@") || content.includes("--- ") || content.includes("+++ ");
@@ -369,6 +476,36 @@ export function MessageBubble({ message, send }: Props) {
     // Check if it's an approval request
     if (content?.startsWith("Approval needed")) {
       return <ToolApproval message={content} send={send} />;
+    }
+
+    // Mode indicator
+    if (content?.includes("Computer Use mode") || content?.includes("Standard mode")) {
+      const isComputerUse = content.includes("Computer Use mode");
+      return (
+        <div className="flex items-center justify-center gap-2 py-2 animate-fade-in">
+          <div className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${
+            isComputerUse
+              ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+              : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+          }`}>
+            {isComputerUse ? (
+              <Monitor className="w-3 h-3" />
+            ) : (
+              <Terminal className="w-3 h-3" />
+            )}
+            {content}
+          </div>
+        </div>
+      );
+    }
+
+    // Step indicator
+    if (content?.startsWith("Step ")) {
+      return (
+        <div className="flex items-center justify-center gap-2 py-1 animate-fade-in">
+          <span className="text-[10px] text-gray-600 font-mono">{content}</span>
+        </div>
+      );
     }
 
     return (

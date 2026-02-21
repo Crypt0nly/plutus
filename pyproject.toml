@@ -36,6 +36,8 @@ dependencies = [
     "psutil>=6.1.0",
     "python-multipart>=0.0.18",
     "pyautogui>=0.9.54",
+    "anthropic>=0.40.0",
+    "pyperclip>=1.8.0",
 ]
 
 [project.optional-dependencies]

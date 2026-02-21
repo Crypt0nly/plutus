@@ -1,8 +1,18 @@
-"""Main FastAPI application — serves the API and static UI files."""
+"""Main FastAPI application — serves the API and static UI files.
+
+Plutus operates in two modes:
+  1. Standard mode: LLM + function-calling tools (code editing, analysis, etc.)
+  2. Computer Use mode: Anthropic's native Computer Use Tool (screenshot-based vision)
+
+Both modes are available simultaneously. The WebSocket handler automatically
+routes to the computer use agent when the user's message involves desktop
+interaction, or the user can explicitly request it.
+"""
 
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -37,13 +47,59 @@ async def _heartbeat_on_beat(prompt: str) -> None:
         return
 
     async for event in agent.process_message(prompt):
-        # Forward all agent events to connected WebSocket clients
         await ws_manager.broadcast(event.to_dict())
 
 
 async def _heartbeat_on_event(event_data: dict[str, Any]) -> None:
     """Forward heartbeat lifecycle events (beat, paused, etc.) to the UI."""
     await ws_manager.broadcast(event_data)
+
+
+def _init_computer_use_agent(config: PlutusConfig, secrets: SecretsStore) -> Any:
+    """Initialize the Anthropic Computer Use agent if possible.
+
+    Returns the ComputerUseAgent instance or None if not available.
+    """
+    try:
+        from plutus.core.computer_use_agent import ComputerUseAgent
+        from plutus.pc.computer_use import ComputerUseExecutor
+
+        # Get the Anthropic API key
+        api_key = secrets.get_key("anthropic")
+        if not api_key:
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+        if not api_key:
+            logger.warning("No Anthropic API key found — Computer Use agent disabled")
+            return None
+
+        # Determine the model to use for computer use
+        # Claude Sonnet 4 is recommended for computer use
+        cu_model = config.model.model
+        if config.model.provider == "anthropic":
+            # Use the configured model
+            pass
+        else:
+            # Default to Claude Sonnet for computer use
+            cu_model = "claude-sonnet-4-20250514"
+
+        executor = ComputerUseExecutor()
+        agent = ComputerUseAgent(
+            api_key=api_key,
+            model=cu_model,
+            executor=executor,
+            max_iterations=config.agent.max_tool_rounds or 25,
+        )
+
+        logger.info(f"Computer Use agent initialized (model={cu_model})")
+        return agent
+
+    except ImportError as e:
+        logger.warning(f"Computer Use agent not available: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to initialize Computer Use agent: {e}")
+        return None
 
 
 @asynccontextmanager
@@ -65,7 +121,7 @@ async def lifespan(app: FastAPI):
     # Initialize tool registry
     tool_registry = create_default_registry()
 
-    # Initialize agent (no longer crashes if key is missing)
+    # Initialize standard agent (LiteLLM + function calling)
     agent = AgentRuntime(
         config=config,
         guardrails=guardrails,
@@ -74,6 +130,9 @@ async def lifespan(app: FastAPI):
         secrets=secrets,
     )
     await agent.initialize()
+
+    # Initialize Computer Use agent (Anthropic native)
+    cu_agent = _init_computer_use_agent(config, secrets)
 
     # Initialize heartbeat
     heartbeat = HeartbeatRunner(
@@ -90,14 +149,16 @@ async def lifespan(app: FastAPI):
     _state["guardrails"] = guardrails
     _state["tool_registry"] = tool_registry
     _state["agent"] = agent
+    _state["cu_agent"] = cu_agent
     _state["heartbeat"] = heartbeat
 
     key_status = "configured" if agent.key_configured else "NOT configured"
+    cu_status = "enabled" if cu_agent else "disabled"
     heartbeat_status = "enabled" if config.heartbeat.enabled else "disabled"
     logger.info(
         f"Plutus started — tier={config.guardrails.tier}, "
         f"model={config.model.provider}/{config.model.model}, "
-        f"api_key={key_status}, heartbeat={heartbeat_status}"
+        f"api_key={key_status}, computer_use={cu_status}, heartbeat={heartbeat_status}"
     )
 
     yield
@@ -111,8 +172,8 @@ def create_app(config: PlutusConfig | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Plutus",
-        description="Autonomous AI agent with configurable guardrails",
-        version="0.1.0",
+        description="Autonomous AI agent with computer use and configurable guardrails",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
