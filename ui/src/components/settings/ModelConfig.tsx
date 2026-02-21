@@ -19,8 +19,8 @@ const providers = [
 ];
 
 const defaultModels: Record<string, string[]> = {
-  anthropic: ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-4-5-20251001"],
-  openai: ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
+  anthropic: ["claude-sonnet-4-6-20250514", "claude-opus-4-6-20260205", "claude-haiku-4-5-20251001"],
+  openai: ["gpt-5.2", "gpt-5", "o3", "o4-mini"],
   ollama: ["llama3.2", "mistral", "codellama", "phi3"],
 };
 

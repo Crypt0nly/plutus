@@ -99,10 +99,10 @@ def setup() -> None:
 
     # Model
     default_models = {
-        "anthropic": "claude-sonnet-4-20250514",
-        "openai": "gpt-4o",
+        "anthropic": "claude-sonnet-4-6-20250514",
+        "openai": "gpt-5.2",
         "ollama": "llama3.2",
-        "custom": "gpt-4o",
+        "custom": "gpt-5.2",
     }
     model = click.prompt(
         "  Model name", default=default_models.get(provider, config.model.model)
