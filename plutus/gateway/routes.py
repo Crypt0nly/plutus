@@ -1046,6 +1046,97 @@ def create_router() -> APIRouter:
         creator = get_skill_creator()
         return {"skills": creator.list_saved_skills()}
 
+    # ── Memory / Facts / Goals / Summaries ──────────────────────────
+
+    @router.get("/memory/stats")
+    async def get_memory_stats() -> dict[str, Any]:
+        """Get overall memory statistics."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if not memory:
+            return {}
+        return await memory.get_memory_stats()
+
+    @router.get("/memory/facts")
+    async def get_facts(category: str | None = None, limit: int = 50) -> dict[str, Any]:
+        """Get stored facts, optionally filtered by category."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if not memory:
+            return {"facts": [], "count": 0}
+
+        facts = await memory.get_facts(category=category, limit=limit)
+        return {"facts": facts, "count": len(facts)}
+
+    @router.delete("/memory/facts/{fact_id}")
+    async def delete_fact(fact_id: int) -> dict[str, str]:
+        """Delete a stored fact."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if not memory:
+            raise HTTPException(500, "Memory not initialized")
+
+        await memory.delete_fact(fact_id)
+        return {"message": "Fact deleted"}
+
+    @router.get("/memory/goals")
+    async def get_goals(conversation_id: str | None = None, limit: int = 50) -> dict[str, Any]:
+        """Get all goals."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if not memory:
+            return {"goals": [], "count": 0}
+
+        goals = await memory.get_all_goals(conversation_id=conversation_id, limit=limit)
+        return {"goals": goals, "count": len(goals)}
+
+    @router.get("/memory/goals/active")
+    async def get_active_goals(conversation_id: str | None = None) -> dict[str, Any]:
+        """Get active goals."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if not memory:
+            return {"goals": [], "count": 0}
+
+        goals = await memory.get_active_goals(conversation_id=conversation_id)
+        return {"goals": goals, "count": len(goals)}
+
+    @router.get("/conversations/{conv_id}/summary")
+    async def get_conversation_summary(conv_id: str) -> dict[str, Any]:
+        """Get the summary for a conversation."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if not memory:
+            return {"summary": None}
+
+        summary = await memory.get_conversation_summary(conv_id)
+        return {"summary": summary}
+
+    @router.get("/conversations/{conv_id}/checkpoints")
+    async def get_checkpoints(conv_id: str, limit: int = 10) -> dict[str, Any]:
+        """Get checkpoints for a conversation."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if not memory:
+            return {"checkpoints": [], "count": 0}
+
+        checkpoints = await memory.list_checkpoints(conv_id, limit=limit)
+        return {"checkpoints": checkpoints, "count": len(checkpoints)}
+
     # ── Self-Improvement ────────────────────────────────────────────
 
     @router.get("/improvement/log")

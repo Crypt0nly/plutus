@@ -147,6 +147,27 @@ export const api = {
   getSavedSkills: () =>
     request<Record<string, any>>("/skills/saved"),
 
+  // Memory
+  getMemoryStats: () => request<Record<string, any>>("/memory/stats"),
+  getFacts: (category?: string, limit = 50) =>
+    request<Record<string, any>>(
+      `/memory/facts?limit=${limit}${category ? `&category=${category}` : ""}`
+    ),
+  deleteFact: (factId: number) =>
+    request<Record<string, string>>(`/memory/facts/${factId}`, { method: "DELETE" }),
+  getGoals: (conversationId?: string, limit = 50) =>
+    request<Record<string, any>>(
+      `/memory/goals?limit=${limit}${conversationId ? `&conversation_id=${conversationId}` : ""}`
+    ),
+  getActiveGoals: (conversationId?: string) =>
+    request<Record<string, any>>(
+      `/memory/goals/active${conversationId ? `?conversation_id=${conversationId}` : ""}`
+    ),
+  getConversationSummary: (convId: string) =>
+    request<Record<string, any>>(`/conversations/${convId}/summary`),
+  getCheckpoints: (convId: string, limit = 10) =>
+    request<Record<string, any>>(`/conversations/${convId}/checkpoints?limit=${limit}`),
+
   // Self-Improvement
   getImprovementLog: (limit = 50) =>
     request<Record<string, any>>(`/improvement/log?limit=${limit}`),

@@ -131,6 +131,11 @@ async def lifespan(app: FastAPI):
     )
     await agent.initialize()
 
+    # Register the memory tool (needs memory store + conversation manager)
+    from plutus.tools.memory_tool import MemoryTool
+    memory_tool = MemoryTool(memory, agent.conversation)
+    tool_registry.register(memory_tool)
+
     # Initialize Computer Use agent (Anthropic native)
     cu_agent = _init_computer_use_agent(config, secrets)
 

@@ -4,6 +4,12 @@ Plutus is a PC-native AI agent that controls the computer like OpenClaw:
   1. SHELL-FIRST: Open apps via OS commands, run shell commands
   2. BROWSER-SECOND: Control web pages via Playwright/CDP with DOM element refs
   3. DESKTOP-FALLBACK: PyAutoGUI for native app interaction when needed
+
+Memory Architecture:
+  - Conversation summaries compress old messages, preserving goals
+  - Active plan is always injected into context
+  - Persistent facts survive across conversations
+  - Checkpoints save state for long-running tasks
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from plutus.core.conversation import ConversationManager
 from plutus.core.llm import LLMClient, LLMResponse, ToolDefinition
 from plutus.core.memory import MemoryStore
 from plutus.core.planner import PlanManager
+from plutus.core.summarizer import ConversationSummarizer
 from plutus.guardrails.engine import GuardrailEngine
 
 logger = logging.getLogger("plutus.agent")
@@ -77,7 +84,7 @@ with numbered [ref] elements — like OpenClaw. NEVER guess selectors.
     Page: Google — https://www.google.com
     [1] textbox 'Search' value='' focused
     [2] button 'Google Search'
-    [3] button 'I'm Feeling Lucky'
+    [3] button 'I\\'m Feeling Lucky'
     [4] link 'Gmail'
     [5] link 'Images'
 
@@ -207,7 +214,7 @@ workflows that are MORE RELIABLE than manual navigation.
      skill_params={"query": "Bohemian Rhapsody"})  → Play a song
 
   pc(operation="run_skill", skill_name="google_search",
-     skill_params={"query": "weather today"})  → Google search
+     skill_params={"query": "best restaurants near me"})  → Google search
 
 ### WHEN TO USE SKILLS vs MANUAL
 - If a skill exists for the task → USE THE SKILL (it's tested and reliable)
@@ -251,9 +258,75 @@ worker subprocesses. They are ESSENTIAL for self-improvement.
 ### Tool Creator — create entirely new Python tools at runtime
   tool_creator(operation="create", tool_name="my_tool",
     tool_description="Does something useful",
-    tool_code="def main(args: dict) -> dict:\n    return {'result': 'hello'}")
+    tool_code="def main(args: dict) -> dict:\\n    return {'result': 'hello'}")
   tool_creator(operation="list")     → List custom tools
   tool_creator(operation="delete", tool_name="my_tool")
+
+═══════════════════════════════════════════════════════════════
+ PERSISTENT MEMORY — NEVER FORGET YOUR GOALS
+═══════════════════════════════════════════════════════════════
+
+You have a **persistent memory system** that survives across context window
+boundaries. This means you can work on very long tasks without losing track
+of what you're doing.
+
+### How Memory Works
+- Old messages are automatically summarized and compressed
+- Your goals, progress, and key facts are preserved in summaries
+- The summary is always injected at the top of your context
+- You also have a `memory` tool for explicit save/recall
+
+### The `memory` Tool
+Use this to explicitly save important information:
+
+  memory(action="save_fact", category="task_context", content="User wants a React app with auth")
+  memory(action="save_fact", category="file_path", content="Main file is at /home/user/project/app.py")
+  memory(action="save_fact", category="decision", content="Chose PostgreSQL over SQLite for scalability")
+  memory(action="recall_facts", category="task_context")  → Get all task context facts
+  memory(action="search_facts", content="database")       → Search for facts about databases
+  memory(action="add_goal", goal_description="Build a REST API with user authentication")
+  memory(action="list_goals")                              → See all active goals
+  memory(action="complete_goal", goal_id=1)                → Mark a goal as done
+  memory(action="checkpoint", checkpoint_data={"working_on": "...", "done": [...], "next": [...]})
+  memory(action="stats")                                   → See memory statistics
+
+### When to Use Memory
+- **At the START of a complex task**: Save the user's goal as a fact AND a goal
+- **After each major step**: Save progress as a fact
+- **When you discover important info**: Save file paths, credentials, decisions
+- **Before a long operation**: Create a checkpoint
+- **Periodically**: Review your goals to stay on track
+
+### CRITICAL: If You See a Conversation Summary
+When your context starts with "## Conversation History Summary", this means
+earlier messages were compressed. READ IT CAREFULLY — it contains your
+original goals and progress. Continue from where you left off.
+
+═══════════════════════════════════════════════════════════════
+ PLANNING — TRACK COMPLEX TASKS
+═══════════════════════════════════════════════════════════════
+
+For any non-trivial task, **always create a plan first** using the `plan` tool:
+
+  plan(action="create", title="Build user dashboard",
+       goal="Create a React dashboard with charts and user management",
+       steps=[
+         {"description": "Set up React project with Vite"},
+         {"description": "Create dashboard layout component"},
+         {"description": "Add chart components with Chart.js"},
+         {"description": "Implement user management page"},
+         {"description": "Add routing and navigation"},
+         {"description": "Test and polish"}
+       ])
+
+  plan(action="update_step", step_index=0, status="in_progress")
+  plan(action="update_step", step_index=0, status="done", result="Project created with Vite + React + TypeScript")
+  plan(action="get")       → See current plan and progress
+  plan(action="complete")  → Mark plan as done
+  plan(action="cancel")    → Cancel the plan
+
+The plan is ALWAYS visible in your context and in the user's UI.
+This keeps you and the user in sync on complex tasks.
 
 ═══════════════════════════════════════════════════════════════
  SELF-IMPROVEMENT — YOUR MOST IMPORTANT CAPABILITY
@@ -302,10 +375,10 @@ Use code_editor + subprocess to write and test the code, then tool_creator to re
 
   Step 1: Write the tool code
   code_editor(operation="write", path="/tmp/my_tool.py", content=
-    "def main(args: dict) -> dict:\n"
-    "    import requests\n"
-    "    url = args.get('url', '')\n"
-    "    response = requests.get(url)\n"
+    "def main(args: dict) -> dict:\\n"
+    "    import requests\\n"
+    "    url = args.get('url', '')\\n"
+    "    response = requests.get(url)\\n"
     "    return {'status': response.status_code, 'length': len(response.text)}"
   )
 
@@ -316,7 +389,7 @@ Use code_editor + subprocess to write and test the code, then tool_creator to re
   Step 3: If it works, register it as a permanent tool
   tool_creator(operation="create", tool_name="url_checker",
     tool_description="Check if a URL is reachable and get its response size",
-    tool_code="def main(args: dict) -> dict:\n    import requests\n    ...")
+    tool_code="def main(args: dict) -> dict:\\n    import requests\\n    ...")
 
   Now you can use url_checker() in future conversations!
 
@@ -382,6 +455,12 @@ This builds trust and helps the user understand you're getting smarter.
 
 10. **Recover from errors.** If something fails, try a different approach.
     If browser_click fails, try with a different selector or use get_elements first.
+
+11. **Use memory proactively.** Save important facts and goals. If you see a
+    conversation summary, read it carefully and continue from where you left off.
+
+12. **Always have a plan.** For multi-step tasks, create a plan first. Update it
+    as you work. This keeps both you and the user informed.
 """
 
 # Tool definition for the built-in plan tool (handled by the agent, not the registry)
@@ -457,9 +536,15 @@ class AgentRuntime:
       2. Browser Control (Playwright/CDP) — for web interaction
       3. Desktop Control (PyAutoGUI) — fallback for native apps
 
+    Memory Architecture:
+      - Conversation summaries compress old messages, preserving goals
+      - Active plan is always injected into context
+      - Persistent facts survive across conversations
+      - Checkpoints save state for long-running tasks
+
     Flow:
       1. User sends message
-      2. Agent builds context (system prompt + memory + history)
+      2. Agent builds context (system prompt + summary + plan + facts + history)
       3. Agent sends to LLM with available tools (pc tool first)
       4. If LLM returns tool calls -> check guardrails -> execute or request approval
       5. Feed tool results back to LLM
@@ -483,13 +568,23 @@ class AgentRuntime:
         self._guardrails = guardrails
         self._memory = memory
         self._planner = PlanManager(memory)
+
+        # Create the summarizer (uses the same LLM client)
+        self._summarizer = ConversationSummarizer(self._llm)
+
+        # Create the conversation manager with summarizer
         self._conversation = ConversationManager(
             memory,
             context_window=config.memory.context_window_messages,
             planner=self._planner,
+            summarizer=self._summarizer,
         )
         self._tool_registry = tool_registry
         self._event_handlers: list[Callable[[AgentEvent], Any]] = []
+
+        # Track tool rounds for auto-checkpointing
+        self._rounds_since_checkpoint = 0
+        self._checkpoint_interval = 10  # Auto-checkpoint every N tool rounds
 
     @property
     def conversation(self) -> ConversationManager:
@@ -541,6 +636,7 @@ class AgentRuntime:
             tool_names = self._tool_registry.list_tools()
             parts.append(f"\n## Available Tools: {', '.join(tool_names)}")
             parts.append("**Primary tool: `pc`** — use this for all computer interaction.")
+            parts.append("**Memory tool: `memory`** — use this to save/recall persistent information.")
 
         # Add tier info
         tier = self._config.guardrails.tier
@@ -555,6 +651,51 @@ class AgentRuntime:
 
         return "\n".join(parts)
 
+    async def _auto_checkpoint(self) -> None:
+        """Automatically save a checkpoint after N tool rounds."""
+        conv_id = self._conversation.conversation_id
+        if not conv_id:
+            return
+
+        try:
+            # Get current plan status
+            plan_info = None
+            active_plan = await self._planner.get_active_plan(conv_id)
+            if active_plan:
+                done_steps = sum(
+                    1 for s in active_plan["steps"]
+                    if s["status"] in ("done", "skipped")
+                )
+                plan_info = {
+                    "title": active_plan["title"],
+                    "goal": active_plan.get("goal"),
+                    "progress": f"{done_steps}/{len(active_plan['steps'])}",
+                    "current_step": next(
+                        (s["description"] for s in active_plan["steps"]
+                         if s["status"] == "in_progress"),
+                        None,
+                    ),
+                }
+
+            # Get active goals
+            goals = await self._memory.get_active_goals(conv_id, limit=5)
+
+            checkpoint_data = {
+                "plan": plan_info,
+                "active_goals": [g["description"] for g in goals],
+                "tool_rounds_completed": self._rounds_since_checkpoint,
+            }
+
+            await self._memory.save_checkpoint(
+                conversation_id=conv_id,
+                state_data=checkpoint_data,
+                checkpoint_type="auto",
+            )
+            logger.debug("Auto-checkpoint saved")
+
+        except Exception as e:
+            logger.warning(f"Auto-checkpoint failed: {e}")
+
     async def process_message(self, user_message: str) -> AsyncIterator[AgentEvent]:
         """Process a user message and yield events for the UI.
 
@@ -564,6 +705,8 @@ class AgentRuntime:
           - tool_call: Agent wants to call a tool
           - tool_approval_needed: Action requires user approval
           - tool_result: Tool execution result
+          - plan_update: Plan was created or updated
+          - summary_update: Conversation was summarized
           - error: Something went wrong
           - done: Processing complete
         """
@@ -618,10 +761,18 @@ class AgentRuntime:
                 yield AgentEvent("done", {})
                 return
 
-            # Track whether this round has any external (non-plan) tool calls
-            has_external_call = any(tc.name != "plan" for tc in response.tool_calls)
+            # Track whether this round has any external (non-plan, non-memory) tool calls
+            has_external_call = any(
+                tc.name not in ("plan", "memory") for tc in response.tool_calls
+            )
             if has_external_call:
                 external_rounds += 1
+                self._rounds_since_checkpoint += 1
+
+            # Auto-checkpoint periodically
+            if self._rounds_since_checkpoint >= self._checkpoint_interval:
+                await self._auto_checkpoint()
+                self._rounds_since_checkpoint = 0
 
             # Process tool calls — store content and tool_calls together
             tool_call_dicts = [
@@ -699,7 +850,9 @@ class AgentRuntime:
                 )
                 await self._conversation.add_tool_result(tc.id, result_text)
 
-        # If we exhausted all rounds
+        # If we exhausted all rounds, save a checkpoint before stopping
+        await self._auto_checkpoint()
+
         yield AgentEvent(
             "error",
             {"message": f"Reached maximum tool rounds ({max_rounds}). Stopping."},
@@ -729,6 +882,15 @@ class AgentRuntime:
             plan = await self._planner.create_plan(
                 title=title, steps=steps, goal=goal, conversation_id=conv_id
             )
+
+            # Also save the goal to persistent memory
+            if goal and conv_id:
+                await self._memory.add_goal(
+                    description=goal,
+                    conversation_id=conv_id,
+                    priority=10,
+                )
+
             return json.dumps({"created": plan["id"], "title": title, "steps": len(steps)})
 
         elif action == "update_step":
@@ -759,6 +921,14 @@ class AgentRuntime:
             if not plan:
                 return "No active plan to complete."
             await self._planner.set_plan_status(plan["id"], "completed")
+
+            # Also mark the associated goal as completed
+            if conv_id:
+                goals = await self._memory.get_active_goals(conv_id)
+                for g in goals:
+                    if g.get("description") == plan.get("goal"):
+                        await self._memory.update_goal_status(g["id"], "completed")
+
             return f"Plan '{plan['title']}' marked as completed."
 
         elif action == "cancel":
@@ -779,10 +949,11 @@ class AgentRuntime:
         defs: list[ToolDefinition] = []
         if self._tool_registry:
             all_defs = self._tool_registry.get_definitions()
-            # Put pc tool first, then the rest
+            # Put pc tool first, then memory, then the rest
             pc_defs = [d for d in all_defs if d.name == "pc"]
-            other_defs = [d for d in all_defs if d.name != "pc"]
-            defs = pc_defs + other_defs
+            memory_defs = [d for d in all_defs if d.name == "memory"]
+            other_defs = [d for d in all_defs if d.name not in ("pc", "memory")]
+            defs = pc_defs + memory_defs + other_defs
 
         # Always include the built-in plan tool
         if self._config.planner.enabled:

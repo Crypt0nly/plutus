@@ -12,6 +12,7 @@ import { WorkersView } from "./components/workers/WorkersView";
 import { ToolCreatorView } from "./components/tool-creator/ToolCreatorView";
 import PCControlView from "./components/pc-control/PCControlView";
 import SkillsView from "./components/skills/SkillsView";
+import { MemoryView } from "./components/memory/MemoryView";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 
@@ -199,6 +200,7 @@ export default function App() {
     "tool-creator": <ToolCreatorView />,
     "pc-control": <PCControlView />,
     skills: <SkillsView />,
+    memory: <MemoryView />,
   };
 
   return (

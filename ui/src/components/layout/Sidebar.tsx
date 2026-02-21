@@ -30,6 +30,7 @@ const navSections: NavSection[] = [
   {
     label: "Agent",
     items: [
+      { id: "memory", label: "Memory & Plans", icon: Brain, badge: "New" },
       { id: "tools", label: "Tools", icon: Wrench },
       { id: "workers", label: "Workers", icon: Cpu },
       { id: "tool-creator", label: "Tool Creator", icon: Sparkles },
