@@ -1,16 +1,21 @@
-"""Plutus PC Control — deep OS integration for seamless machine interaction.
+"""Plutus PC Control — three-layer computer interaction.
 
-This package provides the "friendly ghost" layer: smooth mouse movement,
-natural typing, intelligent screen reading, window orchestration, context
-awareness, and workflow automation across Windows, macOS, and Linux.
+Architecture (matching OpenClaw's proven approach):
+  Layer 1: OS Control (shell commands — most reliable)
+  Layer 2: Browser Control (Playwright/CDP — for web interaction)
+  Layer 3: Desktop Control (PyAutoGUI — fallback for native apps)
 
-The ComputerUseExecutor is the PRIMARY interface — it implements Anthropic's
-native Computer Use Tool, letting Claude see screenshots and control the desktop.
+The OSControl is the PRIMARY interface for opening apps, running commands,
+and managing processes via native OS commands.
 
-The ContextEngine is the brain — it always knows which app/window is active
-and prevents the agent from acting on the wrong window.
+The BrowserControl handles all web interaction via Playwright/CDP with
+DOM element references (not pixel coordinates).
+
+Desktop control (mouse, keyboard, screen) is a fallback for native apps.
 """
 
+from plutus.pc.os_control import OSControl
+from plutus.pc.browser_control import BrowserControl
 from plutus.pc.mouse import MouseController
 from plutus.pc.keyboard import KeyboardController
 from plutus.pc.screen import ScreenReader
@@ -20,6 +25,8 @@ from plutus.pc.context import ContextEngine, ActionGuard, get_context_engine
 from plutus.pc.computer_use import ComputerUseExecutor
 
 __all__ = [
+    "OSControl",
+    "BrowserControl",
     "ComputerUseExecutor",
     "MouseController",
     "KeyboardController",

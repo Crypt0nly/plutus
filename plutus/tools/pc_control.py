@@ -1,15 +1,12 @@
-"""PC Control Tool — context-aware unified interface for all machine interaction.
+"""
+PC Control Tool — OpenClaw-style unified interface for all machine interaction.
 
-This is the main LLM-facing tool that gives the AI "friendly ghost" control
-over the entire PC. Every action is wrapped with context awareness:
+Architecture (matching OpenClaw's proven approach):
+  1. SHELL-FIRST: Open apps, run commands, manage processes via OS-native commands
+  2. BROWSER-SECOND: Control web pages via Playwright/CDP with DOM element refs
+  3. VISION-FALLBACK: Screenshot + Anthropic Computer Use only when needed
 
-  1. Before any write action (click, type, etc.), Plutus checks which window
-     is active and reports it to the LLM.
-  2. If a `target_app` is specified, Plutus auto-focuses that app first.
-  3. Every result includes `_context` with the current active app/window,
-     so the LLM always knows exactly where it is.
-
-This prevents the #1 problem with computer-use agents: typing into the wrong window.
+This replaces the old PyAutoGUI/OCR approach with reliable, structured control.
 """
 
 from __future__ import annotations
@@ -18,38 +15,43 @@ import json
 import logging
 from typing import Any
 
-from plutus.pc.context import ContextEngine, ActionGuard, get_context_engine
-from plutus.pc.keyboard import KeyboardController
-from plutus.pc.mouse import MouseController
-from plutus.pc.screen import ScreenReader, ScreenRegion
-from plutus.pc.windows import WindowManager
-from plutus.pc.workflow import WorkflowEngine, WorkflowStep, Workflow
+from plutus.pc.os_control import OSControl
+from plutus.pc.browser_control import BrowserControl
 from plutus.tools.base import Tool
 
 logger = logging.getLogger("plutus.pc.control")
 
 
 class PCControlTool(Tool):
-    """Context-aware PC control — mouse, keyboard, screen, windows, workflows.
-
-    Every action is guarded by the ContextEngine:
-    - Write actions (click, type, etc.) refresh context first
-    - If target_app is set, auto-focuses the correct window
-    - Every result includes _context with active app/window info
-    - Action history is logged for debugging
+    """
+    Unified PC control tool — the primary way the AI interacts with the computer.
+    
+    Three layers (tried in order):
+    1. OS Control: open_app, close_app, open_url, run_command, open_file, clipboard, etc.
+    2. Browser Control: navigate, click, type, fill_form, get_page_snapshot, tabs, etc.
+    3. Desktop Control: mouse, keyboard, screenshot (PyAutoGUI fallback for native apps)
     """
 
     def __init__(self):
-        self._mouse = MouseController("normal")
-        self._keyboard = KeyboardController("natural")
-        self._screen = ScreenReader()
-        self._windows = WindowManager()
-        self._workflow = WorkflowEngine(
-            self._mouse, self._keyboard, self._screen, self._windows
-        )
-        # Context awareness
-        self._ctx = get_context_engine()
-        self._guard = ActionGuard(self._ctx)
+        self._os = OSControl()
+        self._browser = BrowserControl()
+        # Lazy-load desktop control (PyAutoGUI) only when needed
+        self._mouse = None
+        self._keyboard = None
+        self._screen = None
+
+    def _ensure_desktop(self):
+        """Lazy-load PyAutoGUI desktop control only when needed."""
+        if self._mouse is None:
+            try:
+                from plutus.pc.mouse import MouseController
+                from plutus.pc.keyboard import KeyboardController
+                from plutus.pc.screen import ScreenReader
+                self._mouse = MouseController("normal")
+                self._keyboard = KeyboardController("natural")
+                self._screen = ScreenReader()
+            except Exception as e:
+                logger.warning(f"Desktop control not available: {e}")
 
     @property
     def name(self) -> str:
@@ -58,32 +60,52 @@ class PCControlTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Control the PC like a friendly ghost — move the mouse smoothly, click, "
-            "type naturally, read the screen, manage windows, and run workflows. "
-            "This is your primary tool for interacting with the desktop.\n\n"
-            "CONTEXT AWARENESS: Every result includes `_context` telling you which "
-            "app/window is currently active. Use `target_app` parameter to auto-focus "
-            "the correct app before acting (e.g., target_app='WhatsApp' ensures you "
-            "type into WhatsApp, not whatever else is open).\n\n"
-            "NEW: `get_context` operation — check which app/window is active right now.\n\n"
-            "MOUSE operations: move, click, double_click, right_click, drag, scroll, hover\n"
-            "KEYBOARD operations: type, press, hotkey, shortcut, key_down, key_up\n"
-            "SCREEN operations: screenshot, read_screen, find_text, find_elements, "
-            "get_pixel_color, find_color, wait_for_text, wait_for_change, screen_info\n"
-            "WINDOW operations: list_windows, find_window, focus, close_window, minimize, maximize, "
-            "move_window, resize, snap_left, snap_right, snap_top, snap_bottom, snap_quarter, "
-            "tile, active_window, get_context\n"
-            "WORKFLOW operations: run_workflow, save_workflow, list_workflows, "
-            "list_templates, get_template, delete_workflow\n"
-            "SHORTCUT operations: list_shortcuts\n\n"
-            "IMPORTANT TIPS:\n"
-            "- ALWAYS use `target_app` when clicking/typing into a specific app\n"
-            "  e.g., pc(operation='type', text='Hello', target_app='WhatsApp')\n"
-            "- Use `get_context` to check which app is active before acting\n"
-            "- Use `focus` to switch to a specific app window\n"
-            "- Every result has `_context.active_app` so you always know where you are\n"
-            "- Use 'screenshot' + 'find_text' to see what's on screen then click it\n"
-            "- Use 'shortcut' with names like 'copy', 'paste', 'save', 'new_tab'"
+            "Control the computer — open apps, browse the web, run commands, manage files.\n\n"
+            "=== OS OPERATIONS (most reliable, use first) ===\n"
+            "• open_app: Open any app by name (e.g., 'WhatsApp', 'Chrome', 'VS Code')\n"
+            "• close_app: Close an app by name\n"
+            "• open_url: Open a URL in the browser\n"
+            "• open_file: Open a file with its default app\n"
+            "• open_folder: Open a folder in file explorer\n"
+            "• run_command: Execute a shell command\n"
+            "• list_processes: List running processes\n"
+            "• kill_process: Kill a process by name or PID\n"
+            "• get_clipboard / set_clipboard: Read/write clipboard\n"
+            "• send_notification: Send a desktop notification\n"
+            "• list_apps: List apps Plutus can open\n"
+            "• system_info: Get OS and system information\n"
+            "• active_window: Get the currently focused window\n\n"
+            "=== BROWSER OPERATIONS (for web interaction) ===\n"
+            "• navigate: Go to a URL in the browser\n"
+            "• browser_click: Click an element by CSS selector or text content\n"
+            "• browser_type: Type into an input field by selector, label, or placeholder\n"
+            "• browser_press: Press a key (Enter, Tab, Escape, etc.)\n"
+            "• fill_form: Fill multiple form fields at once\n"
+            "• select_option: Select from a dropdown\n"
+            "• browser_hover: Hover over an element\n"
+            "• browser_scroll: Scroll the page\n"
+            "• get_page: Get structured page content (text, links, buttons, inputs)\n"
+            "• get_elements: Get interactive elements on the page\n"
+            "• browser_screenshot: Take a screenshot of the browser page\n"
+            "• new_tab / close_tab / switch_tab / list_tabs: Manage browser tabs\n"
+            "• evaluate_js: Run JavaScript on the page\n"
+            "• wait_for_text: Wait for text to appear on the page\n\n"
+            "=== DESKTOP OPERATIONS (fallback for native apps) ===\n"
+            "• mouse_click: Click at screen coordinates\n"
+            "• mouse_move: Move mouse to coordinates\n"
+            "• mouse_scroll: Scroll at current position\n"
+            "• keyboard_type: Type text into the focused app\n"
+            "• keyboard_press: Press a key in the focused app\n"
+            "• keyboard_hotkey: Press a key combination\n"
+            "• keyboard_shortcut: Use a named shortcut (copy, paste, save, etc.)\n"
+            "• screenshot: Take a screenshot of the entire screen\n"
+            "• read_screen: OCR the screen to read text\n"
+            "• find_text_on_screen: Find text on screen via OCR\n\n"
+            "=== STRATEGY ===\n"
+            "1. To open apps: ALWAYS use open_app (not clicking desktop icons)\n"
+            "2. For web tasks: use navigate + browser_click/browser_type\n"
+            "3. For native apps: use open_app first, then keyboard_type/keyboard_press\n"
+            "4. Only use mouse_click as last resort when you know exact coordinates"
         )
 
     @property
@@ -94,360 +116,370 @@ class PCControlTool(Tool):
                 "operation": {
                     "type": "string",
                     "enum": [
-                        # Context
-                        "get_context",
-                        # Mouse
-                        "move", "click", "double_click", "right_click", "drag", "scroll", "hover",
-                        # Keyboard
-                        "type", "press", "hotkey", "shortcut", "key_down", "key_up",
-                        # Screen
-                        "screenshot", "read_screen", "find_text", "find_elements",
-                        "get_pixel_color", "find_color", "wait_for_text", "wait_for_change", "screen_info",
-                        # Windows
-                        "list_windows", "find_window", "focus", "close_window", "minimize", "maximize",
-                        "move_window", "resize", "snap_left", "snap_right", "snap_top", "snap_bottom",
-                        "snap_quarter", "tile", "active_window",
-                        # Workflow
-                        "run_workflow", "save_workflow", "list_workflows",
-                        "list_templates", "get_template", "delete_workflow",
-                        # Info
-                        "list_shortcuts",
+                        # OS operations (Layer 1 — most reliable)
+                        "open_app", "close_app", "open_url", "open_file", "open_folder",
+                        "run_command", "list_processes", "kill_process",
+                        "get_clipboard", "set_clipboard", "send_notification",
+                        "list_apps", "system_info", "active_window",
+                        # Browser operations (Layer 2 — for web)
+                        "navigate", "browser_click", "browser_type", "browser_press",
+                        "fill_form", "select_option", "browser_hover", "browser_scroll",
+                        "get_page", "get_elements", "browser_screenshot",
+                        "new_tab", "close_tab", "switch_tab", "list_tabs",
+                        "evaluate_js", "wait_for_text",
+                        # Desktop operations (Layer 3 — fallback)
+                        "mouse_click", "mouse_move", "mouse_scroll",
+                        "keyboard_type", "keyboard_press", "keyboard_hotkey", "keyboard_shortcut",
+                        "screenshot", "read_screen", "find_text_on_screen",
                     ],
-                    "description": "The PC operation to perform",
+                    "description": "The operation to perform",
                 },
-                "target_app": {
-                    "type": "string",
-                    "description": (
-                        "IMPORTANT: The app/window that this action targets. "
-                        "If set, Plutus will auto-focus this app before acting. "
-                        "Use this to prevent typing/clicking into the wrong window. "
-                        "Examples: 'WhatsApp', 'Chrome', 'VS Code', 'Notepad', 'Spotify'"
-                    ),
-                },
-                "x": {"type": "integer", "description": "X coordinate (mouse/screen operations)"},
-                "y": {"type": "integer", "description": "Y coordinate (mouse/screen operations)"},
-                "text": {"type": "string", "description": "Text to type, key to press, or search target"},
-                "button": {"type": "string", "enum": ["left", "middle", "right"], "description": "Mouse button"},
-                "speed": {"type": "string", "description": "Speed profile: 'careful', 'normal', 'fast', 'instant'"},
-                "smooth": {"type": "boolean", "description": "Use smooth/natural movement (default: true)"},
-                "amount": {"type": "integer", "description": "Scroll amount (positive=up, negative=down)"},
-                "clicks": {"type": "integer", "description": "Number of clicks"},
-                "start_x": {"type": "integer", "description": "Drag start X"},
-                "start_y": {"type": "integer", "description": "Drag start Y"},
-                "end_x": {"type": "integer", "description": "Drag end X"},
-                "end_y": {"type": "integer", "description": "Drag end Y"},
-                "query": {"type": "string", "description": "Window title or app name to find/focus"},
-                "queries": {
+                # OS params
+                "app_name": {"type": "string", "description": "App name for open_app/close_app (e.g., 'WhatsApp', 'Chrome', 'VS Code')"},
+                "url": {"type": "string", "description": "URL for navigate/open_url"},
+                "command": {"type": "string", "description": "Shell command for run_command"},
+                "file_path": {"type": "string", "description": "File or folder path"},
+                "process_name": {"type": "string", "description": "Process name for kill_process/list_processes"},
+                "pid": {"type": "integer", "description": "Process ID for kill_process"},
+                "notification_title": {"type": "string", "description": "Notification title"},
+                "notification_message": {"type": "string", "description": "Notification message"},
+                # Browser params
+                "selector": {"type": "string", "description": "CSS selector for browser element targeting"},
+                "text": {"type": "string", "description": "Text content to find/click/type"},
+                "label": {"type": "string", "description": "Input field label for browser_type"},
+                "placeholder": {"type": "string", "description": "Input field placeholder for browser_type"},
+                "role": {"type": "string", "description": "ARIA role for element targeting (button, link, textbox, etc.)"},
+                "role_name": {"type": "string", "description": "ARIA role name for element targeting"},
+                "press_enter": {"type": "boolean", "description": "Press Enter after typing"},
+                "tab_id": {"type": "string", "description": "Tab ID for tab operations"},
+                "js_code": {"type": "string", "description": "JavaScript code for evaluate_js"},
+                "fields": {
                     "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Multiple window names for tile operation",
-                },
-                "width": {"type": "integer", "description": "Width for resize"},
-                "height": {"type": "integer", "description": "Height for resize"},
-                "position": {"type": "string", "description": "Quarter position: top_left, top_right, bottom_left, bottom_right"},
-                "path": {"type": "string", "description": "File path for screenshot"},
-                "region": {
-                    "type": "object",
-                    "description": "Screen region {x, y, width, height}",
-                    "properties": {
-                        "x": {"type": "integer"},
-                        "y": {"type": "integer"},
-                        "width": {"type": "integer"},
-                        "height": {"type": "integer"},
-                    },
-                },
-                "timeout": {"type": "number", "description": "Timeout in seconds for wait operations"},
-                "color": {"type": "string", "description": "Hex color for find_color (e.g. '#ff0000')"},
-                "tolerance": {"type": "integer", "description": "Color matching tolerance (0-255)"},
-                "duration": {"type": "number", "description": "Duration for hover"},
-                "times": {"type": "integer", "description": "Number of key presses"},
-                "clear_first": {"type": "boolean", "description": "Clear field before typing"},
-                "workflow_name": {"type": "string", "description": "Name of workflow to run/save/delete"},
-                "workflow_description": {"type": "string", "description": "Description for new workflow"},
-                "workflow_steps": {
-                    "type": "array",
-                    "description": "Steps for workflow: [{action, params, description, delay_after}]",
+                    "description": "Form fields for fill_form: [{selector?, label?, placeholder?, value}]",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string"},
-                            "params": {"type": "object"},
-                            "description": {"type": "string"},
-                            "delay_after": {"type": "number"},
+                            "selector": {"type": "string"},
+                            "label": {"type": "string"},
+                            "placeholder": {"type": "string"},
+                            "value": {"type": "string"},
                         },
                     },
                 },
-                "case_sensitive": {"type": "boolean", "description": "Case-sensitive text search"},
-                "include_base64": {"type": "boolean", "description": "Include base64 in screenshot"},
+                "direction": {"type": "string", "enum": ["up", "down"], "description": "Scroll direction"},
+                "amount": {"type": "integer", "description": "Scroll amount in pixels"},
+                "filter_type": {"type": "string", "enum": ["links", "buttons", "inputs", "all"], "description": "Element type filter for get_elements"},
+                "full_page": {"type": "boolean", "description": "Full page screenshot"},
+                "browser": {"type": "string", "description": "Specific browser for open_url"},
+                # Desktop params
+                "x": {"type": "integer", "description": "X coordinate for mouse operations"},
+                "y": {"type": "integer", "description": "Y coordinate for mouse operations"},
+                "key": {"type": "string", "description": "Key name for keyboard_press (enter, tab, escape, etc.)"},
+                "hotkey": {"type": "string", "description": "Key combination for keyboard_hotkey (ctrl+c, alt+tab, etc.)"},
+                "shortcut_name": {"type": "string", "description": "Named shortcut for keyboard_shortcut (copy, paste, save, undo, etc.)"},
+                "timeout": {"type": "integer", "description": "Timeout in milliseconds"},
+                "cwd": {"type": "string", "description": "Working directory for run_command"},
+                "double_click": {"type": "boolean", "description": "Double-click for browser_click"},
+                "right_click": {"type": "boolean", "description": "Right-click for browser_click"},
             },
             "required": ["operation"],
         }
 
     async def execute(self, **kwargs: Any) -> str:
         op = kwargs.get("operation", "")
-        target_app = kwargs.get("target_app")
 
         try:
-            # ─── Pre-action context check ───
-            # For write operations, verify we're in the right window
-            guard_result = await self._guard.check_before_action(
-                operation=op,
-                params=kwargs,
-                target_app=target_app,
+            result = await self._dispatch(op, kwargs)
+            return json.dumps(result, default=str)
+        except Exception as e:
+            logger.error(f"PC control error in {op}: {e}")
+            return json.dumps({"error": str(e), "operation": op}, default=str)
+
+    async def _dispatch(self, op: str, kwargs: dict) -> dict:
+        """Route the operation to the correct layer."""
+
+        # ═══════════════════════════════════════════════
+        # LAYER 1: OS Operations (shell commands — most reliable)
+        # ═══════════════════════════════════════════════
+
+        if op == "open_app":
+            app = kwargs.get("app_name") or kwargs.get("text", "")
+            if not app:
+                return {"error": "Provide app_name (e.g., 'WhatsApp', 'Chrome')"}
+            return await self._os.open_app(app)
+
+        elif op == "close_app":
+            app = kwargs.get("app_name") or kwargs.get("text", "")
+            if not app:
+                return {"error": "Provide app_name"}
+            return await self._os.close_app(app)
+
+        elif op == "open_url":
+            url = kwargs.get("url", "")
+            if not url:
+                return {"error": "Provide url"}
+            return await self._os.open_url(url, browser=kwargs.get("browser"))
+
+        elif op == "open_file":
+            path = kwargs.get("file_path") or kwargs.get("text", "")
+            if not path:
+                return {"error": "Provide file_path"}
+            return await self._os.open_file(path)
+
+        elif op == "open_folder":
+            path = kwargs.get("file_path") or kwargs.get("text", "")
+            if not path:
+                return {"error": "Provide file_path"}
+            return await self._os.open_folder(path)
+
+        elif op == "run_command":
+            cmd = kwargs.get("command") or kwargs.get("text", "")
+            if not cmd:
+                return {"error": "Provide command"}
+            return await self._os.run_command(
+                cmd,
+                timeout=kwargs.get("timeout", 30),
+                cwd=kwargs.get("cwd"),
             )
 
-            if not guard_result["proceed"]:
-                # Context check failed — wrong window and couldn't focus
-                warning = guard_result.get("warning", "Context check failed")
-                error_result = {
-                    "error": warning,
-                    "operation": op,
-                    "hint": (
-                        "The target app could not be focused. Try using "
-                        "pc(operation='focus', query='AppName') first, or "
-                        "pc(operation='list_windows') to see what's available."
-                    ),
-                }
-                return json.dumps(self._ctx.enrich_result(error_result, op), default=str)
+        elif op == "list_processes":
+            return await self._os.list_processes(
+                filter_name=kwargs.get("process_name")
+            )
 
-            # If focus was changed, log it
-            if guard_result.get("focus_result") and not guard_result["focus_result"].get("already_active"):
-                logger.info(
-                    f"Auto-focused {target_app} before {op}: "
-                    f"{guard_result['focus_result'].get('app')} - {guard_result['focus_result'].get('title')}"
-                )
+        elif op == "kill_process":
+            return await self._os.kill_process(
+                pid=kwargs.get("pid"),
+                name=kwargs.get("process_name") or kwargs.get("text"),
+            )
 
-            # ─── Context Query ───
-            if op == "get_context":
-                ctx = await self._ctx.get_context(force_refresh=True)
-                result = ctx.to_dict()
-                result["summary"] = ctx.summary()
-                return json.dumps(result, default=str)
+        elif op == "get_clipboard":
+            return await self._os.get_clipboard()
 
-            # ─── Mouse ───
-            elif op == "move":
-                result = await self._mouse.move_to(
-                    kwargs.get("x", 0), kwargs.get("y", 0),
-                    speed=kwargs.get("speed"),
-                    smooth=kwargs.get("smooth", True),
-                )
-            elif op == "click":
-                result = await self._mouse.click(
-                    kwargs.get("x"), kwargs.get("y"),
-                    button=kwargs.get("button", "left"),
-                    clicks=kwargs.get("clicks", 1),
-                )
-            elif op == "double_click":
-                result = await self._mouse.double_click(kwargs.get("x"), kwargs.get("y"))
-            elif op == "right_click":
-                result = await self._mouse.right_click(kwargs.get("x"), kwargs.get("y"))
-            elif op == "drag":
-                result = await self._mouse.drag(
-                    kwargs.get("start_x", 0), kwargs.get("start_y", 0),
-                    kwargs.get("end_x", 0), kwargs.get("end_y", 0),
-                    button=kwargs.get("button", "left"),
-                )
-            elif op == "scroll":
-                result = await self._mouse.scroll(
-                    kwargs.get("amount", 0),
-                    kwargs.get("x"), kwargs.get("y"),
-                    smooth=kwargs.get("smooth", True),
-                )
-            elif op == "hover":
-                result = await self._mouse.hover(
-                    kwargs.get("x", 0), kwargs.get("y", 0),
-                    duration=kwargs.get("duration", 0.5),
-                )
+        elif op == "set_clipboard":
+            text = kwargs.get("text", "")
+            return await self._os.set_clipboard(text)
 
-            # ─── Keyboard ───
-            elif op == "type":
-                result = await self._keyboard.type_text(
-                    kwargs.get("text", ""),
-                    speed=kwargs.get("speed"),
-                    clear_first=kwargs.get("clear_first", False),
-                )
-            elif op == "press":
-                result = await self._keyboard.press(
-                    kwargs.get("text", "enter"),
-                    times=kwargs.get("times", 1),
-                )
-            elif op == "hotkey":
-                result = await self._keyboard.hotkey(kwargs.get("text", ""))
-            elif op == "shortcut":
-                result = await self._keyboard.shortcut(kwargs.get("text", ""))
-            elif op == "key_down":
-                result = await self._keyboard.key_down(kwargs.get("text", ""))
-            elif op == "key_up":
-                result = await self._keyboard.key_up(kwargs.get("text", ""))
+        elif op == "send_notification":
+            return await self._os.send_notification(
+                title=kwargs.get("notification_title", "Plutus"),
+                message=kwargs.get("notification_message") or kwargs.get("text", ""),
+            )
 
-            # ─── Screen ───
-            elif op == "screenshot":
-                region = self._parse_region(kwargs.get("region"))
-                result = await self._screen.capture(
-                    region=region,
-                    path=kwargs.get("path"),
-                    include_base64=kwargs.get("include_base64", False),
-                )
-            elif op == "read_screen":
-                region = self._parse_region(kwargs.get("region"))
-                result = await self._screen.read_text(region=region)
-            elif op == "find_text":
-                region = self._parse_region(kwargs.get("region"))
-                result = await self._screen.find_text(
-                    kwargs.get("text", ""),
-                    region=region,
-                    case_sensitive=kwargs.get("case_sensitive", False),
-                )
-            elif op == "find_elements":
-                region = self._parse_region(kwargs.get("region"))
-                result = await self._screen.find_elements(region=region)
-            elif op == "get_pixel_color":
-                result = await self._screen.get_pixel_color(
-                    kwargs.get("x", 0), kwargs.get("y", 0)
-                )
-            elif op == "find_color":
-                region = self._parse_region(kwargs.get("region"))
-                result = await self._screen.find_color(
-                    kwargs.get("color", "#000000"),
-                    tolerance=kwargs.get("tolerance", 20),
-                    region=region,
-                )
-            elif op == "wait_for_text":
-                region = self._parse_region(kwargs.get("region"))
-                result = await self._screen.wait_for_text(
-                    kwargs.get("text", ""),
-                    timeout=kwargs.get("timeout", 30.0),
-                    region=region,
-                )
-            elif op == "wait_for_change":
-                region = self._parse_region(kwargs.get("region"))
-                result = await self._screen.wait_for_change(
-                    region=region,
-                    timeout=kwargs.get("timeout", 30.0),
-                )
-            elif op == "screen_info":
-                result = await self._screen.get_screen_info()
+        elif op == "list_apps":
+            return await self._os.list_available_apps()
 
-            # ─── Windows ───
-            elif op == "list_windows":
-                result = {"windows": await self._windows.list_windows()}
-            elif op == "find_window":
-                found = await self._windows.find_window(kwargs.get("query", ""))
-                result = {"found": found is not None, "window": found}
-            elif op == "focus":
-                result = await self._windows.focus(kwargs.get("query", ""))
-            elif op == "close_window":
-                result = await self._windows.close(kwargs.get("query", ""))
-            elif op == "minimize":
-                result = await self._windows.minimize(kwargs.get("query", ""))
-            elif op == "maximize":
-                result = await self._windows.maximize(kwargs.get("query", ""))
-            elif op == "move_window":
-                result = await self._windows.move(
-                    kwargs.get("query", ""),
-                    kwargs.get("x", 0), kwargs.get("y", 0),
-                )
-            elif op == "resize":
-                result = await self._windows.resize(
-                    kwargs.get("query", ""),
-                    kwargs.get("width", 800), kwargs.get("height", 600),
-                )
-            elif op == "snap_left":
-                result = await self._windows.snap_left(kwargs.get("query", ""))
-            elif op == "snap_right":
-                result = await self._windows.snap_right(kwargs.get("query", ""))
-            elif op == "snap_top":
-                result = await self._windows.snap_top(kwargs.get("query", ""))
-            elif op == "snap_bottom":
-                result = await self._windows.snap_bottom(kwargs.get("query", ""))
-            elif op == "snap_quarter":
-                result = await self._windows.snap_quarter(
-                    kwargs.get("query", ""),
-                    kwargs.get("position", "top_left"),
-                )
-            elif op == "tile":
-                result = await self._windows.tile_windows(kwargs.get("queries", []))
-            elif op == "active_window":
-                # Enhanced: return full context, not just window info
-                ctx = await self._ctx.get_context(force_refresh=True)
-                result = {
-                    "title": ctx.active_window_title,
-                    "app": ctx.active_app_name,
-                    "pid": ctx.active_window_pid,
-                    "category": ctx.active_app_category,
-                    "browser_tab": ctx.active_browser_tab or None,
-                    "document": ctx.active_document or None,
-                }
+        elif op == "system_info":
+            return await self._os.get_system_info()
 
-            # ─── Workflow ───
-            elif op == "run_workflow":
-                name = kwargs.get("workflow_name", "")
-                wf = self._workflow.load(name)
-                if not wf:
-                    wf = self._workflow.get_template(name)
-                if not wf:
-                    return json.dumps({"error": f"Workflow not found: {name}"})
-                wf_result = await self._workflow.run(wf)
-                result = wf_result.to_dict()
-            elif op == "save_workflow":
-                steps = []
-                for s in kwargs.get("workflow_steps", []):
-                    steps.append(WorkflowStep(
-                        action=s.get("action", ""),
-                        params=s.get("params", {}),
-                        description=s.get("description", ""),
-                        delay_after=s.get("delay_after", 0.3),
-                    ))
-                wf = Workflow(
-                    name=kwargs.get("workflow_name", "unnamed"),
-                    description=kwargs.get("workflow_description", ""),
-                    steps=steps,
-                )
-                path = self._workflow.save(wf)
-                result = {"saved": True, "path": path, "workflow": wf.to_dict()}
-            elif op == "list_workflows":
-                result = {
-                    "workflows": self._workflow.list_workflows(),
-                    "templates": self._workflow.list_templates(),
-                }
-            elif op == "list_templates":
-                result = {"templates": self._workflow.list_templates()}
-            elif op == "get_template":
-                wf = self._workflow.get_template(kwargs.get("workflow_name", ""))
-                result = wf.to_dict() if wf else {"error": "Template not found"}
-            elif op == "delete_workflow":
-                deleted = self._workflow.delete(kwargs.get("workflow_name", ""))
-                result = {"deleted": deleted}
+        elif op == "active_window":
+            return await self._os.get_active_window()
 
-            # ─── Info ───
-            elif op == "list_shortcuts":
-                result = {"shortcuts": KeyboardController.list_shortcuts()}
+        # ═══════════════════════════════════════════════
+        # LAYER 2: Browser Operations (Playwright/CDP — for web)
+        # ═══════════════════════════════════════════════
 
-            else:
-                result = {"error": f"Unknown operation: {op}"}
+        elif op == "navigate":
+            url = kwargs.get("url", "")
+            if not url:
+                return {"error": "Provide url"}
+            return await self._browser.navigate(url, tab_id=kwargs.get("tab_id"))
 
-            # ─── Post-action: enrich result with context ───
-            if isinstance(result, dict):
-                result = await self._guard.post_action(op, kwargs, result)
+        elif op == "browser_click":
+            return await self._browser.click(
+                selector=kwargs.get("selector"),
+                text=kwargs.get("text"),
+                role=kwargs.get("role"),
+                role_name=kwargs.get("role_name"),
+                double_click=kwargs.get("double_click", False),
+                right_click=kwargs.get("right_click", False),
+                timeout=kwargs.get("timeout", 5000),
+            )
 
-            return json.dumps(result, default=str)
+        elif op == "browser_type":
+            text = kwargs.get("text", "")
+            if not text:
+                return {"error": "Provide text to type"}
+            return await self._browser.type_text(
+                text=text,
+                selector=kwargs.get("selector"),
+                label=kwargs.get("label"),
+                placeholder=kwargs.get("placeholder"),
+                press_enter=kwargs.get("press_enter", False),
+                timeout=kwargs.get("timeout", 5000),
+            )
 
-        except Exception as e:
-            error_result = {"error": str(e), "operation": op}
-            # Still try to enrich with context even on error
-            try:
-                error_result = self._ctx.enrich_result(error_result, op)
-            except Exception:
-                pass
-            return json.dumps(error_result, default=str)
+        elif op == "browser_press":
+            key = kwargs.get("key") or kwargs.get("text", "Enter")
+            return await self._browser.press_key(key)
 
-    def _parse_region(self, region_data: dict | None) -> ScreenRegion | None:
-        """Parse a region dict into a ScreenRegion."""
-        if not region_data:
-            return None
-        return ScreenRegion(
-            x=region_data.get("x", 0),
-            y=region_data.get("y", 0),
-            width=region_data.get("width", 0),
-            height=region_data.get("height", 0),
-        )
+        elif op == "fill_form":
+            fields = kwargs.get("fields", [])
+            if not fields:
+                return {"error": "Provide fields array"}
+            return await self._browser.fill_form(fields)
+
+        elif op == "select_option":
+            return await self._browser.select_option(
+                value=kwargs.get("text", ""),
+                selector=kwargs.get("selector"),
+                label=kwargs.get("label"),
+            )
+
+        elif op == "browser_hover":
+            return await self._browser.hover(
+                selector=kwargs.get("selector"),
+                text=kwargs.get("text"),
+            )
+
+        elif op == "browser_scroll":
+            return await self._browser.scroll(
+                direction=kwargs.get("direction", "down"),
+                amount=kwargs.get("amount", 500),
+            )
+
+        elif op == "get_page":
+            return await self._browser.get_page_snapshot()
+
+        elif op == "get_elements":
+            return await self._browser.get_page_elements(
+                filter_type=kwargs.get("filter_type")
+            )
+
+        elif op == "browser_screenshot":
+            return await self._browser.screenshot(
+                full_page=kwargs.get("full_page", False)
+            )
+
+        elif op == "new_tab":
+            return await self._browser.new_tab(url=kwargs.get("url"))
+
+        elif op == "close_tab":
+            return await self._browser.close_tab(tab_id=kwargs.get("tab_id"))
+
+        elif op == "switch_tab":
+            tab_id = kwargs.get("tab_id", "")
+            if not tab_id:
+                return {"error": "Provide tab_id"}
+            return await self._browser.switch_tab(tab_id)
+
+        elif op == "list_tabs":
+            return await self._browser.list_tabs()
+
+        elif op == "evaluate_js":
+            code = kwargs.get("js_code") or kwargs.get("text", "")
+            if not code:
+                return {"error": "Provide js_code"}
+            return await self._browser.evaluate(code)
+
+        elif op == "wait_for_text":
+            text = kwargs.get("text", "")
+            if not text:
+                return {"error": "Provide text to wait for"}
+            return await self._browser.wait_for_text(
+                text, timeout=kwargs.get("timeout", 10000)
+            )
+
+        # ═══════════════════════════════════════════════
+        # LAYER 3: Desktop Operations (PyAutoGUI — fallback for native apps)
+        # ═══════════════════════════════════════════════
+
+        elif op == "mouse_click":
+            self._ensure_desktop()
+            if not self._mouse:
+                return {"error": "Desktop control not available (PyAutoGUI not installed)"}
+            return await self._mouse.click(
+                kwargs.get("x"), kwargs.get("y"),
+                button=kwargs.get("button", "left"),
+            )
+
+        elif op == "mouse_move":
+            self._ensure_desktop()
+            if not self._mouse:
+                return {"error": "Desktop control not available"}
+            return await self._mouse.move_to(
+                kwargs.get("x", 0), kwargs.get("y", 0),
+            )
+
+        elif op == "mouse_scroll":
+            self._ensure_desktop()
+            if not self._mouse:
+                return {"error": "Desktop control not available"}
+            return await self._mouse.scroll(
+                kwargs.get("amount", 0),
+                kwargs.get("x"), kwargs.get("y"),
+            )
+
+        elif op == "keyboard_type":
+            self._ensure_desktop()
+            if not self._keyboard:
+                return {"error": "Desktop control not available"}
+            return await self._keyboard.type_text(
+                kwargs.get("text", ""),
+            )
+
+        elif op == "keyboard_press":
+            self._ensure_desktop()
+            if not self._keyboard:
+                return {"error": "Desktop control not available"}
+            return await self._keyboard.press(
+                kwargs.get("key") or kwargs.get("text", "enter"),
+            )
+
+        elif op == "keyboard_hotkey":
+            self._ensure_desktop()
+            if not self._keyboard:
+                return {"error": "Desktop control not available"}
+            return await self._keyboard.hotkey(
+                kwargs.get("hotkey") or kwargs.get("text", ""),
+            )
+
+        elif op == "keyboard_shortcut":
+            self._ensure_desktop()
+            if not self._keyboard:
+                return {"error": "Desktop control not available"}
+            return await self._keyboard.shortcut(
+                kwargs.get("shortcut_name") or kwargs.get("text", ""),
+            )
+
+        elif op == "screenshot":
+            self._ensure_desktop()
+            if not self._screen:
+                return {"error": "Desktop control not available"}
+            return await self._screen.capture(
+                path=kwargs.get("file_path"),
+            )
+
+        elif op == "read_screen":
+            self._ensure_desktop()
+            if not self._screen:
+                return {"error": "Desktop control not available"}
+            return await self._screen.read_text()
+
+        elif op == "find_text_on_screen":
+            self._ensure_desktop()
+            if not self._screen:
+                return {"error": "Desktop control not available"}
+            return await self._screen.find_text(
+                kwargs.get("text", ""),
+            )
+
+        else:
+            return {
+                "error": f"Unknown operation: {op}",
+                "available_operations": {
+                    "os": ["open_app", "close_app", "open_url", "open_file", "open_folder",
+                           "run_command", "list_processes", "kill_process",
+                           "get_clipboard", "set_clipboard", "send_notification",
+                           "list_apps", "system_info", "active_window"],
+                    "browser": ["navigate", "browser_click", "browser_type", "browser_press",
+                               "fill_form", "select_option", "browser_hover", "browser_scroll",
+                               "get_page", "get_elements", "browser_screenshot",
+                               "new_tab", "close_tab", "switch_tab", "list_tabs",
+                               "evaluate_js", "wait_for_text"],
+                    "desktop": ["mouse_click", "mouse_move", "mouse_scroll",
+                               "keyboard_type", "keyboard_press", "keyboard_hotkey",
+                               "keyboard_shortcut", "screenshot", "read_screen",
+                               "find_text_on_screen"],
+                },
+            }
