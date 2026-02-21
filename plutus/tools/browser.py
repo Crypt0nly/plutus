@@ -28,7 +28,10 @@ class BrowserTool(Tool):
         return (
             "Control a web browser. Navigate to URLs, take screenshots, extract page content, "
             "click elements, fill forms, and run JavaScript. "
-            "Operations: navigate, screenshot, extract, click, fill, evaluate, back, forward, close."
+            "Operations: navigate, screenshot, extract, click, click_text, fill, evaluate, wait, back, forward, close.\n"
+            "Use click_text to click buttons/links by their visible text (e.g. 'Accept all', 'Sign in') — "
+            "this is more reliable than CSS selectors on dynamic sites.\n"
+            "Use wait to wait for a selector to appear before interacting with it."
         )
 
     @property
@@ -39,8 +42,8 @@ class BrowserTool(Tool):
                 "operation": {
                     "type": "string",
                     "enum": [
-                        "navigate", "screenshot", "extract", "click",
-                        "fill", "evaluate", "back", "forward", "close",
+                        "navigate", "screenshot", "extract", "click", "click_text",
+                        "fill", "evaluate", "wait", "back", "forward", "close",
                     ],
                     "description": "The browser operation to perform",
                 },
@@ -125,8 +128,10 @@ class BrowserTool(Tool):
             "screenshot": self._screenshot,
             "extract": self._extract,
             "click": self._click,
+            "click_text": self._click_text,
             "fill": self._fill,
             "evaluate": self._evaluate,
+            "wait": self._wait,
             "back": self._back,
             "forward": self._forward,
         }
@@ -145,7 +150,48 @@ class BrowserTool(Tool):
         if not url:
             return "[ERROR] Navigate requires a 'url' parameter"
         await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        return f"Navigated to: {self._page.url}\nTitle: {await self._page.title()}"
+        title = await self._page.title()
+        # Auto-dismiss common cookie consent banners so they don't block interaction
+        dismissed = await self._try_dismiss_consent()
+        result = f"Navigated to: {self._page.url}\nTitle: {title}"
+        if dismissed:
+            result += f"\n(Auto-dismissed cookie consent dialog: clicked '{dismissed}')"
+        return result
+
+    async def _try_dismiss_consent(self) -> str | None:
+        """Try to dismiss common cookie/consent banners. Returns button text if dismissed."""
+        # Common consent button patterns across major sites
+        consent_selectors = [
+            # Text-based: most reliable across sites
+            "button:has-text('Accept all')",
+            "button:has-text('Accept All')",
+            "button:has-text('Accept cookies')",
+            "button:has-text('Accept & continue')",
+            "button:has-text('I agree')",
+            "button:has-text('Allow all')",
+            "button:has-text('Agree')",
+            "button:has-text('Got it')",
+            "button:has-text('OK')",
+            # Common aria-labels
+            'button[aria-label="Accept all"]',
+            'button[aria-label="Accept All"]',
+            'button[aria-label="Accept cookies"]',
+            # Common IDs/classes
+            "button#L2AGLb",  # Google consent
+            ".consent-bump button.yt-spec-button-shape-next--filled",  # YouTube
+        ]
+        for selector in consent_selectors:
+            try:
+                btn = self._page.locator(selector).first
+                if await btn.is_visible(timeout=1500):
+                    label = (await btn.text_content() or selector).strip()
+                    await btn.click(timeout=3000)
+                    # Small pause for page to settle after consent dismissal
+                    await self._page.wait_for_timeout(500)
+                    return label
+            except Exception:
+                continue
+        return None
 
     async def _screenshot(self, kwargs: dict) -> str:
         path = kwargs.get("path", "/tmp/plutus_screenshot.png")
@@ -173,15 +219,35 @@ class BrowserTool(Tool):
         selector = kwargs.get("selector", "")
         if not selector:
             return "[ERROR] Click requires a 'selector' parameter"
-        await self._page.click(selector, timeout=5000)
+        await self._page.click(selector, timeout=15000)
         return f"Clicked: {selector}"
+
+    async def _click_text(self, kwargs: dict) -> str:
+        text = kwargs.get("value", "")
+        if not text:
+            return "[ERROR] click_text requires a 'value' parameter with the visible text to click"
+        # Use Playwright's text selector — matches buttons, links, and other clickable elements
+        locator = self._page.get_by_text(text, exact=False).first
+        if not await locator.is_visible(timeout=5000):
+            return f"[ERROR] No visible element found with text: {text}"
+        await locator.click(timeout=15000)
+        tag = await locator.evaluate("el => el.tagName.toLowerCase()")
+        return f"Clicked {tag} with text: '{text}'"
+
+    async def _wait(self, kwargs: dict) -> str:
+        selector = kwargs.get("selector", "")
+        if not selector:
+            return "[ERROR] Wait requires a 'selector' parameter"
+        timeout = 15000
+        await self._page.wait_for_selector(selector, state="visible", timeout=timeout)
+        return f"Element '{selector}' is now visible"
 
     async def _fill(self, kwargs: dict) -> str:
         selector = kwargs.get("selector", "")
         value = kwargs.get("value", "")
         if not selector:
             return "[ERROR] Fill requires a 'selector' parameter"
-        await self._page.fill(selector, value, timeout=5000)
+        await self._page.fill(selector, value, timeout=15000)
         return f"Filled '{selector}' with value"
 
     async def _evaluate(self, kwargs: dict) -> str:
