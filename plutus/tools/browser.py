@@ -15,6 +15,7 @@ class BrowserTool(Tool):
     """
 
     def __init__(self) -> None:
+        self._pw = None
         self._browser = None
         self._page = None
 
@@ -64,23 +65,48 @@ class BrowserTool(Tool):
         }
 
     async def _ensure_browser(self) -> None:
-        """Lazily start the browser."""
-        if self._browser is None:
+        """Lazily start the browser, reconnecting if the previous session died."""
+        # Check if existing browser/page is still usable
+        if self._page is not None:
             try:
-                from playwright.async_api import async_playwright
+                # Quick liveness check
+                await self._page.title()
+                return
+            except Exception:
+                # Browser or page died — tear down and relaunch
+                await self._cleanup()
 
-                pw = await async_playwright().start()
-                self._browser = await pw.chromium.launch(headless=False)
-                self._page = await self._browser.new_page()
-            except ImportError:
-                raise RuntimeError(
-                    "Playwright is not installed. Run: pip install playwright"
-                )
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to launch browser: {e}. "
-                    "Run: playwright install chromium"
-                )
+        try:
+            from playwright.async_api import async_playwright
+
+            self._pw = await async_playwright().start()
+            self._browser = await self._pw.chromium.launch(headless=False)
+            self._page = await self._browser.new_page()
+        except ImportError:
+            raise RuntimeError(
+                "Playwright is not installed. Run: pip install playwright"
+            )
+        except Exception as e:
+            await self._cleanup()
+            raise RuntimeError(
+                f"Failed to launch browser: {e}. "
+                "Run: playwright install chromium"
+            )
+
+    async def _cleanup(self) -> None:
+        """Tear down browser resources safely."""
+        for resource in (self._browser, self._pw):
+            if resource is not None:
+                try:
+                    if hasattr(resource, "close"):
+                        await resource.close()
+                    elif hasattr(resource, "stop"):
+                        await resource.stop()
+                except Exception:
+                    pass
+        self._pw = None
+        self._browser = None
+        self._page = None
 
     async def execute(self, **kwargs: Any) -> str:
         operation: str = kwargs["operation"]
@@ -174,8 +200,5 @@ class BrowserTool(Tool):
         return f"Navigated forward to: {self._page.url}"
 
     async def _close(self) -> str:
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
-            self._page = None
+        await self._cleanup()
         return "Browser closed"
