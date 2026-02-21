@@ -12,10 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from plutus.config import PlutusConfig, SecretsStore
-from plutus.core.agent import AgentRuntime
+from plutus.core.agent import AgentEvent, AgentRuntime
+from plutus.core.heartbeat import HeartbeatRunner
 from plutus.core.memory import MemoryStore
 from plutus.gateway.routes import create_router
-from plutus.gateway.ws import create_ws_router
+from plutus.gateway.ws import create_ws_router, manager as ws_manager
 from plutus.guardrails.engine import GuardrailEngine
 from plutus.tools.registry import create_default_registry
 
@@ -27,6 +28,22 @@ _state: dict[str, Any] = {}
 
 def get_state() -> dict[str, Any]:
     return _state
+
+
+async def _heartbeat_on_beat(prompt: str) -> None:
+    """Called by the heartbeat runner — sends a synthetic message through the agent."""
+    agent: AgentRuntime | None = _state.get("agent")
+    if not agent:
+        return
+
+    async for event in agent.process_message(prompt):
+        # Forward all agent events to connected WebSocket clients
+        await ws_manager.broadcast(event.to_dict())
+
+
+async def _heartbeat_on_event(event_data: dict[str, Any]) -> None:
+    """Forward heartbeat lifecycle events (beat, paused, etc.) to the UI."""
+    await ws_manager.broadcast(event_data)
 
 
 @asynccontextmanager
@@ -58,22 +75,34 @@ async def lifespan(app: FastAPI):
     )
     await agent.initialize()
 
+    # Initialize heartbeat
+    heartbeat = HeartbeatRunner(
+        config=config.heartbeat,
+        on_beat=_heartbeat_on_beat,
+        on_event=_heartbeat_on_event,
+    )
+    if config.heartbeat.enabled:
+        heartbeat.start()
+
     _state["config"] = config
     _state["secrets"] = secrets
     _state["memory"] = memory
     _state["guardrails"] = guardrails
     _state["tool_registry"] = tool_registry
     _state["agent"] = agent
+    _state["heartbeat"] = heartbeat
 
     key_status = "configured" if agent.key_configured else "NOT configured"
+    heartbeat_status = "enabled" if config.heartbeat.enabled else "disabled"
     logger.info(
         f"Plutus started — tier={config.guardrails.tier}, "
         f"model={config.model.provider}/{config.model.model}, "
-        f"api_key={key_status}"
+        f"api_key={key_status}, heartbeat={heartbeat_status}"
     )
 
     yield
 
+    heartbeat.stop()
     await agent.shutdown()
     logger.info("Plutus shut down")
 

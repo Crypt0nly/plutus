@@ -37,6 +37,32 @@ class ConfigUpdate(BaseModel):
     patch: dict[str, Any]
 
 
+class HeartbeatUpdate(BaseModel):
+    enabled: bool | None = None
+    interval_seconds: int | None = None
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
+    max_consecutive: int | None = None
+    prompt: str | None = None
+
+
+class CreatePlanRequest(BaseModel):
+    title: str
+    goal: str | None = None
+    steps: list[dict[str, str]]
+    conversation_id: str | None = None
+
+
+class UpdateStepRequest(BaseModel):
+    step_index: int
+    status: str
+    result: str | None = None
+
+
+class PlanStatusUpdate(BaseModel):
+    status: str
+
+
 def create_router() -> APIRouter:
     router = APIRouter()
 
@@ -50,6 +76,7 @@ def create_router() -> APIRouter:
         guardrails = state.get("guardrails")
         tool_registry = state.get("tool_registry")
         agent = state.get("agent")
+        heartbeat = state.get("heartbeat")
 
         return {
             "version": "0.1.0",
@@ -57,6 +84,10 @@ def create_router() -> APIRouter:
             "key_configured": agent.key_configured if agent else False,
             "guardrails": guardrails.get_status() if guardrails else None,
             "tools": tool_registry.list_tools() if tool_registry else [],
+            "heartbeat": heartbeat.status() if heartbeat else None,
+            "planner_enabled": state.get("config", {}).planner.enabled
+            if state.get("config")
+            else False,
         }
 
     # ── Guardrails ──────────────────────────────────────────
@@ -286,5 +317,180 @@ def create_router() -> APIRouter:
         config = state.get("config")
         config.update(body.patch)
         return {"message": "Config updated"}
+
+    # ── Heartbeat ────────────────────────────────────────────
+
+    @router.get("/heartbeat")
+    async def get_heartbeat_status() -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        heartbeat = state.get("heartbeat")
+        if not heartbeat:
+            return {"enabled": False, "running": False}
+        return heartbeat.status()
+
+    @router.put("/heartbeat")
+    async def update_heartbeat(body: HeartbeatUpdate) -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        heartbeat = state.get("heartbeat")
+        config = state.get("config")
+
+        if not heartbeat or not config:
+            raise HTTPException(500, "Heartbeat not initialized")
+
+        if body.enabled is not None:
+            config.heartbeat.enabled = body.enabled
+        if body.interval_seconds is not None:
+            config.heartbeat.interval_seconds = body.interval_seconds
+        if body.quiet_hours_start is not None:
+            config.heartbeat.quiet_hours_start = body.quiet_hours_start or None
+        if body.quiet_hours_end is not None:
+            config.heartbeat.quiet_hours_end = body.quiet_hours_end or None
+        if body.max_consecutive is not None:
+            config.heartbeat.max_consecutive = body.max_consecutive
+        if body.prompt is not None:
+            config.heartbeat.prompt = body.prompt
+
+        config.save()
+        heartbeat.update_config(config.heartbeat)
+
+        # Start or stop based on enabled flag
+        if config.heartbeat.enabled and not heartbeat.running:
+            heartbeat.start()
+        elif not config.heartbeat.enabled and heartbeat.running:
+            heartbeat.stop()
+
+        return heartbeat.status()
+
+    @router.post("/heartbeat/start")
+    async def start_heartbeat() -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        heartbeat = state.get("heartbeat")
+        config = state.get("config")
+
+        if not heartbeat:
+            raise HTTPException(500, "Heartbeat not initialized")
+
+        config.heartbeat.enabled = True
+        config.save()
+        heartbeat.update_config(config.heartbeat)
+        heartbeat.start()
+        return heartbeat.status()
+
+    @router.post("/heartbeat/stop")
+    async def stop_heartbeat() -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        heartbeat = state.get("heartbeat")
+        config = state.get("config")
+
+        if not heartbeat:
+            raise HTTPException(500, "Heartbeat not initialized")
+
+        config.heartbeat.enabled = False
+        config.save()
+        heartbeat.stop()
+        return heartbeat.status()
+
+    # ── Plans ────────────────────────────────────────────────
+
+    @router.get("/plans")
+    async def list_plans(conversation_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        agent = state.get("agent")
+        if not agent:
+            return []
+        return await agent.planner.list_plans(conversation_id=conversation_id, limit=limit)
+
+    @router.post("/plans")
+    async def create_plan(body: CreatePlanRequest) -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        agent = state.get("agent")
+        if not agent:
+            raise HTTPException(500, "Agent not initialized")
+
+        plan = await agent.planner.create_plan(
+            title=body.title,
+            steps=body.steps,
+            goal=body.goal,
+            conversation_id=body.conversation_id,
+        )
+        return plan
+
+    @router.get("/plans/active")
+    async def get_active_plan(conversation_id: str | None = None) -> dict[str, Any] | None:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        agent = state.get("agent")
+        if not agent:
+            return None
+        return await agent.planner.get_active_plan(conversation_id)
+
+    @router.get("/plans/{plan_id}")
+    async def get_plan(plan_id: str) -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        agent = state.get("agent")
+        if not agent:
+            raise HTTPException(500, "Agent not initialized")
+
+        plan = await agent.planner.get_plan(plan_id)
+        if not plan:
+            raise HTTPException(404, f"Plan {plan_id} not found")
+        return plan
+
+    @router.put("/plans/{plan_id}/status")
+    async def update_plan_status(plan_id: str, body: PlanStatusUpdate) -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        agent = state.get("agent")
+        if not agent:
+            raise HTTPException(500, "Agent not initialized")
+
+        plan = await agent.planner.set_plan_status(plan_id, body.status)
+        if not plan:
+            raise HTTPException(404, f"Plan {plan_id} not found")
+        return plan
+
+    @router.put("/plans/{plan_id}/steps/{step_index}")
+    async def update_plan_step(plan_id: str, step_index: int, body: UpdateStepRequest) -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        agent = state.get("agent")
+        if not agent:
+            raise HTTPException(500, "Agent not initialized")
+
+        plan = await agent.planner.update_step(plan_id, step_index, body.status, body.result)
+        if not plan:
+            raise HTTPException(404, f"Plan {plan_id} or step {step_index} not found")
+        return plan
+
+    @router.delete("/plans/{plan_id}")
+    async def delete_plan(plan_id: str) -> dict[str, str]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        agent = state.get("agent")
+        if not agent:
+            raise HTTPException(500, "Agent not initialized")
+
+        deleted = await agent.planner.delete_plan(plan_id)
+        if not deleted:
+            raise HTTPException(404, f"Plan {plan_id} not found")
+        return {"message": "Plan deleted"}
 
     return router

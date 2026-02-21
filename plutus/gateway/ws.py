@@ -74,6 +74,8 @@ async def _handle_message(ws: WebSocket, message: dict[str, Any]) -> None:
         await _handle_new_conversation(ws)
     elif msg_type == "resume_conversation":
         await _handle_resume_conversation(ws, message)
+    elif msg_type == "heartbeat_control":
+        await _handle_heartbeat_control(ws, message)
     elif msg_type == "ping":
         await ws.send_json({"type": "pong"})
     else:
@@ -86,6 +88,7 @@ async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
 
     state = get_state()
     agent = state.get("agent")
+    heartbeat = state.get("heartbeat")
 
     if not agent:
         await ws.send_json({"type": "error", "message": "Agent not initialized"})
@@ -94,6 +97,10 @@ async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
     user_text = message.get("content", "").strip()
     if not user_text:
         return
+
+    # Real user message — reset the heartbeat consecutive counter
+    if heartbeat:
+        heartbeat.reset_consecutive()
 
     # Stream agent events to the WebSocket
     async for event in agent.process_message(user_text):
@@ -154,3 +161,52 @@ async def _handle_resume_conversation(ws: WebSocket, message: dict[str, Any]) ->
                 "messages": messages,
             }
         )
+
+
+async def _handle_heartbeat_control(ws: WebSocket, message: dict[str, Any]) -> None:
+    """Start, stop, pause, or resume the heartbeat from the UI."""
+    from plutus.gateway.server import get_state
+
+    state = get_state()
+    heartbeat = state.get("heartbeat")
+    config = state.get("config")
+
+    if not heartbeat:
+        await ws.send_json({"type": "error", "message": "Heartbeat not initialized"})
+        return
+
+    action = message.get("action")
+
+    if action == "start":
+        config.heartbeat.enabled = True
+        config.save()
+        heartbeat.update_config(config.heartbeat)
+        if not heartbeat.running:
+            heartbeat.start()
+    elif action == "stop":
+        config.heartbeat.enabled = False
+        config.save()
+        heartbeat.stop()
+    elif action == "pause":
+        heartbeat.pause()
+    elif action == "resume":
+        heartbeat.resume()
+    elif action == "configure":
+        # Accept partial config updates
+        if "interval_seconds" in message:
+            config.heartbeat.interval_seconds = message["interval_seconds"]
+        if "quiet_hours_start" in message:
+            config.heartbeat.quiet_hours_start = message["quiet_hours_start"]
+        if "quiet_hours_end" in message:
+            config.heartbeat.quiet_hours_end = message["quiet_hours_end"]
+        if "max_consecutive" in message:
+            config.heartbeat.max_consecutive = message["max_consecutive"]
+        if "prompt" in message:
+            config.heartbeat.prompt = message["prompt"]
+        config.save()
+        heartbeat.update_config(config.heartbeat)
+    else:
+        await ws.send_json({"type": "error", "message": f"Unknown heartbeat action: {action}"})
+        return
+
+    await ws.send_json({"type": "heartbeat_status", **heartbeat.status()})

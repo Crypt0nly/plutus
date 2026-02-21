@@ -44,16 +44,33 @@ Key principles:
 
 When you need to perform an action, use the appropriate tool. If the action requires approval,
 the user will be prompted in the UI. Wait for their response before proceeding.
+
+## Planning
+
+For any non-trivial task (multi-step, complex, or long-running), **always create a plan first**
+using the `plan` tool before you start working. This keeps you and the user in sync:
+
+1. **Create a plan** — break the task into clear, discrete steps.
+2. **Start each step** — mark it in-progress before you begin.
+3. **Complete each step** — mark it done (with a short result summary) when finished.
+4. **If a step fails** — mark it failed with the reason, then decide whether to retry or skip.
+
+During heartbeat check-ins (automatic wake-ups), always review the current plan
+and continue from where you left off. If there's no plan and nothing to do, just
+confirm you're standing by.
+
+The user can see your plan and its progress in real time through the UI.
 """
 
 
 class ConversationManager:
     """Manages active conversations and builds message arrays for the LLM."""
 
-    def __init__(self, memory: MemoryStore, context_window: int = 20):
+    def __init__(self, memory: MemoryStore, context_window: int = 20, planner: Any = None):
         self._memory = memory
         self._context_window = context_window
         self._active_conversation_id: str | None = None
+        self._planner = planner  # PlanManager instance (optional)
 
     @property
     def conversation_id(self) -> str | None:
@@ -99,6 +116,18 @@ class ConversationManager:
     async def build_messages(self) -> list[dict[str, Any]]:
         """Build the message array for the LLM, including system prompt and context."""
         messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        # Inject the active plan so the agent always knows where it stands
+        if self._planner and self._active_conversation_id:
+            active_plan = await self._planner.get_active_plan(self._active_conversation_id)
+            if active_plan:
+                plan_text = self._planner.format_plan_for_context(active_plan)
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": f"Current execution plan:\n\n{plan_text}",
+                    }
+                )
 
         # Add relevant facts as context
         facts = await self._memory.get_facts(limit=10)
