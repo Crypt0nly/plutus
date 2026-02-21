@@ -7,6 +7,7 @@ import {
   Wrench,
   Cpu,
   Sparkles,
+  Monitor,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 
@@ -29,6 +30,7 @@ const navSections: NavSection[] = [
       { id: "tools", label: "Tools", icon: Wrench },
       { id: "workers", label: "Workers", icon: Cpu },
       { id: "tool-creator", label: "Tool Creator", icon: Sparkles, badge: "New" },
+      { id: "pc-control", label: "PC Control", icon: Monitor, badge: "New" },
     ],
   },
   {

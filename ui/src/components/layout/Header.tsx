@@ -9,6 +9,7 @@ const viewTitles: Record<string, { title: string; subtitle: string }> = {
   tools: { title: "Tools", subtitle: "Agent capabilities" },
   workers: { title: "Workers", subtitle: "Subprocess monitor" },
   "tool-creator": { title: "Tool Creator", subtitle: "Build custom tools" },
+  "pc-control": { title: "PC Control", subtitle: "Your friendly ghost on the desktop" },
 };
 
 export function Header() {

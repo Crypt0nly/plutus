@@ -104,7 +104,7 @@ class ToolRegistry:
 
 
 def create_default_registry() -> ToolRegistry:
-    """Create a registry with all built-in tools, including new subprocess-based tools."""
+    """Create a registry with all built-in tools, including subprocess and PC control tools."""
     from plutus.core.subprocess_manager import SubprocessManager
     from plutus.tools.app_manager import AppManagerTool
     from plutus.tools.browser import BrowserTool
@@ -113,6 +113,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.code_editor import CodeEditorTool
     from plutus.tools.desktop import DesktopTool
     from plutus.tools.filesystem import FilesystemTool
+    from plutus.tools.pc_control import PCControlTool
     from plutus.tools.process import ProcessTool
     from plutus.tools.shell import ShellTool
     from plutus.tools.subprocess_tool import SubprocessTool
@@ -130,7 +131,7 @@ def create_default_registry() -> ToolRegistry:
     registry.register(ProcessTool())
     registry.register(SystemInfoTool())
 
-    # New subprocess-powered tools
+    # Subprocess-powered tools
     registry.register(CodeEditorTool(subprocess_mgr))
     registry.register(CodeAnalysisTool(subprocess_mgr))
     registry.register(SubprocessTool(subprocess_mgr))
@@ -139,7 +140,11 @@ def create_default_registry() -> ToolRegistry:
     tool_creator = ToolCreatorTool(subprocess_mgr, registry)
     registry.register(tool_creator)
 
-    # Desktop/GUI tools (may not work in all environments)
+    # PC Control — the unified "friendly ghost" interface
+    # This is the PRIMARY tool for all desktop interaction
+    registry.register(PCControlTool())
+
+    # Legacy desktop/GUI tools (kept for backward compatibility)
     registry.register(BrowserTool())
     registry.register(ClipboardTool())
     registry.register(DesktopTool())

@@ -124,4 +124,9 @@ export const api = {
     request<Record<string, any>>(`/plans/${planId}`),
   deletePlan: (planId: string) =>
     request<Record<string, string>>(`/plans/${planId}`, { method: "DELETE" }),
+
+  // PC Control
+  getPCStatus: () => request<Record<string, any>>("/pc/status"),
+  getPCWorkflows: () => request<Record<string, any>>("/pc/workflows"),
+  getPCShortcuts: () => request<Record<string, any>>("/pc/shortcuts"),
 };
