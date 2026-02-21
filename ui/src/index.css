@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-800;
+  }
+
+  body {
+    @apply bg-gray-950 text-gray-100;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-plutus-600 hover:bg-plutus-700 text-white px-4 py-2 rounded-lg
+           font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-800 hover:bg-gray-700 text-gray-200 px-4 py-2 rounded-lg
+           font-medium transition-colors duration-150;
+  }
+
+  .btn-danger {
+    @apply bg-red-600/20 hover:bg-red-600/30 text-red-400 px-4 py-2 rounded-lg
+           font-medium transition-colors duration-150;
+  }
+
+  .btn-success {
+    @apply bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 px-4 py-2 rounded-lg
+           font-medium transition-colors duration-150;
+  }
+
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl p-4;
+  }
+
+  .input {
+    @apply bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100
+           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-plutus-500/50
+           focus:border-plutus-500 transition-all duration-150 w-full;
+  }
+}
+
+/* Typing animation */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typing-cursor::after {
+  content: '|';
+  animation: blink 1s step-end infinite;
+  @apply text-plutus-400 ml-0.5;
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Pulse for pending approvals */
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-gentle-pulse {
+  animation: gentle-pulse 2s ease-in-out infinite;
+}
