@@ -1,4 +1,11 @@
-"""Agent runtime — the main execution loop that coordinates LLM, tools, and guardrails."""
+"""Agent runtime — the main execution loop that coordinates LLM, tools, and guardrails.
+
+Enhanced with:
+  - Subprocess orchestration for parallel task execution
+  - Dynamic tool creation support
+  - Improved system prompt with tool awareness
+  - Better error recovery
+"""
 
 from __future__ import annotations
 
@@ -15,6 +22,58 @@ from plutus.core.planner import PlanManager
 from plutus.guardrails.engine import GuardrailEngine
 
 logger = logging.getLogger("plutus.agent")
+
+# System prompt that instructs the agent on how to use its capabilities
+SYSTEM_PROMPT = """\
+You are Plutus, an autonomous AI agent with full computer control capabilities.
+
+## Core Capabilities
+You have access to powerful tools that let you:
+1. **Execute shell commands** — Run any terminal command
+2. **Edit and create files** — Read, write, and surgically edit any file using the code_editor tool
+3. **Analyze code** — Deep AST-based analysis of Python files (functions, classes, complexity, call graphs)
+4. **Spawn subprocesses** — Run isolated worker processes for parallel task execution
+5. **Create new tools** — Write Python scripts that become new tools you can use
+6. **Manage processes** — List, monitor, and control system processes
+7. **Browse the web** — Navigate and interact with websites
+8. **Access the filesystem** — Full filesystem operations
+
+## How to Work
+- **Plan first**: For complex tasks, create a plan with clear steps before executing.
+- **Use subprocesses**: For file editing and code analysis, prefer the code_editor and code_analysis tools — they run in isolated subprocesses.
+- **Be surgical with edits**: Use the code_editor's 'edit' operation with find/replace for precise changes instead of rewriting entire files.
+- **Create tools when needed**: If you need a capability that doesn't exist, use tool_creator to write a new tool.
+- **Parallelize**: Use the subprocess tool's spawn_many to run multiple tasks simultaneously.
+- **Verify your work**: After making changes, read the file back or run tests to confirm correctness.
+
+## Tool Usage Patterns
+
+### Editing files (preferred approach):
+1. Read the file first: code_editor(operation="read", path="...")
+2. Apply surgical edits: code_editor(operation="edit", path="...", edits=[{"find": "old", "replace": "new"}])
+3. Verify: code_editor(operation="read", path="...", start_line=X, end_line=Y)
+
+### Creating new files:
+code_editor(operation="write", path="...", content="...")
+
+### Analyzing code:
+code_analysis(operation="analyze", path="...") — full analysis
+code_analysis(operation="complexity", path="...") — just complexity
+code_analysis(operation="find_functions", path="...") — list functions
+
+### Running commands:
+shell(operation="exec", command="...") — for simple commands
+subprocess(operation="spawn", worker_type="shell", command={"action": "exec", "command": "..."}) — for isolated execution
+
+### Creating custom tools:
+tool_creator(operation="create", tool_name="my_tool", description="...", code="def main(args): ...")
+
+## Guidelines
+- Always explain what you're doing and why.
+- If a tool call fails, analyze the error and try a different approach.
+- For destructive operations, confirm with the user first (unless in autonomous tier).
+- Keep responses concise but informative.
+"""
 
 # Tool definition for the built-in plan tool (handled by the agent, not the registry)
 PLAN_TOOL_DEF = ToolDefinition(
@@ -88,7 +147,7 @@ class AgentRuntime:
       1. User sends message
       2. Agent builds context (system prompt + memory + history)
       3. Agent sends to LLM with available tools
-      4. If LLM returns tool calls → check guardrails → execute or request approval
+      4. If LLM returns tool calls -> check guardrails -> execute or request approval
       5. Feed tool results back to LLM
       6. Repeat until LLM returns a final text response
     """
@@ -159,6 +218,28 @@ class AgentRuntime:
     def set_tool_registry(self, registry: Any) -> None:
         self._tool_registry = registry
 
+    def _build_system_prompt(self) -> str:
+        """Build the system prompt with tool awareness and current context."""
+        parts = [SYSTEM_PROMPT]
+
+        # Add available tools summary
+        if self._tool_registry:
+            tool_names = self._tool_registry.list_tools()
+            parts.append(f"\n## Available Tools: {', '.join(tool_names)}")
+
+        # Add tier info
+        tier = self._config.guardrails.tier
+        tier_descriptions = {
+            "observer": "You are in OBSERVER mode — read-only, no actions allowed.",
+            "assistant": "You are in ASSISTANT mode — all actions require user approval.",
+            "operator": "You are in OPERATOR mode — pre-approved actions run automatically, risky ones need approval.",
+            "autonomous": "You are in AUTONOMOUS mode — full control, no restrictions.",
+        }
+        parts.append(f"\n## Current Tier: {tier}")
+        parts.append(tier_descriptions.get(tier, ""))
+
+        return "\n".join(parts)
+
     async def process_message(self, user_message: str) -> AsyncIterator[AgentEvent]:
         """Process a user message and yield events for the UI.
 
@@ -199,6 +280,13 @@ class AgentRuntime:
         for round_num in range(max_rounds):
             messages = await self._conversation.build_messages()
 
+            # Inject system prompt
+            system_prompt = self._build_system_prompt()
+            if messages and messages[0].get("role") == "system":
+                messages[0]["content"] = system_prompt
+            else:
+                messages.insert(0, {"role": "system", "content": system_prompt})
+
             try:
                 response = await self._llm.complete(messages, tools=tool_defs or None)
             except Exception as e:
@@ -221,7 +309,6 @@ class AgentRuntime:
                 external_rounds += 1
 
             # Process tool calls — store content and tool_calls together
-            # in a single assistant message to maintain proper pairing
             tool_call_dicts = [
                 {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in response.tool_calls
@@ -297,7 +384,11 @@ class AgentRuntime:
                 )
                 await self._conversation.add_tool_result(tc.id, result_text)
 
-        yield AgentEvent("error", {"message": "Maximum tool rounds exceeded."})
+        # If we exhausted all rounds
+        yield AgentEvent(
+            "error",
+            {"message": f"Reached maximum tool rounds ({max_rounds}). Stopping."},
+        )
         yield AgentEvent("done", {})
 
     async def _execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
