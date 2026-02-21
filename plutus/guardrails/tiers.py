@@ -71,7 +71,7 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "browser": ToolPolicy(
             tool_name="browser",
             permission=ToolPermission.ALLOWED,
-            allowed_operations=["navigate", "screenshot", "extract"],
+            allowed_operations=["navigate", "screenshot", "extract", "wait"],
         ),
         "process": ToolPolicy(
             tool_name="process",
