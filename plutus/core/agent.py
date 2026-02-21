@@ -93,7 +93,7 @@ class AgentRuntime:
       6. Repeat until LLM returns a final text response
     """
 
-    MAX_TOOL_ROUNDS = 10  # prevent infinite loops
+    MAX_TOOL_ROUNDS = 25  # prevent infinite loops (plan tool calls don't count)
 
     def __init__(
         self,
@@ -191,6 +191,8 @@ class AgentRuntime:
 
         tool_defs = self._get_tool_definitions()
 
+        external_rounds = 0  # only count rounds with real (non-plan) tool calls
+
         for round_num in range(self.MAX_TOOL_ROUNDS):
             messages = await self._conversation.build_messages()
 
@@ -209,6 +211,11 @@ class AgentRuntime:
                 await self._conversation.add_assistant_message(content=response.content)
                 yield AgentEvent("done", {})
                 return
+
+            # Track whether this round has any external (non-plan) tool calls
+            has_external_call = any(tc.name != "plan" for tc in response.tool_calls)
+            if has_external_call:
+                external_rounds += 1
 
             # Process tool calls — store content and tool_calls together
             # in a single assistant message to maintain proper pairing
