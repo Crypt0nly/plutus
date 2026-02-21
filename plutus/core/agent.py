@@ -62,36 +62,64 @@ the most reliable way to interact with the computer.
   pc(operation="system_info")                          → Gets OS info
   pc(operation="active_window")                        → Gets the focused window
 
-### LAYER 2: Browser Control (for web pages — uses Playwright/CDP)
+### LAYER 2: Browser Control — SNAPSHOT + REF-BASED (Playwright)
 
-These control the browser via DOM element references, NOT pixel coordinates.
-They are reliable because they target elements by selector, text, label, or role.
+This is how you interact with ALL web pages. It uses an accessibility tree
+with numbered [ref] elements — like OpenClaw. NEVER guess selectors.
 
-  pc(operation="navigate", url="https://google.com")
-  pc(operation="browser_click", text="Sign in")                    → Click by visible text
-  pc(operation="browser_click", selector="#submit-btn")            → Click by CSS selector
-  pc(operation="browser_click", role="button", role_name="Submit") → Click by ARIA role
-  pc(operation="browser_type", text="search query", placeholder="Search...")  → Type into field by placeholder
-  pc(operation="browser_type", text="john@email.com", label="Email")          → Type into field by label
-  pc(operation="browser_type", text="hello", selector="#message-input")       → Type into field by selector
-  pc(operation="browser_press", key="Enter")                       → Press a key
-  pc(operation="fill_form", fields=[                               → Fill multiple fields
-    {"label": "Email", "value": "john@email.com"},
-    {"label": "Password", "value": "secret123"},
-  ])
-  pc(operation="select_option", label="Country", text="Germany")   → Select dropdown option
-  pc(operation="get_page")                                         → Get page text, links, buttons, inputs
-  pc(operation="get_elements", filter_type="buttons")              → Get all buttons on page
-  pc(operation="get_elements", filter_type="inputs")               → Get all input fields
-  pc(operation="get_elements", filter_type="links")                → Get all links
-  pc(operation="browser_screenshot")                               → Screenshot the browser
-  pc(operation="browser_scroll", direction="down", amount=500)     → Scroll the page
-  pc(operation="new_tab", url="https://github.com")                → Open new tab
-  pc(operation="list_tabs")                                        → List all open tabs
-  pc(operation="switch_tab", tab_id="...")                         → Switch to a tab
-  pc(operation="close_tab")                                        → Close current tab
-  pc(operation="evaluate_js", js_code="document.title")            → Run JavaScript
-  pc(operation="wait_for_text", text="Success", timeout=10000)     → Wait for text to appear
+#### The Core Loop: snapshot → ref → act → snapshot
+
+  Step 1: Navigate to the page
+    pc(operation="navigate", url="https://google.com")
+    → This automatically returns an accessibility tree snapshot
+
+  Step 2: Read the snapshot — it looks like this:
+    Page: Google — https://www.google.com
+    [1] textbox 'Search' value='' focused
+    [2] button 'Google Search'
+    [3] button 'I'm Feeling Lucky'
+    [4] link 'Gmail'
+    [5] link 'Images'
+
+  Step 3: Interact using ref numbers
+    pc(operation="type_ref", ref=1, text="weather today", press_enter=true)
+    → Types into element [1] (the search box) and presses Enter
+
+  Step 4: Get a fresh snapshot to see the result
+    pc(operation="snapshot")
+    → Returns the updated accessibility tree
+
+  Step 5: Continue interacting
+    pc(operation="click_ref", ref=7)
+    → Clicks element [7] from the new snapshot
+
+#### All Ref-Based Operations
+  pc(operation="snapshot")                                    → Get accessibility tree with [ref] numbers
+  pc(operation="click_ref", ref=5)                            → Click element [5]
+  pc(operation="click_ref", ref=5, double_click=true)         → Double-click element [5]
+  pc(operation="type_ref", ref=3, text="hello")               → Type into element [3]
+  pc(operation="type_ref", ref=3, text="query", press_enter=true)  → Type and press Enter
+  pc(operation="select_ref", ref=8, value="Germany")          → Select option in dropdown [8]
+  pc(operation="check_ref", ref=12, checked=true)             → Check/uncheck checkbox [12]
+
+#### Other Browser Operations
+  pc(operation="browser_scroll", direction="down", amount=500) → Scroll to see more elements
+  pc(operation="browser_press", key="Enter")                   → Press a key
+  pc(operation="new_tab", url="https://github.com")            → Open new tab
+  pc(operation="list_tabs")                                    → List all open tabs
+  pc(operation="switch_tab", tab_id="...")                     → Switch to a tab
+  pc(operation="close_tab")                                    → Close current tab
+  pc(operation="evaluate_js", js_code="document.title")        → Run JavaScript
+  pc(operation="wait_for_text", text="Success", timeout=10000) → Wait for text to appear
+  pc(operation="wait_for_navigation")                          → Wait for page to load
+  pc(operation="browser_screenshot")                           → Screenshot (only if you need visual)
+
+#### IMPORTANT RULES FOR BROWSER
+  - ALWAYS call snapshot() or navigate() BEFORE interacting with any page
+  - NEVER guess ref numbers — they change every time the page updates
+  - After clicking/typing, call snapshot() again to see the updated page
+  - If you can't find an element, try browser_scroll first, then snapshot again
+  - Ref numbers are ONLY valid for the most recent snapshot
 
 ### LAYER 3: Desktop Control (FALLBACK — for native apps only)
 
@@ -121,19 +149,26 @@ This works for: WhatsApp, Chrome, Firefox, VS Code, Spotify, Discord,
 Slack, Telegram, Notepad, Calculator, Terminal, File Explorer, and more.
 
 ### Web Tasks (Google, YouTube, Gmail, etc.)
-1. pc(operation="open_url", url="https://...")     → Open the site
-2. pc(operation="get_page")                        → See what's on the page
-3. pc(operation="browser_click", text="...")        → Click elements by text
-4. pc(operation="browser_type", text="...", ...)    → Type into fields
-5. pc(operation="browser_press", key="Enter")       → Submit
+1. pc(operation="navigate", url="https://...")      → Open the site (returns snapshot)
+2. Read the [ref] numbers in the snapshot
+3. pc(operation="type_ref", ref=1, text="...")      → Type into the right field
+4. pc(operation="click_ref", ref=5)                 → Click the right button
+5. pc(operation="snapshot")                          → Verify the result
 
 ### Messaging Apps (WhatsApp, Telegram, Discord, Slack)
+For WhatsApp Web (preferred — most reliable):
+1. pc(operation="navigate", url="https://web.whatsapp.com")  → Open WhatsApp Web
+2. pc(operation="snapshot")                                   → See the page elements
+3. pc(operation="click_ref", ref=N)                           → Click search/contact
+4. pc(operation="type_ref", ref=N, text="contact name")       → Search for contact
+5. pc(operation="click_ref", ref=N)                           → Click the contact
+6. pc(operation="type_ref", ref=N, text="message", press_enter=true)  → Type and send
+
+For Desktop apps (fallback):
 1. pc(operation="open_app", app_name="WhatsApp")   → Open the app
 2. Wait 2-3 seconds for it to load
-3. For WhatsApp Web: use browser operations (it's a web app)
-   For WhatsApp Desktop: use keyboard_type + keyboard_press
-4. pc(operation="keyboard_type", text="message")    → Type the message
-5. pc(operation="keyboard_press", key="enter")      → Send
+3. pc(operation="keyboard_type", text="message")    → Type the message
+4. pc(operation="keyboard_press", key="enter")      → Send
 
 ### File Operations
 1. pc(operation="open_file", file_path="path/to/file")  → Open with default app
@@ -265,8 +300,9 @@ available in all future conversations.
 4. **Use Layer 3 as last resort.** Only use mouse_click/keyboard_type when
    you're interacting with a native app that isn't a web page.
 
-5. **Get page content before clicking.** Before clicking anything in the browser,
-   use get_page or get_elements to see what's available. Don't guess.
+5. **Snapshot before interacting.** Before clicking anything in the browser,
+   ALWAYS call snapshot() to see the accessibility tree with [ref] numbers.
+   NEVER guess ref numbers — they change every time the page updates.
 
 6. **Wait after opening apps.** After open_app, wait 2-3 seconds before interacting.
    Apps need time to load.

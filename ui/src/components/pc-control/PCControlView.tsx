@@ -533,7 +533,7 @@ export default function PCControlView() {
           <div>
             <h1 className="text-2xl font-bold text-white">Computer Use</h1>
             <p className="text-white/60 text-sm">
-              Plutus sees your screen, moves the mouse, types on the keyboard, and controls your PC
+              Plutus reads the accessibility tree, interacts by element reference, and controls your PC
             </p>
           </div>
         </div>
@@ -565,15 +565,14 @@ export default function PCControlView() {
           </div>
         )}
 
-        {/* Context → See → Think → Focus → Act → Verify loop */}
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Navigate → Snapshot → Ref → Act → Verify loop */}
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
-            { step: "1", label: "Context", desc: "Check which app is active", color: "text-cyan-400" },
-            { step: "2", label: "See", desc: "Screenshot the screen", color: "text-blue-400" },
-            { step: "3", label: "Think", desc: "Find targets with OCR", color: "text-purple-400" },
-            { step: "4", label: "Focus", desc: "Switch to the right app", color: "text-amber-400" },
-            { step: "5", label: "Act", desc: "Click, type, or shortcut", color: "text-pink-400" },
-            { step: "6", label: "Verify", desc: "Screenshot to confirm", color: "text-emerald-400" },
+            { step: "1", label: "Open", desc: "Launch app or navigate to URL", color: "text-cyan-400" },
+            { step: "2", label: "Snapshot", desc: "Read the accessibility tree", color: "text-blue-400" },
+            { step: "3", label: "Find", desc: "Identify elements by [ref] number", color: "text-purple-400" },
+            { step: "4", label: "Act", desc: "Click, type, or select by ref", color: "text-pink-400" },
+            { step: "5", label: "Verify", desc: "Snapshot again to confirm", color: "text-emerald-400" },
           ].map((s) => (
             <div key={s.step} className="bg-white/5 rounded-xl p-3 border border-white/5">
               <div className={`text-lg font-bold ${s.color}`}>
@@ -691,26 +690,26 @@ export default function PCControlView() {
         </div>
       </div>
 
-      {/* ── target_app Explainer ── */}
+      {/* ── Snapshot + Ref Explainer ── */}
       <div className="bg-gradient-to-r from-cyan-900/20 to-blue-900/20 border border-cyan-500/20 rounded-xl p-5">
         <h3 className="text-white font-semibold flex items-center gap-2 mb-3">
-          <span className="text-cyan-400">🎯</span> How Context Awareness Prevents Mistakes
+          <span className="text-cyan-400">🌳</span> How Accessibility Tree Navigation Works
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-            <div className="text-red-400 text-xs font-semibold mb-2">❌ Without target_app (old way)</div>
+            <div className="text-red-400 text-xs font-semibold mb-2">❌ Old way: Screenshots + OCR</div>
             <div className="space-y-1 text-xs text-white/50 font-mono">
-              <div>pc(operation="type", text="Hello!")</div>
-              <div className="text-red-400/60">→ Types into whatever window is open</div>
-              <div className="text-red-400/60">→ Could be ChatGPT instead of WhatsApp!</div>
+              <div>Take screenshot → OCR text → guess coordinates</div>
+              <div className="text-red-400/60">→ Slow, uses many tokens</div>
+              <div className="text-red-400/60">→ Unreliable pixel clicking</div>
             </div>
           </div>
           <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-            <div className="text-emerald-400 text-xs font-semibold mb-2">✅ With target_app (new way)</div>
+            <div className="text-emerald-400 text-xs font-semibold mb-2">✅ New way: Accessibility Tree + Refs</div>
             <div className="space-y-1 text-xs text-white/50 font-mono">
-              <div>pc(operation="type", text="Hello!", target_app="WhatsApp")</div>
-              <div className="text-emerald-400/60">→ Auto-focuses WhatsApp first</div>
-              <div className="text-emerald-400/60">→ Stops if WhatsApp can't be found</div>
+              <div>snapshot() → [1] button 'Sign In' → click_ref(ref=1)</div>
+              <div className="text-emerald-400/60">→ Fast, minimal tokens</div>
+              <div className="text-emerald-400/60">→ Precise element targeting</div>
             </div>
           </div>
         </div>
@@ -1023,38 +1022,38 @@ export default function PCControlView() {
             <h3 className="text-sm font-semibold text-purple-400">What happens behind the scenes</h3>
             <div className="space-y-2 text-sm text-white/50">
               <div className="flex items-start gap-2">
-                <span className="text-cyan-400 mt-0.5">🧠</span>
+                <span className="text-cyan-400 mt-0.5">🚀</span>
                 <p>
-                  <strong className="text-white/70">Context</strong> is checked before every action
-                  — Plutus always knows which app is in the foreground.
+                  <strong className="text-white/70">OS Commands</strong> open apps instantly via native
+                  shell commands — no clicking desktop icons.
                 </p>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-blue-400 mt-0.5">🖱️</span>
+                <span className="text-blue-400 mt-0.5">🌳</span>
                 <p>
-                  <strong className="text-white/70">Mouse</strong> moves along smooth bezier curves
-                  — no teleporting. Looks natural.
+                  <strong className="text-white/70">Accessibility Tree</strong> reads every interactive
+                  element on the page with numbered [ref] identifiers.
                 </p>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-emerald-400 mt-0.5">⌨️</span>
+                <span className="text-emerald-400 mt-0.5">🎯</span>
                 <p>
-                  <strong className="text-white/70">Keyboard</strong> types at natural speed with
-                  slight randomization. Uses <code className="text-cyan-400/60">target_app</code> to ensure the right window.
+                  <strong className="text-white/70">Ref-Based Interaction</strong> clicks and types by
+                  element reference — precise, fast, no pixel guessing.
                 </p>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-purple-400 mt-0.5">🖥️</span>
+                <span className="text-purple-400 mt-0.5">🔄</span>
                 <p>
-                  <strong className="text-white/70">Screen</strong> uses OCR to read text and find
-                  UI elements — no hardcoded coordinates.
+                  <strong className="text-white/70">Snapshot Loop</strong> takes a fresh snapshot after
+                  every action to see the updated page state.
                 </p>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-amber-400 mt-0.5">🪟</span>
+                <span className="text-amber-400 mt-0.5">⌨️</span>
                 <p>
-                  <strong className="text-white/70">Windows</strong> can snap, tile, resize, and
-                  focus any application — auto-switches when needed.
+                  <strong className="text-white/70">Desktop Fallback</strong> uses keyboard/mouse only
+                  for native apps that aren't in the browser.
                 </p>
               </div>
             </div>

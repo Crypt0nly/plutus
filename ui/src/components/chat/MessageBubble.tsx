@@ -49,18 +49,6 @@ const toolIconMap: Record<string, React.ElementType> = {
   filesystem: FileCode,
   browser: Search,
   pc: Monitor,
-  // Computer use actions
-  "computer.screenshot": Camera,
-  "computer.click": MousePointer,
-  "computer.left_click": MousePointer,
-  "computer.right_click": Hand,
-  "computer.double_click": MousePointer,
-  "computer.triple_click": MousePointer,
-  "computer.type": Keyboard,
-  "computer.key": Keyboard,
-  "computer.scroll": Scroll,
-  "computer.move": Move,
-  "computer.wait": Timer,
 };
 
 const toolColorMap: Record<string, string> = {
@@ -71,23 +59,12 @@ const toolColorMap: Record<string, string> = {
   shell: "text-amber-400 bg-amber-500/10 border-amber-500/20",
   filesystem: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
   pc: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  // Computer use actions — all use a consistent blue theme
-  "computer.screenshot": "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  "computer.click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  "computer.left_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  "computer.right_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  "computer.double_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  "computer.triple_click": "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  "computer.type": "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-  "computer.key": "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-  "computer.scroll": "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  "computer.move": "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
-  "computer.wait": "text-gray-400 bg-gray-500/10 border-gray-500/20",
 };
 
 // ── Friendly operation labels ───────────────────────────────
 
 const operationLabels: Record<string, string> = {
+  // File operations
   read: "Reading file",
   write: "Writing file",
   edit: "Editing file",
@@ -100,6 +77,7 @@ const operationLabels: Record<string, string> = {
   diff: "Comparing files",
   list: "Listing directory",
   mkdir: "Creating directory",
+  // Code analysis
   analyze: "Analyzing code",
   find_functions: "Finding functions",
   find_classes: "Finding classes",
@@ -109,11 +87,49 @@ const operationLabels: Record<string, string> = {
   call_graph: "Building call graph",
   find_todos: "Finding TODOs",
   symbols: "Listing symbols",
+  // Subprocess
   spawn: "Running subprocess",
   spawn_many: "Running parallel tasks",
   create: "Creating tool",
   validate: "Validating tool",
   run: "Running tool",
+  // PC Control — OS
+  open_app: "Opening app",
+  close_app: "Closing app",
+  open_url: "Opening URL",
+  shell_exec: "Running command",
+  list_processes: "Listing processes",
+  system_info: "Getting system info",
+  // PC Control — Browser (accessibility tree)
+  snapshot: "Reading page elements",
+  click_ref: "Clicking element",
+  type_ref: "Typing into element",
+  select_ref: "Selecting option",
+  check_ref: "Toggling checkbox",
+  hover_ref: "Hovering element",
+  navigate: "Navigating to URL",
+  browser_back: "Going back",
+  browser_forward: "Going forward",
+  browser_refresh: "Refreshing page",
+  new_tab: "Opening new tab",
+  close_tab: "Closing tab",
+  switch_tab: "Switching tab",
+  list_tabs: "Listing tabs",
+  page_content: "Reading page content",
+  scroll_page: "Scrolling page",
+  // PC Control — Desktop fallback
+  keyboard_type: "Typing text",
+  keyboard_press: "Pressing key",
+  keyboard_shortcut: "Using shortcut",
+  mouse_click: "Clicking",
+  mouse_move: "Moving mouse",
+  take_screenshot: "Taking screenshot",
+  // Skills
+  run_skill: "Running skill",
+  list_skills: "Listing skills",
+  create_skill: "Creating skill",
+  update_skill: "Updating skill",
+  delete_skill: "Deleting skill",
 };
 
 // ── Tool Call Card ──────────────────────────────────────────
@@ -135,47 +151,38 @@ function ToolCallCard({
   const operation = args.operation as string | undefined;
   const action = args.action as string | undefined;
 
-  // For computer use, show the action; for standard tools, show the operation
   let friendlyLabel: string;
-  if (name.startsWith("computer.")) {
-    const cuAction = name.replace("computer.", "");
-    const cuLabels: Record<string, string> = {
-      screenshot: "Taking screenshot",
-      click: "Clicking",
-      left_click: "Clicking",
-      right_click: "Right-clicking",
-      double_click: "Double-clicking",
-      triple_click: "Triple-clicking",
-      type: "Typing",
-      key: "Pressing key",
-      scroll: "Scrolling",
-      move: "Moving cursor",
-      wait: "Waiting",
-    };
-    friendlyLabel = cuLabels[cuAction] || cuAction;
-  } else {
-    friendlyLabel = operation
-      ? operationLabels[operation] || operation
-      : action
-        ? operationLabels[action] || action
-        : name.replace(/_/g, " ");
-  }
+  friendlyLabel = operation
+    ? operationLabels[operation] || operation.replace(/_/g, " ")
+    : action
+      ? operationLabels[action] || action.replace(/_/g, " ")
+      : name.replace(/_/g, " ");
 
   // Extract key info for preview
   const path = (args.path || args.file_path || args.directory || "") as string;
   const command = (args.command || "") as string;
-  const text = (args.text || "") as string;
-  const coordinate = args.coordinate as number[] | undefined;
+  const text = (args.text || args.value || "") as string;
+  const ref = args.ref as number | undefined;
+  const url = (args.url || "") as string;
+  const appName = (args.app_name || "") as string;
+  const skillName = (args.skill_name || "") as string;
 
   let preview = "";
-  if (path) {
+  if (ref !== undefined) {
+    preview = `[ref=${ref}]`;
+    if (text) preview += ` "${text.slice(0, 30)}${text.length > 30 ? "..." : ""}"`;
+  } else if (url) {
+    preview = url.length > 50 ? url.slice(0, 47) + "..." : url;
+  } else if (appName) {
+    preview = appName;
+  } else if (skillName) {
+    preview = skillName;
+  } else if (path) {
     preview = path.length > 50 ? "..." + path.slice(-47) : path;
   } else if (command) {
     preview = `$ ${command.slice(0, 50)}`;
-  } else if (text && name.startsWith("computer.")) {
+  } else if (text) {
     preview = text.length > 40 ? `"${text.slice(0, 37)}..."` : `"${text}"`;
-  } else if (coordinate) {
-    preview = `(${coordinate[0]}, ${coordinate[1]})`;
   }
 
   return (
@@ -268,6 +275,89 @@ function ScreenshotDisplay({ base64 }: { base64: string }) {
     </div>
   );
 }
+// ── Accessibility Tree Snapshot Display ───────────────────────────
+
+function SnapshotDisplay({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const lines = content.split("\n");
+  const previewLines = lines.slice(0, 15);
+  const hasMore = lines.length > 15;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const renderLine = (line: string, i: number) => {
+    // Highlight [ref=N] markers
+    const refMatch = line.match(/\[ref=(\d+)\]/);
+    const indent = line.match(/^(\s*)/)?.[1]?.length || 0;
+
+    // Determine element type for coloring
+    let typeColor = "text-gray-400";
+    if (line.includes("button")) typeColor = "text-purple-400";
+    else if (line.includes("link")) typeColor = "text-blue-400";
+    else if (line.includes("textbox") || line.includes("input") || line.includes("textarea")) typeColor = "text-emerald-400";
+    else if (line.includes("heading")) typeColor = "text-amber-400";
+    else if (line.includes("img") || line.includes("image")) typeColor = "text-pink-400";
+    else if (line.includes("checkbox") || line.includes("radio")) typeColor = "text-cyan-400";
+    else if (line.includes("select") || line.includes("combobox")) typeColor = "text-orange-400";
+
+    if (refMatch) {
+      const refNum = refMatch[1];
+      const beforeRef = line.slice(0, line.indexOf("[ref="));
+      const afterRef = line.slice(line.indexOf("]") + 1);
+
+      return (
+        <div key={i} className={`${typeColor} whitespace-pre hover:bg-white/5 px-1 rounded`} style={{ paddingLeft: `${indent * 8 + 4}px` }}>
+          {beforeRef.trim()}
+          <span className="bg-blue-500/20 text-blue-300 px-1 rounded font-bold text-[10px] mx-1">
+            ref={refNum}
+          </span>
+          {afterRef}
+        </div>
+      );
+    }
+
+    return (
+      <div key={i} className={`${typeColor} whitespace-pre px-1`} style={{ paddingLeft: `${indent * 8 + 4}px` }}>
+        {line.trim()}
+      </div>
+    );
+  };
+
+  const displayLines = expanded ? lines : previewLines;
+
+  return (
+    <div className="bg-gray-900 border border-blue-500/20 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-blue-500/10 border-b border-blue-800">
+        <div className="flex items-center gap-2">
+          <span className="text-blue-400 text-sm">🌳</span>
+          <span className="text-[10px] font-medium text-blue-400">Accessibility Tree</span>
+          <span className="text-[10px] text-gray-500">{lines.length} elements</span>
+        </div>
+        <button onClick={handleCopy} className="text-gray-500 hover:text-gray-300">
+          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
+      <div className="py-2 text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto">
+        {displayLines.map((line, i) => renderLine(line, i))}
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full px-3 py-1.5 text-[10px] text-blue-400 hover:text-blue-300 bg-blue-500/5 border-t border-blue-800"
+        >
+          {expanded ? "Show less" : `Show all ${lines.length} elements`}
+        </button>
+      )}
+    </div>
+  );
+}
 
 // ── Tool Result Card ────────────────────────────────────────
 
@@ -279,6 +369,12 @@ function ToolResultContent({ content }: { content: string }) {
   if (content.startsWith("__SCREENSHOT__:")) {
     const base64 = content.replace("__SCREENSHOT__:", "");
     return <ScreenshotDisplay base64={base64} />;
+  }
+
+  // Check if this is an accessibility tree snapshot
+  const isSnapshot = content.includes("[ref=") && (content.includes("button") || content.includes("link") || content.includes("textbox") || content.includes("heading"));
+  if (isSnapshot) {
+    return <SnapshotDisplay content={content} />;
   }
 
   const isLong = content.length > 300;
