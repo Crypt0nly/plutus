@@ -743,6 +743,38 @@ def create_router() -> APIRouter:
 
     # ── PC Control ────────────────────────────────────────────
 
+    @router.get("/pc/context")
+    async def get_pc_context() -> dict[str, Any]:
+        """Get the current PC context — active app, window, mouse position."""
+        try:
+            from plutus.pc.context import get_context_engine
+            ctx_engine = get_context_engine()
+            ctx = await ctx_engine.get_context(force_refresh=True)
+            return {
+                "active_app": ctx.active_app_name,
+                "active_window": ctx.active_window_title,
+                "category": ctx.active_app_category,
+                "pid": ctx.active_window_pid,
+                "browser_tab": ctx.active_browser_tab,
+                "document": ctx.active_document,
+                "mouse": {"x": ctx.mouse_x, "y": ctx.mouse_y},
+                "summary": ctx.summary(),
+                "action_count": len(ctx_engine._action_log),
+                "recent_actions": [
+                    {"action": a["action"], "target_app": a.get("target_app"), "timestamp": a["timestamp"]}
+                    for a in ctx_engine._action_log[-10:]
+                ],
+            }
+        except Exception as e:
+            return {
+                "active_app": "unknown",
+                "active_window": "unknown",
+                "category": "unknown",
+                "mouse": {"x": 0, "y": 0},
+                "summary": f"Context unavailable: {e}",
+                "error": str(e),
+            }
+
     @router.get("/pc/status")
     async def get_pc_status() -> dict[str, Any]:
         """Get the PC control system status and capabilities."""
@@ -758,9 +790,30 @@ def create_router() -> APIRouter:
         if not pc_tool:
             return {"available": False}
 
+        # Get current context
+        context_info = {}
+        try:
+            from plutus.pc.context import get_context_engine
+            ctx_engine = get_context_engine()
+            ctx = await ctx_engine.get_context()
+            context_info = {
+                "active_app": ctx.active_app_name,
+                "active_window": ctx.active_window_title,
+                "category": ctx.active_app_category,
+                "mouse": {"x": ctx.mouse_x, "y": ctx.mouse_y},
+            }
+        except Exception:
+            context_info = {"active_app": "unknown", "active_window": "unknown"}
+
         return {
             "available": True,
+            "context": context_info,
             "capabilities": {
+                "context": {
+                    "label": "Context Awareness",
+                    "description": "Always knows which app/window is active. Prevents typing into the wrong window.",
+                    "operations": ["get_context", "active_window"],
+                },
                 "mouse": {
                     "label": "Mouse Control",
                     "description": "Smooth human-like mouse movement, clicking, dragging, scrolling",

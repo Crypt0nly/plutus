@@ -1,19 +1,24 @@
-"""PC Control Tool — the unified interface for all machine interaction.
+"""PC Control Tool — context-aware unified interface for all machine interaction.
 
 This is the main LLM-facing tool that gives the AI "friendly ghost" control
-over the entire PC. It wraps mouse, keyboard, screen, windows, and workflow
-into a single tool with clear, intuitive operations.
+over the entire PC. Every action is wrapped with context awareness:
 
-The AI calls this tool to interact with the machine just like a human would:
-move the mouse, click buttons, type text, read the screen, manage windows,
-and run multi-step workflows.
+  1. Before any write action (click, type, etc.), Plutus checks which window
+     is active and reports it to the LLM.
+  2. If a `target_app` is specified, Plutus auto-focuses that app first.
+  3. Every result includes `_context` with the current active app/window,
+     so the LLM always knows exactly where it is.
+
+This prevents the #1 problem with computer-use agents: typing into the wrong window.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
+from plutus.pc.context import ContextEngine, ActionGuard, get_context_engine
 from plutus.pc.keyboard import KeyboardController
 from plutus.pc.mouse import MouseController
 from plutus.pc.screen import ScreenReader, ScreenRegion
@@ -21,9 +26,18 @@ from plutus.pc.windows import WindowManager
 from plutus.pc.workflow import WorkflowEngine, WorkflowStep, Workflow
 from plutus.tools.base import Tool
 
+logger = logging.getLogger("plutus.pc.control")
+
 
 class PCControlTool(Tool):
-    """Unified PC control — mouse, keyboard, screen, windows, workflows."""
+    """Context-aware PC control — mouse, keyboard, screen, windows, workflows.
+
+    Every action is guarded by the ContextEngine:
+    - Write actions (click, type, etc.) refresh context first
+    - If target_app is set, auto-focuses the correct window
+    - Every result includes _context with active app/window info
+    - Action history is logged for debugging
+    """
 
     def __init__(self):
         self._mouse = MouseController("normal")
@@ -33,6 +47,9 @@ class PCControlTool(Tool):
         self._workflow = WorkflowEngine(
             self._mouse, self._keyboard, self._screen, self._windows
         )
+        # Context awareness
+        self._ctx = get_context_engine()
+        self._guard = ActionGuard(self._ctx)
 
     @property
     def name(self) -> str:
@@ -44,22 +61,29 @@ class PCControlTool(Tool):
             "Control the PC like a friendly ghost — move the mouse smoothly, click, "
             "type naturally, read the screen, manage windows, and run workflows. "
             "This is your primary tool for interacting with the desktop.\n\n"
+            "CONTEXT AWARENESS: Every result includes `_context` telling you which "
+            "app/window is currently active. Use `target_app` parameter to auto-focus "
+            "the correct app before acting (e.g., target_app='WhatsApp' ensures you "
+            "type into WhatsApp, not whatever else is open).\n\n"
+            "NEW: `get_context` operation — check which app/window is active right now.\n\n"
             "MOUSE operations: move, click, double_click, right_click, drag, scroll, hover\n"
             "KEYBOARD operations: type, press, hotkey, shortcut, key_down, key_up\n"
             "SCREEN operations: screenshot, read_screen, find_text, find_elements, "
             "get_pixel_color, find_color, wait_for_text, wait_for_change, screen_info\n"
-            "WINDOW operations: list_windows, find_window, focus, close, minimize, maximize, "
+            "WINDOW operations: list_windows, find_window, focus, close_window, minimize, maximize, "
             "move_window, resize, snap_left, snap_right, snap_top, snap_bottom, snap_quarter, "
-            "tile, active_window\n"
+            "tile, active_window, get_context\n"
             "WORKFLOW operations: run_workflow, save_workflow, list_workflows, "
             "list_templates, get_template, delete_workflow\n"
-            "SHORTCUT operations: list_shortcuts — shows all available keyboard shortcuts\n\n"
-            "Tips:\n"
+            "SHORTCUT operations: list_shortcuts\n\n"
+            "IMPORTANT TIPS:\n"
+            "- ALWAYS use `target_app` when clicking/typing into a specific app\n"
+            "  e.g., pc(operation='type', text='Hello', target_app='WhatsApp')\n"
+            "- Use `get_context` to check which app is active before acting\n"
+            "- Use `focus` to switch to a specific app window\n"
+            "- Every result has `_context.active_app` so you always know where you are\n"
             "- Use 'screenshot' + 'find_text' to see what's on screen then click it\n"
-            "- Use 'shortcut' with names like 'copy', 'paste', 'save', 'new_tab' for cross-platform combos\n"
-            "- Use 'snap_left'/'snap_right' to arrange windows side by side\n"
-            "- Use 'tile' to arrange multiple windows in a grid\n"
-            "- Use 'wait_for_text' to wait for loading screens or dialogs"
+            "- Use 'shortcut' with names like 'copy', 'paste', 'save', 'new_tab'"
         )
 
     @property
@@ -70,6 +94,8 @@ class PCControlTool(Tool):
                 "operation": {
                     "type": "string",
                     "enum": [
+                        # Context
+                        "get_context",
                         # Mouse
                         "move", "click", "double_click", "right_click", "drag", "scroll", "hover",
                         # Keyboard
@@ -88,6 +114,15 @@ class PCControlTool(Tool):
                         "list_shortcuts",
                     ],
                     "description": "The PC operation to perform",
+                },
+                "target_app": {
+                    "type": "string",
+                    "description": (
+                        "IMPORTANT: The app/window that this action targets. "
+                        "If set, Plutus will auto-focus this app before acting. "
+                        "Use this to prevent typing/clicking into the wrong window. "
+                        "Examples: 'WhatsApp', 'Chrome', 'VS Code', 'Notepad', 'Spotify'"
+                    ),
                 },
                 "x": {"type": "integer", "description": "X coordinate (mouse/screen operations)"},
                 "y": {"type": "integer", "description": "Y coordinate (mouse/screen operations)"},
@@ -150,10 +185,47 @@ class PCControlTool(Tool):
 
     async def execute(self, **kwargs: Any) -> str:
         op = kwargs.get("operation", "")
+        target_app = kwargs.get("target_app")
 
         try:
+            # ─── Pre-action context check ───
+            # For write operations, verify we're in the right window
+            guard_result = await self._guard.check_before_action(
+                operation=op,
+                params=kwargs,
+                target_app=target_app,
+            )
+
+            if not guard_result["proceed"]:
+                # Context check failed — wrong window and couldn't focus
+                warning = guard_result.get("warning", "Context check failed")
+                error_result = {
+                    "error": warning,
+                    "operation": op,
+                    "hint": (
+                        "The target app could not be focused. Try using "
+                        "pc(operation='focus', query='AppName') first, or "
+                        "pc(operation='list_windows') to see what's available."
+                    ),
+                }
+                return json.dumps(self._ctx.enrich_result(error_result, op), default=str)
+
+            # If focus was changed, log it
+            if guard_result.get("focus_result") and not guard_result["focus_result"].get("already_active"):
+                logger.info(
+                    f"Auto-focused {target_app} before {op}: "
+                    f"{guard_result['focus_result'].get('app')} - {guard_result['focus_result'].get('title')}"
+                )
+
+            # ─── Context Query ───
+            if op == "get_context":
+                ctx = await self._ctx.get_context(force_refresh=True)
+                result = ctx.to_dict()
+                result["summary"] = ctx.summary()
+                return json.dumps(result, default=str)
+
             # ─── Mouse ───
-            if op == "move":
+            elif op == "move":
                 result = await self._mouse.move_to(
                     kwargs.get("x", 0), kwargs.get("y", 0),
                     speed=kwargs.get("speed"),
@@ -296,14 +368,22 @@ class PCControlTool(Tool):
             elif op == "tile":
                 result = await self._windows.tile_windows(kwargs.get("queries", []))
             elif op == "active_window":
-                result = await self._windows.get_active_window()
+                # Enhanced: return full context, not just window info
+                ctx = await self._ctx.get_context(force_refresh=True)
+                result = {
+                    "title": ctx.active_window_title,
+                    "app": ctx.active_app_name,
+                    "pid": ctx.active_window_pid,
+                    "category": ctx.active_app_category,
+                    "browser_tab": ctx.active_browser_tab or None,
+                    "document": ctx.active_document or None,
+                }
 
             # ─── Workflow ───
             elif op == "run_workflow":
                 name = kwargs.get("workflow_name", "")
                 wf = self._workflow.load(name)
                 if not wf:
-                    # Check templates
                     wf = self._workflow.get_template(name)
                 if not wf:
                     return json.dumps({"error": f"Workflow not found: {name}"})
@@ -346,10 +426,20 @@ class PCControlTool(Tool):
             else:
                 result = {"error": f"Unknown operation: {op}"}
 
+            # ─── Post-action: enrich result with context ───
+            if isinstance(result, dict):
+                result = await self._guard.post_action(op, kwargs, result)
+
             return json.dumps(result, default=str)
 
         except Exception as e:
-            return json.dumps({"error": str(e), "operation": op})
+            error_result = {"error": str(e), "operation": op}
+            # Still try to enrich with context even on error
+            try:
+                error_result = self._ctx.enrich_result(error_result, op)
+            except Exception:
+                pass
+            return json.dumps(error_result, default=str)
 
     def _parse_region(self, region_data: dict | None) -> ScreenRegion | None:
         """Parse a region dict into a ScreenRegion."""

@@ -127,6 +127,7 @@ export const api = {
 
   // PC Control
   getPCStatus: () => request<Record<string, any>>("/pc/status"),
+  getPCContext: () => request<Record<string, any>>("/pc/context"),
   getPCWorkflows: () => request<Record<string, any>>("/pc/workflows"),
   getPCShortcuts: () => request<Record<string, any>>("/pc/shortcuts"),
 };

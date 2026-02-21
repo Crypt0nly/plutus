@@ -26,7 +26,21 @@ interface SavedWorkflow {
   tags?: string[];
 }
 
+interface PCContext {
+  active_app: string;
+  active_window: string;
+  category: string;
+  pid?: number;
+  browser_tab?: string;
+  document?: string;
+  mouse: { x: number; y: number };
+  summary: string;
+  action_count?: number;
+  recent_actions?: { action: string; target_app?: string; timestamp: string }[];
+}
+
 const CAPABILITY_ICONS: Record<string, string> = {
+  context: "🧠",
   mouse: "🖱️",
   keyboard: "⌨️",
   screen: "🖥️",
@@ -35,6 +49,7 @@ const CAPABILITY_ICONS: Record<string, string> = {
 };
 
 const CAPABILITY_COLORS: Record<string, string> = {
+  context: "from-cyan-500/20 to-cyan-600/10 border-cyan-500/30",
   mouse: "from-blue-500/20 to-blue-600/10 border-blue-500/30",
   keyboard: "from-emerald-500/20 to-emerald-600/10 border-emerald-500/30",
   screen: "from-purple-500/20 to-purple-600/10 border-purple-500/30",
@@ -42,15 +57,31 @@ const CAPABILITY_COLORS: Record<string, string> = {
   workflows: "from-pink-500/20 to-pink-600/10 border-pink-500/30",
 };
 
+const CATEGORY_ICONS: Record<string, string> = {
+  browser: "🌐",
+  editor: "📝",
+  terminal: "💻",
+  messenger: "💬",
+  email: "📧",
+  media: "🎵",
+  office: "📄",
+  file_manager: "📁",
+  system: "⚙️",
+  game: "🎮",
+  unknown: "🔲",
+};
+
 const OP_DESCRIPTIONS: Record<string, string> = {
+  get_context: "Check which app/window is active right now",
+  active_window: "Get detailed info about the focused window",
   move: "Move cursor smoothly to a position",
-  click: "Click at a position",
+  click: "Click at a position (use target_app!)",
   double_click: "Double-click at a position",
   right_click: "Right-click for context menu",
   drag: "Drag from one point to another",
   scroll: "Scroll up or down",
   hover: "Hover to trigger tooltips",
-  type: "Type text naturally",
+  type: "Type text naturally (use target_app!)",
   press: "Press a single key",
   hotkey: "Press a key combination",
   shortcut: "Use a named shortcut (e.g. copy, paste)",
@@ -80,16 +111,12 @@ const OP_DESCRIPTIONS: Record<string, string> = {
   snap_bottom: "Snap window to bottom half",
   snap_quarter: "Snap window to a quarter",
   tile: "Tile multiple windows",
-  active_window: "Get the focused window",
   run_workflow: "Run a saved workflow",
   save_workflow: "Save a new workflow",
   list_workflows: "List all workflows",
   list_templates: "List workflow templates",
   get_template: "Get a template's details",
   delete_workflow: "Delete a saved workflow",
-  smart_click: "Find text on screen and click it",
-  smart_click_near: "Click near a text label",
-  type_into: "Find a field by label and type into it",
 };
 
 export default function PCControlView() {
@@ -97,16 +124,19 @@ export default function PCControlView() {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [workflows, setWorkflows] = useState<SavedWorkflow[]>([]);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [context, setContext] = useState<PCContext | null>(null);
   const [available, setAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expandedCap, setExpandedCap] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutSearch, setShortcutSearch] = useState("");
+  const [contextLive, setContextLive] = useState(true);
 
+  // Fetch main data once
   const fetchData = useCallback(async () => {
     try {
       const [statusRes, shortcutsRes, workflowsRes] = await Promise.all([
-        api.getPCStatus().catch(() => ({ available: false, capabilities: {} })),
+        api.getPCStatus().catch(() => ({ available: false, capabilities: {}, context: null })),
         api.getPCShortcuts().catch(() => ({ shortcuts: [] })),
         api.getPCWorkflows().catch(() => ({ workflows: [], templates: [] })),
       ]);
@@ -114,12 +144,16 @@ export default function PCControlView() {
       setAvailable(statusRes.available ?? false);
       setCapabilities(statusRes.capabilities ?? {});
 
-      // Defensive: ensure shortcuts is always an array of objects
+      // Set initial context from status
+      if (statusRes.context) {
+        setContext(prev => prev || { ...statusRes.context, summary: "", mouse: statusRes.context.mouse || { x: 0, y: 0 } });
+      }
+
+      // Defensive: ensure shortcuts is always an array
       const rawShortcuts = shortcutsRes.shortcuts;
       if (Array.isArray(rawShortcuts)) {
         setShortcuts(rawShortcuts);
       } else if (rawShortcuts && typeof rawShortcuts === "object") {
-        // Convert dict {name: keys} to array [{name, keys, description}]
         setShortcuts(
           Object.entries(rawShortcuts).map(([name, keys]) => ({
             name,
@@ -131,7 +165,6 @@ export default function PCControlView() {
         setShortcuts([]);
       }
 
-      // Defensive: ensure workflows and templates are arrays
       setWorkflows(Array.isArray(workflowsRes.workflows) ? workflowsRes.workflows : []);
       setTemplates(Array.isArray(workflowsRes.templates) ? workflowsRes.templates : []);
     } catch {
@@ -141,9 +174,29 @@ export default function PCControlView() {
     }
   }, []);
 
+  // Fetch live context
+  const fetchContext = useCallback(async () => {
+    try {
+      const res = await api.getPCContext();
+      if (res && res.active_app) {
+        setContext(res as PCContext);
+      }
+    } catch {
+      // Context unavailable — that's fine
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Poll context every 3 seconds when live mode is on
+  useEffect(() => {
+    if (!contextLive) return;
+    fetchContext();
+    const interval = setInterval(fetchContext, 3000);
+    return () => clearInterval(interval);
+  }, [contextLive, fetchContext]);
 
   const filteredShortcuts = Array.isArray(shortcuts)
     ? shortcuts.filter(
@@ -165,7 +218,134 @@ export default function PCControlView() {
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-6">
-      {/* Hero Section */}
+      {/* ── Live Context Banner ── */}
+      <div className="bg-gradient-to-r from-cyan-900/40 via-blue-900/30 to-purple-900/30 border border-cyan-500/30 rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg">
+              🧠
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                Context Awareness
+                {contextLive && (
+                  <span className="flex items-center gap-1.5 text-xs font-normal">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="text-cyan-400">Live</span>
+                  </span>
+                )}
+              </h2>
+              <p className="text-white/40 text-xs">
+                Plutus always knows which app and window is active before acting
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setContextLive(!contextLive)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              contextLive
+                ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
+                : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+            }`}
+          >
+            {contextLive ? "⏸ Pause" : "▶ Resume"}
+          </button>
+        </div>
+
+        {context ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Active App */}
+            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+              <div className="text-white/40 text-xs mb-1">Active App</div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">
+                  {CATEGORY_ICONS[context.category] || CATEGORY_ICONS.unknown}
+                </span>
+                <div>
+                  <div className="text-white font-semibold text-sm">
+                    {context.active_app || "Unknown"}
+                  </div>
+                  <div className="text-white/30 text-xs capitalize">
+                    {context.category || "unknown"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Active Window */}
+            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+              <div className="text-white/40 text-xs mb-1">Window Title</div>
+              <div className="text-white text-sm font-medium truncate">
+                {context.active_window || "Unknown"}
+              </div>
+              {context.browser_tab && (
+                <div className="text-blue-400/60 text-xs mt-1 truncate">
+                  Tab: {context.browser_tab}
+                </div>
+              )}
+              {context.document && (
+                <div className="text-emerald-400/60 text-xs mt-1 truncate">
+                  Doc: {context.document}
+                </div>
+              )}
+            </div>
+
+            {/* Mouse Position + Actions */}
+            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+              <div className="text-white/40 text-xs mb-1">Mouse & Actions</div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-white text-sm font-mono">
+                    ({context.mouse?.x || 0}, {context.mouse?.y || 0})
+                  </div>
+                  <div className="text-white/30 text-xs">cursor position</div>
+                </div>
+                {context.action_count !== undefined && (
+                  <div className="text-right">
+                    <div className="text-white text-sm font-semibold">
+                      {context.action_count}
+                    </div>
+                    <div className="text-white/30 text-xs">actions logged</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white/5 rounded-xl p-4 border border-white/5 text-center">
+            <p className="text-white/40 text-sm">
+              Context will appear once Plutus starts interacting with the computer.
+            </p>
+            <p className="text-white/25 text-xs mt-1">
+              The context engine tracks which app is active, preventing actions on the wrong window.
+            </p>
+          </div>
+        )}
+
+        {/* Recent Actions */}
+        {context?.recent_actions && context.recent_actions.length > 0 && (
+          <div className="mt-3 bg-white/5 rounded-xl p-3 border border-white/5">
+            <div className="text-white/40 text-xs mb-2">Recent Actions</div>
+            <div className="space-y-1">
+              {context.recent_actions.slice(-5).reverse().map((a, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className="text-cyan-400/60 font-mono w-16 text-right">
+                    {new Date(a.timestamp).toLocaleTimeString()}
+                  </span>
+                  <code className="text-white/70 bg-white/5 px-1.5 py-0.5 rounded">
+                    {a.action}
+                  </code>
+                  {a.target_app && (
+                    <span className="text-emerald-400/60">→ {a.target_app}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Hero Section ── */}
       <div className="bg-gradient-to-r from-blue-600/20 via-purple-600/15 to-pink-600/20 border border-white/10 rounded-2xl p-8">
         <div className="flex items-center gap-4 mb-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl shadow-lg">
@@ -206,13 +386,15 @@ export default function PCControlView() {
           </div>
         )}
 
-        {/* See → Think → Act → Verify loop */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-3">
+        {/* Context → See → Think → Focus → Act → Verify loop */}
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { step: "1", label: "See", desc: "Screenshot to see the screen", color: "text-blue-400" },
-            { step: "2", label: "Think", desc: "Find buttons/text with OCR", color: "text-purple-400" },
-            { step: "3", label: "Act", desc: "Click, type, or use shortcuts", color: "text-pink-400" },
-            { step: "4", label: "Verify", desc: "Screenshot again to confirm", color: "text-emerald-400" },
+            { step: "1", label: "Context", desc: "Check which app is active", color: "text-cyan-400" },
+            { step: "2", label: "See", desc: "Screenshot the screen", color: "text-blue-400" },
+            { step: "3", label: "Think", desc: "Find targets with OCR", color: "text-purple-400" },
+            { step: "4", label: "Focus", desc: "Switch to the right app", color: "text-amber-400" },
+            { step: "5", label: "Act", desc: "Click, type, or shortcut", color: "text-pink-400" },
+            { step: "6", label: "Verify", desc: "Screenshot to confirm", color: "text-emerald-400" },
           ].map((s) => (
             <div key={s.step} className="bg-white/5 rounded-xl p-3 border border-white/5">
               <div className={`text-lg font-bold ${s.color}`}>
@@ -224,7 +406,7 @@ export default function PCControlView() {
         </div>
       </div>
 
-      {/* Quick Start — go to chat */}
+      {/* ── Quick Start ── */}
       <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/20 rounded-xl p-5">
         <div className="flex items-center justify-between">
           <div>
@@ -242,7 +424,7 @@ export default function PCControlView() {
         </div>
       </div>
 
-      {/* Capability Cards */}
+      {/* ── Capability Cards ── */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-white/90">What Plutus Can Do</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -301,10 +483,11 @@ export default function PCControlView() {
             </div>
           ))}
 
-          {/* If no capabilities loaded, show static cards */}
+          {/* Fallback static cards */}
           {Object.keys(capabilities).length === 0 && (
             <>
               {[
+                { icon: "🧠", label: "Context Awareness", desc: "Always knows which app is active. Prevents typing into wrong windows.", color: CAPABILITY_COLORS.context },
                 { icon: "🖱️", label: "Mouse Control", desc: "Smooth bezier-curve movement, clicking, dragging, scrolling", color: CAPABILITY_COLORS.mouse },
                 { icon: "⌨️", label: "Keyboard Control", desc: "Natural typing, 37 shortcuts, hotkeys, cross-platform", color: CAPABILITY_COLORS.keyboard },
                 { icon: "🖥️", label: "Screen Reading", desc: "Screenshots, OCR text reading, element detection", color: CAPABILITY_COLORS.screen },
@@ -329,7 +512,32 @@ export default function PCControlView() {
         </div>
       </div>
 
-      {/* Keyboard Shortcuts Section */}
+      {/* ── target_app Explainer ── */}
+      <div className="bg-gradient-to-r from-cyan-900/20 to-blue-900/20 border border-cyan-500/20 rounded-xl p-5">
+        <h3 className="text-white font-semibold flex items-center gap-2 mb-3">
+          <span className="text-cyan-400">🎯</span> How Context Awareness Prevents Mistakes
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+            <div className="text-red-400 text-xs font-semibold mb-2">❌ Without target_app (old way)</div>
+            <div className="space-y-1 text-xs text-white/50 font-mono">
+              <div>pc(operation="type", text="Hello!")</div>
+              <div className="text-red-400/60">→ Types into whatever window is open</div>
+              <div className="text-red-400/60">→ Could be ChatGPT instead of WhatsApp!</div>
+            </div>
+          </div>
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+            <div className="text-emerald-400 text-xs font-semibold mb-2">✅ With target_app (new way)</div>
+            <div className="space-y-1 text-xs text-white/50 font-mono">
+              <div>pc(operation="type", text="Hello!", target_app="WhatsApp")</div>
+              <div className="text-emerald-400/60">→ Auto-focuses WhatsApp first</div>
+              <div className="text-emerald-400/60">→ Stops if WhatsApp can't be found</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Keyboard Shortcuts ── */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white/90">Keyboard Shortcuts</h2>
@@ -411,7 +619,7 @@ export default function PCControlView() {
         )}
       </div>
 
-      {/* Workflows Section */}
+      {/* ── Workflows ── */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-white/90">Workflows</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -471,7 +679,7 @@ export default function PCControlView() {
         </div>
       </div>
 
-      {/* How it works */}
+      {/* ── How it works ── */}
       <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-6">
         <h2 className="text-lg font-semibold text-white/90 mb-4">How It Works</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -479,12 +687,12 @@ export default function PCControlView() {
             <h3 className="text-sm font-semibold text-blue-400">Just tell Plutus what to do</h3>
             <div className="space-y-1.5">
               {[
+                '"Open WhatsApp and send a message to Mom"',
                 '"Open Chrome and go to google.com"',
                 '"Click the Submit button"',
                 '"Take a screenshot and tell me what you see"',
                 '"Snap VS Code to the left and Chrome to the right"',
                 '"Type my email address into the login field"',
-                '"Create a new folder on the desktop called Projects"',
               ].map((example) => (
                 <div
                   key={example}
@@ -502,6 +710,13 @@ export default function PCControlView() {
             <h3 className="text-sm font-semibold text-purple-400">What happens behind the scenes</h3>
             <div className="space-y-2 text-sm text-white/50">
               <div className="flex items-start gap-2">
+                <span className="text-cyan-400 mt-0.5">🧠</span>
+                <p>
+                  <strong className="text-white/70">Context</strong> is checked before every action
+                  — Plutus always knows which app is in the foreground.
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
                 <span className="text-blue-400 mt-0.5">🖱️</span>
                 <p>
                   <strong className="text-white/70">Mouse</strong> moves along smooth bezier curves
@@ -512,7 +727,7 @@ export default function PCControlView() {
                 <span className="text-emerald-400 mt-0.5">⌨️</span>
                 <p>
                   <strong className="text-white/70">Keyboard</strong> types at natural speed with
-                  slight randomization. 37+ cross-platform shortcuts.
+                  slight randomization. Uses <code className="text-cyan-400/60">target_app</code> to ensure the right window.
                 </p>
               </div>
               <div className="flex items-start gap-2">
@@ -526,7 +741,7 @@ export default function PCControlView() {
                 <span className="text-amber-400 mt-0.5">🪟</span>
                 <p>
                   <strong className="text-white/70">Windows</strong> can snap, tile, resize, and
-                  focus any application.
+                  focus any application — auto-switches when needed.
                 </p>
               </div>
             </div>
