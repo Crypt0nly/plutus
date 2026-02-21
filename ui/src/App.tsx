@@ -10,6 +10,7 @@ import { SettingsView } from "./components/settings/SettingsView";
 import { ToolsView } from "./components/tools/ToolsView";
 import { WorkersView } from "./components/workers/WorkersView";
 import { ToolCreatorView } from "./components/tool-creator/ToolCreatorView";
+import PCControlView from "./components/pc-control/PCControlView";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 
@@ -128,6 +129,7 @@ export default function App() {
     tools: <ToolsView />,
     workers: <WorkersView />,
     "tool-creator": <ToolCreatorView />,
+    "pc-control": <PCControlView />,
   };
 
   return (

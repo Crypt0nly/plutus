@@ -260,6 +260,7 @@ def create_router() -> APIRouter:
             "shell": "core", "filesystem": "core", "process": "core", "system_info": "core",
             "code_editor": "code", "code_analysis": "code",
             "subprocess": "subprocess", "tool_creator": "subprocess",
+            "pc": "desktop",
             "browser": "desktop", "clipboard": "desktop", "desktop": "desktop", "app_manager": "desktop",
         }
 
@@ -739,5 +740,79 @@ def create_router() -> APIRouter:
         if not deleted:
             raise HTTPException(404, f"Plan {plan_id} not found")
         return {"message": "Plan deleted"}
+
+    # ── PC Control ────────────────────────────────────────────
+
+    @router.get("/pc/status")
+    async def get_pc_status() -> dict[str, Any]:
+        """Get the PC control system status and capabilities."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        registry = state.get("tool_registry")
+
+        if not registry:
+            return {"available": False}
+
+        pc_tool = registry.get("pc")
+        if not pc_tool:
+            return {"available": False}
+
+        return {
+            "available": True,
+            "capabilities": {
+                "mouse": {
+                    "label": "Mouse Control",
+                    "description": "Smooth human-like mouse movement, clicking, dragging, scrolling",
+                    "operations": ["move", "click", "double_click", "right_click", "drag", "scroll", "hover"],
+                },
+                "keyboard": {
+                    "label": "Keyboard Control",
+                    "description": "Natural typing, key presses, hotkeys, and cross-platform shortcuts",
+                    "operations": ["type", "press", "hotkey", "shortcut", "key_down", "key_up", "list_shortcuts"],
+                },
+                "screen": {
+                    "label": "Screen Reading",
+                    "description": "Screenshots, OCR text reading, element detection, color finding",
+                    "operations": ["screenshot", "read_screen", "find_text", "find_elements", "get_pixel_color", "find_color", "wait_for_text", "wait_for_change", "screen_info"],
+                },
+                "windows": {
+                    "label": "Window Management",
+                    "description": "List, focus, snap, tile, resize, and manage application windows",
+                    "operations": ["list_windows", "find_window", "focus", "close_window", "minimize", "maximize", "move_window", "resize", "snap_left", "snap_right", "snap_top", "snap_bottom", "snap_quarter", "tile", "active_window"],
+                },
+                "workflows": {
+                    "label": "Workflow Automation",
+                    "description": "Create, save, and replay multi-step action sequences",
+                    "operations": ["run_workflow", "save_workflow", "list_workflows", "list_templates", "get_template", "delete_workflow"],
+                },
+            },
+        }
+
+    @router.get("/pc/workflows")
+    async def list_pc_workflows() -> dict[str, Any]:
+        """List all saved workflows and templates."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        registry = state.get("tool_registry")
+
+        if not registry:
+            return {"workflows": [], "templates": []}
+
+        pc_tool = registry.get("pc")
+        if not pc_tool or not hasattr(pc_tool, "_workflow"):
+            return {"workflows": [], "templates": []}
+
+        return {
+            "workflows": pc_tool._workflow.list_workflows(),
+            "templates": pc_tool._workflow.list_templates(),
+        }
+
+    @router.get("/pc/shortcuts")
+    async def list_pc_shortcuts() -> dict[str, Any]:
+        """List all available keyboard shortcuts."""
+        from plutus.pc.keyboard import KeyboardController
+        return {"shortcuts": KeyboardController.list_shortcuts()}
 
     return router
