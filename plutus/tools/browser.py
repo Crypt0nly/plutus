@@ -70,7 +70,7 @@ class BrowserTool(Tool):
                 from playwright.async_api import async_playwright
 
                 pw = await async_playwright().start()
-                self._browser = await pw.chromium.launch(headless=True)
+                self._browser = await pw.chromium.launch(headless=False)
                 self._page = await self._browser.new_page()
             except ImportError:
                 raise RuntimeError(
