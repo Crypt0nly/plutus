@@ -273,17 +273,20 @@ export function ToolCreatorView() {
     setCreateResult(null);
 
     try {
-      // We use the chat WebSocket to ask the agent to create the tool
-      // But for direct creation, we can call the API
-      // For now, we'll show a success message and instruct the user
+      const result = await api.createCustomTool(toolName, description, code, true);
       setCreateResult({
         success: true,
-        message: `Tool "${toolName}" is ready! Ask the AI in chat: "Create a tool called ${toolName} that ${description}" and paste the code. Or the AI can create it automatically during a conversation.`,
+        message: `Tool "${result.tool_name}" created successfully! ${result.registered ? "It's now registered and the AI can use it immediately." : "Saved to disk — it will be available after restart."} (${result.code_lines} lines)`,
       });
+      // Refresh the custom tools list
+      refetchTools();
     } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to create tool";
+      // Try to extract a cleaner error from the API response
+      const cleanMsg = msg.replace(/^API error \d+: /, "").replace(/^"|"$/g, "");
       setCreateResult({
         success: false,
-        message: e instanceof Error ? e.message : "Failed to create tool",
+        message: cleanMsg,
       });
     } finally {
       setCreating(false);

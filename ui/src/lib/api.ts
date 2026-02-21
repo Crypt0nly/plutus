@@ -68,6 +68,11 @@ export const api = {
 
   // Custom Tools
   getCustomTools: () => request<Record<string, any>>("/custom-tools"),
+  createCustomTool: (toolName: string, description: string, code: string, register = true) =>
+    request<Record<string, any>>("/custom-tools", {
+      method: "POST",
+      body: JSON.stringify({ tool_name: toolName, description, code, register }),
+    }),
   deleteCustomTool: (name: string) =>
     request<Record<string, string>>(`/custom-tools/${name}`, { method: "DELETE" }),
 

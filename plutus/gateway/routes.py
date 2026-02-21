@@ -37,6 +37,13 @@ class ConfigUpdate(BaseModel):
     patch: dict[str, Any]
 
 
+class CreateCustomToolRequest(BaseModel):
+    tool_name: str
+    description: str = ""
+    code: str
+    register: bool = True
+
+
 class HeartbeatUpdate(BaseModel):
     enabled: bool | None = None
     interval_seconds: int | None = None
@@ -366,6 +373,84 @@ def create_router() -> APIRouter:
                 tools.append(info)
 
         return {"tools": tools, "count": len(tools)}
+
+    @router.post("/custom-tools")
+    async def create_custom_tool(body: CreateCustomToolRequest) -> dict[str, Any]:
+        """Create a new custom tool from the UI wizard."""
+        import json as _json
+        import re as _re
+        from pathlib import Path as _Path
+
+        from plutus.gateway.server import get_state
+
+        # Validate tool name
+        if not body.tool_name or not _re.match(r'^[a-z][a-z0-9_]*$', body.tool_name):
+            raise HTTPException(
+                400,
+                "Tool name must be lowercase, start with a letter, and contain only letters, numbers, and underscores."
+            )
+
+        if not body.code.strip():
+            raise HTTPException(400, "Code cannot be empty.")
+
+        # Check that code defines a main function
+        if 'def main(' not in body.code:
+            raise HTTPException(
+                400,
+                "Code must define a 'main(args: dict) -> dict' function."
+            )
+
+        # Save the tool to disk
+        tools_dir = _Path.home() / ".plutus" / "custom_tools"
+        tool_dir = tools_dir / body.tool_name
+        tool_dir.mkdir(parents=True, exist_ok=True)
+
+        script_path = tool_dir / "tool.py"
+        script_path.write_text(body.code, encoding="utf-8")
+
+        metadata = {
+            "name": body.tool_name,
+            "description": body.description,
+            "script": str(script_path),
+            "created_by": "ui_wizard",
+        }
+        meta_path = tool_dir / "metadata.json"
+        meta_path.write_text(_json.dumps(metadata, indent=2), encoding="utf-8")
+
+        # Register the tool in the live registry
+        registered = False
+        if body.register:
+            state = get_state()
+            registry = state.get("tool_registry")
+            if registry:
+                try:
+                    from plutus.core.subprocess_manager import SubprocessManager
+                    from plutus.tools.tool_creator import DynamicTool
+
+                    # Get or create subprocess manager
+                    sub_tool = registry.get("subprocess")
+                    mgr = sub_tool._manager if sub_tool and hasattr(sub_tool, '_manager') else SubprocessManager()
+
+                    dynamic_tool = DynamicTool(
+                        tool_name=body.tool_name,
+                        tool_description=body.description,
+                        script_path=str(script_path),
+                        subprocess_manager=mgr,
+                    )
+                    registry.register(dynamic_tool)
+                    registered = True
+                except Exception as e:
+                    # Tool saved but registration failed — not fatal
+                    registered = False
+
+        return {
+            "created": True,
+            "tool_name": body.tool_name,
+            "description": body.description,
+            "path": str(script_path),
+            "registered": registered,
+            "code_lines": len(body.code.splitlines()),
+        }
 
     @router.delete("/custom-tools/{tool_name}")
     async def delete_custom_tool(tool_name: str) -> dict[str, str]:
