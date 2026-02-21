@@ -35,6 +35,7 @@ dependencies = [
     "playwright>=1.49.0",
     "psutil>=6.1.0",
     "python-multipart>=0.0.18",
+    "pyautogui>=0.9.54",
 ]
 
 [project.optional-dependencies]

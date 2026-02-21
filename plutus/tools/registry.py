@@ -40,8 +40,10 @@ class ToolRegistry:
 
 def create_default_registry() -> ToolRegistry:
     """Create a registry with all built-in tools."""
+    from plutus.tools.app_manager import AppManagerTool
     from plutus.tools.browser import BrowserTool
     from plutus.tools.clipboard import ClipboardTool
+    from plutus.tools.desktop import DesktopTool
     from plutus.tools.filesystem import FilesystemTool
     from plutus.tools.process import ProcessTool
     from plutus.tools.shell import ShellTool
@@ -54,4 +56,6 @@ def create_default_registry() -> ToolRegistry:
     registry.register(ProcessTool())
     registry.register(SystemInfoTool())
     registry.register(ClipboardTool())
+    registry.register(DesktopTool())
+    registry.register(AppManagerTool())
     return registry
