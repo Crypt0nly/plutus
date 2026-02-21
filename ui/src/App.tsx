@@ -7,6 +7,9 @@ import { ChatView } from "./components/chat/ChatView";
 import { DashboardView } from "./components/dashboard/DashboardView";
 import { GuardrailsView } from "./components/guardrails/GuardrailsView";
 import { SettingsView } from "./components/settings/SettingsView";
+import { ToolsView } from "./components/tools/ToolsView";
+import { WorkersView } from "./components/workers/WorkersView";
+import { ToolCreatorView } from "./components/tool-creator/ToolCreatorView";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 
@@ -117,11 +120,14 @@ export default function App() {
     }).catch(() => {});
   }, [setCurrentTier, setKeyConfigured]);
 
-  const viewComponents = {
+  const viewComponents: Record<string, React.ReactNode> = {
     chat: <ChatView send={send} />,
     dashboard: <DashboardView />,
     guardrails: <GuardrailsView />,
     settings: <SettingsView />,
+    tools: <ToolsView />,
+    workers: <WorkersView />,
+    "tool-creator": <ToolCreatorView />,
   };
 
   return (
@@ -129,7 +135,9 @@ export default function App() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
-        <main className="flex-1 overflow-hidden">{viewComponents[view]}</main>
+        <main className="flex-1 overflow-y-auto p-6">
+          {viewComponents[view] || viewComponents.chat}
+        </main>
       </div>
     </div>
   );

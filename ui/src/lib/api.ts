@@ -59,6 +59,17 @@ export const api = {
 
   // Tools
   getTools: () => request<Record<string, unknown>[]>("/tools"),
+  getToolsDetails: () => request<Record<string, any>>("/tools/details"),
+
+  // Workers
+  getWorkers: () => request<Record<string, any>>("/workers"),
+  cancelWorker: (taskId: string) =>
+    request<Record<string, any>>(`/workers/${taskId}/cancel`, { method: "POST" }),
+
+  // Custom Tools
+  getCustomTools: () => request<Record<string, any>>("/custom-tools"),
+  deleteCustomTool: (name: string) =>
+    request<Record<string, string>>(`/custom-tools/${name}`, { method: "DELETE" }),
 
   // API Keys
   getKeyStatus: () =>

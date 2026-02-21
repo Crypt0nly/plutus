@@ -1,4 +1,25 @@
-import { User, Bot, Terminal, AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import {
+  User,
+  Bot,
+  Terminal,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  FileCode,
+  GitBranch,
+  Zap,
+  Wrench,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Copy,
+  Check,
+  Code2,
+  FileEdit,
+  Search,
+  Play,
+} from "lucide-react";
 import type { Message } from "../../lib/types";
 import { ToolApproval } from "./ToolApproval";
 
@@ -6,6 +27,285 @@ interface Props {
   message: Message;
   send: (data: Record<string, unknown>) => void;
 }
+
+// ── Tool icon mapping ───────────────────────────────────────
+
+const toolIconMap: Record<string, React.ElementType> = {
+  code_editor: FileEdit,
+  code_analysis: GitBranch,
+  subprocess: Zap,
+  tool_creator: Wrench,
+  shell: Terminal,
+  filesystem: FileCode,
+  browser: Search,
+};
+
+const toolColorMap: Record<string, string> = {
+  code_editor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  code_analysis: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  subprocess: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  tool_creator: "text-pink-400 bg-pink-500/10 border-pink-500/20",
+  shell: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  filesystem: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+};
+
+// ── Friendly operation labels ───────────────────────────────
+
+const operationLabels: Record<string, string> = {
+  read: "Reading file",
+  write: "Writing file",
+  edit: "Editing file",
+  append: "Appending to file",
+  delete: "Deleting file",
+  move: "Moving file",
+  copy: "Copying file",
+  find: "Finding files",
+  grep: "Searching in files",
+  diff: "Comparing files",
+  list: "Listing directory",
+  mkdir: "Creating directory",
+  analyze: "Analyzing code",
+  find_functions: "Finding functions",
+  find_classes: "Finding classes",
+  find_imports: "Finding imports",
+  complexity: "Checking complexity",
+  summarize: "Summarizing code",
+  call_graph: "Building call graph",
+  find_todos: "Finding TODOs",
+  symbols: "Listing symbols",
+  spawn: "Running subprocess",
+  spawn_many: "Running parallel tasks",
+  create: "Creating tool",
+  validate: "Validating tool",
+  run: "Running tool",
+};
+
+// ── Tool Call Card ──────────────────────────────────────────
+
+function ToolCallCard({
+  name,
+  args,
+  id,
+}: {
+  name: string;
+  args: Record<string, unknown>;
+  id: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const Icon = toolIconMap[name] || Terminal;
+  const colors = toolColorMap[name] || "text-gray-400 bg-gray-500/10 border-gray-500/20";
+  const [iconColor, bgColor, borderColor] = colors.split(" ");
+
+  const operation = args.operation as string | undefined;
+  const friendlyLabel = operation
+    ? operationLabels[operation] || operation
+    : name.replace(/_/g, " ");
+
+  // Extract key info for preview
+  const path = (args.path || args.file_path || args.directory || "") as string;
+  const command = (args.command || "") as string;
+
+  return (
+    <div
+      className={`border rounded-lg overflow-hidden transition-all ${borderColor} ${
+        expanded ? "ring-1 ring-gray-700" : ""
+      }`}
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 ${bgColor} hover:opacity-90 transition-opacity`}
+      >
+        <Icon className={`w-4 h-4 ${iconColor} flex-shrink-0`} />
+        <div className="flex-1 text-left min-w-0">
+          <span className={`text-xs font-medium ${iconColor}`}>
+            {friendlyLabel}
+          </span>
+          {path && (
+            <span className="text-[10px] text-gray-500 ml-2 font-mono truncate">
+              {path.length > 50 ? "..." + path.slice(-47) : path}
+            </span>
+          )}
+          {command && !path && (
+            <span className="text-[10px] text-gray-500 ml-2 font-mono truncate">
+              $ {command.slice(0, 50)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-gray-600 animate-pulse" />
+          {expanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+          )}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-3 py-2.5 bg-gray-900/50 border-t border-gray-800 animate-fade-in">
+          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+            Parameters
+          </p>
+          <div className="space-y-1">
+            {Object.entries(args).map(([key, value]) => (
+              <div key={key} className="flex items-start gap-2">
+                <span className="text-[10px] text-gray-500 font-mono w-20 flex-shrink-0">
+                  {key}:
+                </span>
+                <span className="text-[10px] text-gray-300 font-mono break-all">
+                  {typeof value === "string"
+                    ? value.length > 200
+                      ? value.slice(0, 200) + "..."
+                      : value
+                    : JSON.stringify(value, null, 2).slice(0, 200)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tool Result Card ────────────────────────────────────────
+
+function ToolResultContent({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const isLong = content.length > 300;
+  const isDiff = content.includes("@@") || content.includes("--- ") || content.includes("+++ ");
+  const isJson = content.trim().startsWith("{") || content.trim().startsWith("[");
+  const isError = content.startsWith("[ERROR]") || content.toLowerCase().includes("error:");
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Render diff with syntax highlighting
+  if (isDiff) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <Code2 className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-[10px] font-medium text-gray-400">
+              File Changes
+            </span>
+          </div>
+          <button onClick={handleCopy} className="text-gray-500 hover:text-gray-300">
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+          </button>
+        </div>
+        <pre className="px-3 py-2 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto">
+          {content.split("\n").map((line, i) => {
+            let lineClass = "text-gray-400";
+            if (line.startsWith("+") && !line.startsWith("+++")) lineClass = "text-emerald-400 bg-emerald-500/5";
+            else if (line.startsWith("-") && !line.startsWith("---")) lineClass = "text-red-400 bg-red-500/5";
+            else if (line.startsWith("@@")) lineClass = "text-blue-400";
+            else if (line.startsWith("---") || line.startsWith("+++")) lineClass = "text-gray-500 font-bold";
+
+            return (
+              <div key={i} className={`${lineClass} px-1 whitespace-pre-wrap`}>
+                {line}
+              </div>
+            );
+          })}
+        </pre>
+      </div>
+    );
+  }
+
+  // Render error
+  if (isError) {
+    return (
+      <div className="bg-red-500/5 border border-red-500/20 rounded-lg px-4 py-3">
+        <div className="flex items-start gap-2">
+          <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+          <pre className="text-xs text-red-300 font-mono whitespace-pre-wrap">{content}</pre>
+        </div>
+      </div>
+    );
+  }
+
+  // Render JSON
+  if (isJson) {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      parsed = null;
+    }
+
+    if (parsed) {
+      const displayContent = JSON.stringify(parsed, null, 2);
+      const showContent = expanded ? displayContent : displayContent.slice(0, 300);
+
+      return (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-800">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[10px] font-medium text-gray-400">
+                Result
+              </span>
+            </div>
+            <button onClick={handleCopy} className="text-gray-500 hover:text-gray-300">
+              {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+            </button>
+          </div>
+          <pre className="px-3 py-2 text-xs font-mono text-gray-300 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
+            {showContent}
+            {!expanded && displayContent.length > 300 && "..."}
+          </pre>
+          {displayContent.length > 300 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="w-full px-3 py-1.5 text-[10px] text-gray-500 hover:text-gray-300 bg-gray-800/30 border-t border-gray-800"
+            >
+              {expanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div>
+      );
+    }
+  }
+
+  // Default rendering
+  const showContent = expanded ? content : content.slice(0, 300);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-800">
+        <div className="flex items-center gap-2">
+          <Play className="w-3.5 h-3.5 text-gray-400" />
+          <span className="text-[10px] font-medium text-gray-400">Output</span>
+        </div>
+        <button onClick={handleCopy} className="text-gray-500 hover:text-gray-300">
+          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
+      <pre className="px-3 py-2 text-xs font-mono text-gray-300 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
+        {showContent}
+        {!expanded && isLong && "..."}
+      </pre>
+      {isLong && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full px-3 py-1.5 text-[10px] text-gray-500 hover:text-gray-300 bg-gray-800/30 border-t border-gray-800"
+        >
+          {expanded ? "Show less" : `Show more (${content.length} chars)`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Main MessageBubble ──────────────────────────────────────
 
 export function MessageBubble({ message, send }: Props) {
   const { role, content, tool_calls } = message;
@@ -31,7 +331,7 @@ export function MessageBubble({ message, send }: Props) {
         <div className="w-8 h-8 rounded-full bg-plutus-600/20 flex items-center justify-center flex-shrink-0">
           <Bot className="w-4 h-4 text-plutus-400" />
         </div>
-        <div className="max-w-2xl">
+        <div className="max-w-2xl w-full">
           {content && (
             <div className="bg-gray-800 px-4 py-3 rounded-2xl rounded-tl-md text-sm leading-relaxed text-gray-200">
               <FormattedContent text={content} />
@@ -40,16 +340,12 @@ export function MessageBubble({ message, send }: Props) {
           {tool_calls && tool_calls.length > 0 && (
             <div className="mt-2 space-y-2">
               {tool_calls.map((tc) => (
-                <div
+                <ToolCallCard
                   key={tc.id}
-                  className="flex items-center gap-2 px-3 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-xs"
-                >
-                  <Terminal className="w-3.5 h-3.5 text-plutus-400" />
-                  <span className="text-plutus-300 font-medium">{tc.name}</span>
-                  <span className="text-gray-500 truncate">
-                    {JSON.stringify(tc.arguments).slice(0, 80)}
-                  </span>
-                </div>
+                  name={tc.name}
+                  args={tc.arguments}
+                  id={tc.id}
+                />
               ))}
             </div>
           )}
@@ -63,9 +359,7 @@ export function MessageBubble({ message, send }: Props) {
       <div className="flex gap-3 animate-fade-in">
         <div className="w-8 h-8" /> {/* spacer to align with assistant */}
         <div className="max-w-2xl w-full">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-xs font-mono text-gray-400 overflow-x-auto max-h-64 overflow-y-auto">
-            <pre className="whitespace-pre-wrap">{content}</pre>
-          </div>
+          <ToolResultContent content={content || ""} />
         </div>
       </div>
     );
@@ -88,30 +382,62 @@ export function MessageBubble({ message, send }: Props) {
   return null;
 }
 
+// ── Formatted Content ───────────────────────────────────────
+
 function FormattedContent({ text }: { text: string }) {
-  // Simple markdown-like formatting for bold and code
-  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
+  // Handle code blocks first
+  const blocks = text.split(/(```[\s\S]*?```)/g);
+
   return (
     <>
-      {parts.map((part, i) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
+      {blocks.map((block, i) => {
+        // Code block
+        if (block.startsWith("```") && block.endsWith("```")) {
+          const lines = block.slice(3, -3).split("\n");
+          const lang = lines[0]?.trim() || "";
+          const code = lang ? lines.slice(1).join("\n") : lines.join("\n");
+
           return (
-            <strong key={i} className="font-semibold text-gray-100">
-              {part.slice(2, -2)}
-            </strong>
+            <div key={i} className="my-2 bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
+              {lang && (
+                <div className="px-3 py-1 bg-gray-800/50 border-b border-gray-800 text-[10px] text-gray-500">
+                  {lang}
+                </div>
+              )}
+              <pre className="px-3 py-2 text-xs font-mono text-gray-300 overflow-x-auto">
+                {code}
+              </pre>
+            </div>
           );
         }
-        if (part.startsWith("`") && part.endsWith("`")) {
-          return (
-            <code
-              key={i}
-              className="px-1.5 py-0.5 bg-gray-700 rounded text-plutus-300 text-xs font-mono"
-            >
-              {part.slice(1, -1)}
-            </code>
-          );
-        }
-        return <span key={i}>{part}</span>;
+
+        // Inline formatting
+        const parts = block.split(/(\*\*.*?\*\*|`.*?`|\n)/g);
+        return (
+          <span key={i}>
+            {parts.map((part, j) => {
+              if (part === "\n") return <br key={j} />;
+              if (part.startsWith("**") && part.endsWith("**")) {
+                return (
+                  <strong key={j} className="font-semibold text-gray-100">
+                    {part.slice(2, -2)}
+                  </strong>
+                );
+              }
+              if (part.startsWith("`") && part.endsWith("`")) {
+                return (
+                  <code
+                    key={j}
+                    className="px-1.5 py-0.5 bg-gray-700 rounded text-plutus-300 text-xs font-mono"
+                  >
+                    {part.slice(1, -1)}
+                  </code>
+                );
+              }
+              return <span key={j}>{part}</span>;
+            })}
+          </span>
+        );
       })}
     </>
   );

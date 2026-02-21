@@ -1,22 +1,32 @@
 import { Shield, Activity, Key } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 
-const viewTitles: Record<string, string> = {
-  chat: "Chat",
-  dashboard: "Dashboard",
-  guardrails: "Guardrails",
-  settings: "Settings",
+const viewTitles: Record<string, { title: string; subtitle: string }> = {
+  chat: { title: "Chat", subtitle: "Talk to your AI agent" },
+  dashboard: { title: "Dashboard", subtitle: "Activity overview" },
+  guardrails: { title: "Guardrails", subtitle: "Safety & permissions" },
+  settings: { title: "Settings", subtitle: "Configuration" },
+  tools: { title: "Tools", subtitle: "Agent capabilities" },
+  workers: { title: "Workers", subtitle: "Subprocess monitor" },
+  "tool-creator": { title: "Tool Creator", subtitle: "Build custom tools" },
 };
 
 export function Header() {
   const { view, currentTier, pendingApprovals, isProcessing, keyConfigured } =
     useAppStore();
 
+  const viewInfo = viewTitles[view] || { title: "Plutus", subtitle: "" };
+
   return (
     <header className="h-14 border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm flex items-center justify-between px-6">
-      <h2 className="text-sm font-semibold text-gray-200">
-        {viewTitles[view] || "Plutus"}
-      </h2>
+      <div>
+        <h2 className="text-sm font-semibold text-gray-200">
+          {viewInfo.title}
+        </h2>
+        {viewInfo.subtitle && (
+          <p className="text-[10px] text-gray-500 -mt-0.5">{viewInfo.subtitle}</p>
+        )}
+      </div>
 
       <div className="flex items-center gap-4">
         {/* Missing API key warning */}

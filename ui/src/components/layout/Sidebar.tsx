@@ -4,14 +4,40 @@ import {
   Shield,
   Settings,
   Plus,
+  Wrench,
+  Cpu,
+  Sparkles,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 
-const navItems: { id: View; label: string; icon: React.ElementType }[] = [
-  { id: "chat", label: "Chat", icon: MessageSquare },
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "guardrails", label: "Guardrails", icon: Shield },
-  { id: "settings", label: "Settings", icon: Settings },
+interface NavSection {
+  label: string;
+  items: { id: View; label: string; icon: React.ElementType; badge?: string }[];
+}
+
+const navSections: NavSection[] = [
+  {
+    label: "Main",
+    items: [
+      { id: "chat", label: "Chat", icon: MessageSquare },
+      { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Agent",
+    items: [
+      { id: "tools", label: "Tools", icon: Wrench },
+      { id: "workers", label: "Workers", icon: Cpu },
+      { id: "tool-creator", label: "Tool Creator", icon: Sparkles, badge: "New" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { id: "guardrails", label: "Guardrails", icon: Shield },
+      { id: "settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -22,12 +48,12 @@ export function Sidebar() {
       {/* Logo */}
       <div className="p-5 border-b border-gray-800">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-plutus-600 flex items-center justify-center font-bold text-lg">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-plutus-500 to-plutus-700 flex items-center justify-center font-bold text-lg shadow-lg shadow-plutus-500/20">
             P
           </div>
           <div>
             <h1 className="font-bold text-lg leading-none">Plutus</h1>
-            <p className="text-xs text-gray-500 mt-0.5">v0.1.0</p>
+            <p className="text-xs text-gray-500 mt-0.5">v0.2.0</p>
           </div>
         </div>
       </div>
@@ -37,7 +63,7 @@ export function Sidebar() {
         <div className="flex items-center gap-2 text-xs">
           <span
             className={`w-2 h-2 rounded-full ${
-              connected ? "bg-emerald-500" : "bg-red-500"
+              connected ? "bg-emerald-500 shadow-sm shadow-emerald-500/50" : "bg-red-500"
             }`}
           />
           <span className="text-gray-400">
@@ -51,25 +77,39 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const active = view === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setView(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? "bg-plutus-600/20 text-plutus-400"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {item.label}
-            </button>
-          );
-        })}
+      <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+        {navSections.map((section) => (
+          <div key={section.label}>
+            <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-3 mb-1.5">
+              {section.label}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const active = view === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setView(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                      active
+                        ? "bg-plutus-600/20 text-plutus-400 shadow-sm"
+                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    {item.badge && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-plutus-500/20 text-plutus-400 font-semibold">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* New Chat button */}

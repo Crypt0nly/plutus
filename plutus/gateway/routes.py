@@ -228,6 +228,168 @@ def create_router() -> APIRouter:
         registry = state.get("tool_registry")
         return registry.get_tool_info() if registry else []
 
+    @router.get("/tools/details")
+    async def get_tools_details() -> dict[str, Any]:
+        """Get detailed info about all tools, grouped by category."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        registry = state.get("tool_registry")
+        if not registry:
+            return {"tools": [], "categories": {}}
+
+        tools = registry.get_tool_info()
+
+        # Categorize tools
+        categories = {
+            "core": {"label": "Core Tools", "description": "Essential system tools", "icon": "terminal", "tools": []},
+            "code": {"label": "Code Tools", "description": "Code editing and analysis", "icon": "code", "tools": []},
+            "subprocess": {"label": "Subprocess", "description": "Process orchestration", "icon": "cpu", "tools": []},
+            "desktop": {"label": "Desktop", "description": "Desktop and browser automation", "icon": "monitor", "tools": []},
+            "custom": {"label": "Custom Tools", "description": "Dynamically created tools", "icon": "puzzle", "tools": []},
+        }
+
+        category_map = {
+            "shell": "core", "filesystem": "core", "process": "core", "system_info": "core",
+            "code_editor": "code", "code_analysis": "code",
+            "subprocess": "subprocess", "tool_creator": "subprocess",
+            "browser": "desktop", "clipboard": "desktop", "desktop": "desktop", "app_manager": "desktop",
+        }
+
+        for tool in tools:
+            cat = category_map.get(tool["name"], "custom" if tool["name"].startswith("custom_") else "core")
+            categories[cat]["tools"].append(tool)
+
+        return {"tools": tools, "categories": categories, "total": len(tools)}
+
+    # ── Workers / Subprocesses ──────────────────────────────
+
+    @router.get("/workers")
+    async def get_workers() -> dict[str, Any]:
+        """Get active workers and recent results from the subprocess manager."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        registry = state.get("tool_registry")
+
+        if not registry:
+            return {"active": [], "recent": [], "stats": {}}
+
+        # Get the subprocess manager from the subprocess tool
+        sub_tool = registry.get("subprocess")
+        if not sub_tool or not hasattr(sub_tool, "_manager"):
+            return {"active": [], "recent": [], "stats": {}}
+
+        mgr = sub_tool._manager
+        active = mgr.list_active()
+        recent = mgr.list_results(limit=50)
+
+        # Compute stats
+        total = len(recent)
+        completed = sum(1 for r in recent if r.get("status") == "completed")
+        failed = sum(1 for r in recent if r.get("status") == "failed")
+        avg_duration = sum(r.get("duration", 0) for r in recent) / max(total, 1)
+
+        return {
+            "active": active,
+            "recent": recent,
+            "stats": {
+                "total_tasks": total,
+                "completed": completed,
+                "failed": failed,
+                "active_count": len(active),
+                "avg_duration": round(avg_duration, 3),
+                "max_workers": mgr.max_workers,
+            },
+        }
+
+    @router.post("/workers/{task_id}/cancel")
+    async def cancel_worker(task_id: str) -> dict[str, Any]:
+        """Cancel a running worker."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        registry = state.get("tool_registry")
+
+        if not registry:
+            raise HTTPException(500, "Registry not initialized")
+
+        sub_tool = registry.get("subprocess")
+        if not sub_tool or not hasattr(sub_tool, "_manager"):
+            raise HTTPException(500, "Subprocess manager not available")
+
+        cancelled = await sub_tool._manager.cancel(task_id)
+        if not cancelled:
+            raise HTTPException(404, f"Worker {task_id} not found or not running")
+
+        return {"cancelled": True, "task_id": task_id}
+
+    # ── Custom Tools Management ─────────────────────────────
+
+    @router.get("/custom-tools")
+    async def list_custom_tools() -> dict[str, Any]:
+        """List all custom tools with their metadata."""
+        import json as _json
+        from pathlib import Path as _Path
+
+        tools_dir = _Path.home() / ".plutus" / "custom_tools"
+        tools = []
+
+        if tools_dir.exists():
+            for tool_dir in sorted(tools_dir.iterdir()):
+                if not tool_dir.is_dir():
+                    continue
+
+                meta_path = tool_dir / "metadata.json"
+                script_path = tool_dir / "tool.py"
+
+                info = {
+                    "name": tool_dir.name,
+                    "description": "",
+                    "has_script": script_path.exists(),
+                    "path": str(tool_dir),
+                }
+
+                if meta_path.exists():
+                    try:
+                        meta = _json.loads(meta_path.read_text())
+                        info["description"] = meta.get("description", "")
+                        info["created_by"] = meta.get("created_by", "unknown")
+                    except Exception:
+                        pass
+
+                if script_path.exists():
+                    code = script_path.read_text()
+                    info["code_lines"] = len(code.splitlines())
+                    info["code_preview"] = "\n".join(code.splitlines()[:20])
+
+                tools.append(info)
+
+        return {"tools": tools, "count": len(tools)}
+
+    @router.delete("/custom-tools/{tool_name}")
+    async def delete_custom_tool(tool_name: str) -> dict[str, str]:
+        """Delete a custom tool."""
+        import shutil
+        from pathlib import Path as _Path
+
+        tools_dir = _Path.home() / ".plutus" / "custom_tools"
+        tool_dir = tools_dir / tool_name
+
+        if not tool_dir.exists():
+            raise HTTPException(404, f"Custom tool not found: {tool_name}")
+
+        shutil.rmtree(tool_dir)
+
+        # Also unregister from the running registry
+        from plutus.gateway.server import get_state
+        state = get_state()
+        registry = state.get("tool_registry")
+        if registry:
+            registry.unregister(f"custom_{tool_name}")
+
+        return {"message": f"Deleted custom tool: {tool_name}"}
+
     # ── API Keys ─────────────────────────────────────────────
 
     @router.get("/keys/status")
