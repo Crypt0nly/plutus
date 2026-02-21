@@ -82,6 +82,27 @@ export interface AgentStatus {
   tools: string[];
 }
 
+export interface PlanStep {
+  index: number;
+  description: string;
+  details: string;
+  status: "pending" | "in_progress" | "done" | "failed" | "skipped";
+  result: string | null;
+  started_at: number | null;
+  finished_at: number | null;
+}
+
+export interface Plan {
+  id: string;
+  conversation_id: string | null;
+  title: string;
+  goal: string | null;
+  status: "draft" | "active" | "completed" | "failed" | "cancelled";
+  steps: PlanStep[];
+  created_at: number;
+  updated_at: number;
+}
+
 /** WebSocket message types */
 export type WSMessage =
   | { type: "thinking"; message: string }
@@ -94,4 +115,8 @@ export type WSMessage =
   | { type: "conversation_started"; conversation_id: string }
   | { type: "conversation_resumed"; conversation_id: string; messages: Message[] }
   | { type: "approval_resolved"; approval_id: string; approved: boolean; success: boolean }
+  | { type: "heartbeat"; beat: number; max: number }
+  | { type: "heartbeat_paused"; reason: string; count: number }
+  | { type: "heartbeat_status"; [key: string]: any }
+  | { type: "plan_update"; result: string }
   | { type: "pong" };

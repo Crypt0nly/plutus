@@ -82,4 +82,30 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ patch }),
     }),
+
+  // Heartbeat
+  getHeartbeatStatus: () => request<Record<string, any>>("/heartbeat"),
+  updateHeartbeat: (body: Record<string, any>) =>
+    request<Record<string, any>>("/heartbeat", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  startHeartbeat: () =>
+    request<Record<string, any>>("/heartbeat/start", { method: "POST" }),
+  stopHeartbeat: () =>
+    request<Record<string, any>>("/heartbeat/stop", { method: "POST" }),
+
+  // Plans
+  getPlans: (conversationId?: string, limit = 20) =>
+    request<Record<string, any>[]>(
+      `/plans?limit=${limit}${conversationId ? `&conversation_id=${conversationId}` : ""}`
+    ),
+  getActivePlan: (conversationId?: string) =>
+    request<Record<string, any> | null>(
+      `/plans/active${conversationId ? `?conversation_id=${conversationId}` : ""}`
+    ),
+  getPlan: (planId: string) =>
+    request<Record<string, any>>(`/plans/${planId}`),
+  deletePlan: (planId: string) =>
+    request<Record<string, string>>(`/plans/${planId}`, { method: "DELETE" }),
 };

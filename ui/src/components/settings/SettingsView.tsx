@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Save, Key, Brain, Server, Database } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
+import { HeartbeatConfig } from "./HeartbeatConfig";
 import { useAppStore } from "../../stores/appStore";
 
 export function SettingsView() {
@@ -70,6 +71,13 @@ export function SettingsView() {
         saving={saving}
         keyStatus={keyStatus}
         onKeyStatusChange={fetchKeyStatus}
+      />
+
+      {/* Heartbeat Configuration */}
+      <HeartbeatConfig
+        config={config.heartbeat || {}}
+        onSave={handleSave}
+        saving={saving}
       />
 
       {/* Gateway settings */}
