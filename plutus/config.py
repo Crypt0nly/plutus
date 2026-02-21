@@ -69,6 +69,10 @@ class HeartbeatConfig(BaseModel):
     prompt: str = ""  # custom heartbeat prompt; empty = use default
 
 
+class AgentConfig(BaseModel):
+    max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
+
+
 class PlannerConfig(BaseModel):
     enabled: bool = True
     auto_plan: bool = True  # agent creates a plan automatically for complex tasks
@@ -82,6 +86,7 @@ class PlutusConfig(BaseSettings):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
 
     @classmethod

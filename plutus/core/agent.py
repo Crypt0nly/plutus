@@ -93,7 +93,7 @@ class AgentRuntime:
       6. Repeat until LLM returns a final text response
     """
 
-    MAX_TOOL_ROUNDS = 25  # prevent infinite loops (plan tool calls don't count)
+    DEFAULT_MAX_TOOL_ROUNDS = 25  # fallback if not set in config
 
     def __init__(
         self,
@@ -104,6 +104,7 @@ class AgentRuntime:
         secrets: SecretsStore | None = None,
     ):
         self._config = config
+        self._max_tool_rounds = config.agent.max_tool_rounds
         self._secrets = secrets or SecretsStore()
         self._llm = LLMClient(config.model, secrets=self._secrets)
         self._guardrails = guardrails
@@ -193,7 +194,9 @@ class AgentRuntime:
 
         external_rounds = 0  # only count rounds with real (non-plan) tool calls
 
-        for round_num in range(self.MAX_TOOL_ROUNDS):
+        max_rounds = self._max_tool_rounds or self.DEFAULT_MAX_TOOL_ROUNDS
+
+        for round_num in range(max_rounds):
             messages = await self._conversation.build_messages()
 
             try:
