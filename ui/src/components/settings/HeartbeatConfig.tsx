@@ -29,7 +29,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
   const [prompt, setPrompt] = useState(config.prompt ?? "");
 
   const fetchStatus = () => {
-    api.getHeartbeatStatus().then(setStatus).catch(() => {});
+    api.getHeartbeatStatus().then((s) => setStatus(s as HeartbeatStatus)).catch(() => {});
   };
 
   useEffect(() => {
@@ -42,11 +42,11 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
     try {
       if (status?.running) {
         const s = await api.stopHeartbeat();
-        setStatus(s);
+        setStatus(s as HeartbeatStatus);
         setEnabled(false);
       } else {
         const s = await api.startHeartbeat();
-        setStatus(s);
+        setStatus(s as HeartbeatStatus);
         setEnabled(true);
       }
     } catch (e) {
@@ -85,7 +85,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
       quiet_hours_start: quietStart || null,
       quiet_hours_end: quietEnd || null,
       prompt: prompt || "",
-    }).then(setStatus).catch(() => {});
+    }).then((s) => setStatus(s as HeartbeatStatus)).catch(() => {});
   };
 
   const formatInterval = (secs: number) => {
