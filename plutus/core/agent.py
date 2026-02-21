@@ -140,19 +140,22 @@ class AgentRuntime:
             # If there's text content, emit it
             if response.content:
                 yield AgentEvent("text", {"content": response.content})
-                await self._conversation.add_assistant_message(content=response.content)
 
             # If no tool calls, we're done
             if not response.tool_calls:
+                await self._conversation.add_assistant_message(content=response.content)
                 yield AgentEvent("done", {})
                 return
 
-            # Process tool calls
+            # Process tool calls — store content and tool_calls together
+            # in a single assistant message to maintain proper pairing
             tool_call_dicts = [
                 {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in response.tool_calls
             ]
-            await self._conversation.add_assistant_message(tool_calls=tool_call_dicts)
+            await self._conversation.add_assistant_message(
+                content=response.content, tool_calls=tool_call_dicts
+            )
 
             for tc in response.tool_calls:
                 yield AgentEvent(

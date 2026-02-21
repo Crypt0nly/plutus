@@ -74,7 +74,12 @@ class BrowserTool(Tool):
                 self._page = await self._browser.new_page()
             except ImportError:
                 raise RuntimeError(
-                    "Playwright is not installed. Run: playwright install chromium"
+                    "Playwright is not installed. Run: pip install playwright"
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to launch browser: {e}. "
+                    "Run: playwright install chromium"
                 )
 
     async def execute(self, **kwargs: Any) -> str:
@@ -83,7 +88,10 @@ class BrowserTool(Tool):
         if operation == "close":
             return await self._close()
 
-        await self._ensure_browser()
+        try:
+            await self._ensure_browser()
+        except RuntimeError as e:
+            return f"[ERROR] {e}"
         assert self._page is not None
 
         handlers = {

@@ -10,6 +10,33 @@ from pydantic import BaseModel
 from plutus.guardrails.tiers import Tier, get_tier_info
 
 
+# ── Request body models (module-level for proper FastAPI schema generation) ──
+
+
+class TierUpdate(BaseModel):
+    tier: str
+
+
+class ToolOverrideUpdate(BaseModel):
+    tool_name: str
+    enabled: bool = True
+    require_approval: bool = False
+
+
+class ApprovalDecision(BaseModel):
+    approval_id: str
+    approved: bool
+
+
+class SetKeyRequest(BaseModel):
+    provider: str
+    key: str
+
+
+class ConfigUpdate(BaseModel):
+    patch: dict[str, Any]
+
+
 def create_router() -> APIRouter:
     router = APIRouter()
 
@@ -54,9 +81,6 @@ def create_router() -> APIRouter:
             "audit_enabled": config.guardrails.audit_enabled,
         }
 
-    class TierUpdate(BaseModel):
-        tier: str
-
     @router.put("/guardrails/tier")
     async def set_tier(body: TierUpdate) -> dict[str, str]:
         from plutus.gateway.server import get_state
@@ -71,11 +95,6 @@ def create_router() -> APIRouter:
 
         guardrails.set_tier(new_tier)
         return {"tier": new_tier.value, "message": f"Tier set to {new_tier.label}"}
-
-    class ToolOverrideUpdate(BaseModel):
-        tool_name: str
-        enabled: bool = True
-        require_approval: bool = False
 
     @router.put("/guardrails/override")
     async def set_tool_override(body: ToolOverrideUpdate) -> dict[str, str]:
@@ -101,10 +120,6 @@ def create_router() -> APIRouter:
         state = get_state()
         guardrails = state.get("guardrails")
         return guardrails.pending_approvals() if guardrails else []
-
-    class ApprovalDecision(BaseModel):
-        approval_id: str
-        approved: bool
 
     @router.post("/approvals/resolve")
     async def resolve_approval(body: ApprovalDecision) -> dict[str, Any]:
@@ -206,10 +221,6 @@ def create_router() -> APIRouter:
             "current_provider_configured": status.get(current_provider, False),
         }
 
-    class SetKeyRequest(BaseModel):
-        provider: str
-        key: str
-
     @router.post("/keys")
     async def set_api_key(body: SetKeyRequest) -> dict[str, Any]:
         """Store an API key and make it available to the agent immediately."""
@@ -266,9 +277,6 @@ def create_router() -> APIRouter:
         if "model" in data:
             data["model"]["api_key_env"] = config.model.api_key_env
         return data
-
-    class ConfigUpdate(BaseModel):
-        patch: dict[str, Any]
 
     @router.patch("/config")
     async def update_config(body: ConfigUpdate) -> dict[str, str]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -94,14 +95,45 @@ class ConversationManager:
             history = await self._memory.get_messages(
                 self._active_conversation_id, limit=self._context_window
             )
+
+            raw: list[dict[str, Any]] = []
             for msg in history:
                 entry: dict[str, Any] = {"role": msg["role"]}
                 if msg["content"]:
                     entry["content"] = msg["content"]
                 if msg["tool_calls"]:
-                    entry["tool_calls"] = msg["tool_calls"]
+                    # Convert stored format to OpenAI-compatible format for LiteLLM
+                    entry["tool_calls"] = [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": (
+                                    json.dumps(tc["arguments"])
+                                    if isinstance(tc["arguments"], dict)
+                                    else tc["arguments"]
+                                ),
+                            },
+                        }
+                        for tc in msg["tool_calls"]
+                    ]
                 if msg["tool_call_id"]:
                     entry["tool_call_id"] = msg["tool_call_id"]
+                raw.append(entry)
+
+            # Remove orphaned tool results that lost their assistant tool_call
+            # (can happen when context window truncation cuts mid-pair)
+            tool_call_ids: set[str] = set()
+            for entry in raw:
+                if entry.get("tool_calls"):
+                    for tc in entry["tool_calls"]:
+                        tool_call_ids.add(tc["id"])
+
+            for entry in raw:
+                if entry["role"] == "tool" and entry.get("tool_call_id"):
+                    if entry["tool_call_id"] not in tool_call_ids:
+                        continue  # skip orphaned tool result
                 messages.append(entry)
 
         return messages
