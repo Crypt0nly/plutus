@@ -135,9 +135,14 @@ class DynamicSkill(SkillDefinition):
 
 
 class SkillCreator:
-    """Creates, validates, persists, and manages dynamic skills."""
+    """Creates, validates, persists, and manages dynamic skills.
+    
+    Supports two skill types:
+      - "simple" (default): JSON-based linear step sequences
+      - "python": Full Python scripts with PlutusContext access
+    """
 
-    # Valid operations that skills can use
+    # Valid operations that simple skills can use
     VALID_OPERATIONS = {
         # OS
         "open_app", "close_app", "open_url", "open_file", "open_folder",
@@ -301,7 +306,17 @@ class SkillCreator:
         ), skill
 
     def create_from_dict(self, data: dict, registry=None) -> tuple[bool, str, DynamicSkill | None]:
-        """Create a skill from a raw dictionary (from LLM output)."""
+        """Create a skill from a raw dictionary (from LLM output).
+        
+        Detects skill type from the data:
+          - If 'type' == 'python' and 'code' is present → creates a Python skill
+          - Otherwise → creates a simple JSON skill
+        """
+        skill_type = data.get("type", "simple")
+        
+        if skill_type == "python":
+            return self._create_python_skill(data, registry)
+        
         try:
             blueprint = SkillBlueprint(
                 name=data.get("name", ""),
@@ -317,6 +332,109 @@ class SkillCreator:
             return self.create_skill(blueprint, registry)
         except Exception as e:
             return False, f"Invalid skill data: {e}", None
+
+    def _create_python_skill(
+        self, data: dict, registry=None
+    ) -> tuple[bool, str, DynamicSkill | None]:
+        """Create a Python-based skill from code.
+        
+        The data dict must contain:
+          - name: skill name
+          - code: Python source code with async def run(ctx, params) -> dict
+          - description: what the skill does
+          - triggers: list of trigger keywords
+          - required_params: list of required parameter names
+        """
+        name = data.get("name", "")
+        code = data.get("code", "")
+        description = data.get("description", "")
+
+        # Validate
+        errors = []
+        if not name:
+            errors.append("Skill name is required")
+        elif not name.replace("_", "").isalnum():
+            errors.append("Skill name must be alphanumeric with underscores")
+        if not code:
+            errors.append("Python code is required")
+        if not description:
+            errors.append("Description is required")
+        if "async def run" not in code:
+            errors.append("Code must define 'async def run(ctx, params)'")
+        if "def run(" not in code:
+            errors.append("Code must define a run() function")
+
+        # Basic syntax check
+        if code:
+            try:
+                compile(code, f"{name}.py", "exec")
+            except SyntaxError as e:
+                errors.append(f"Syntax error in code: {e}")
+
+        if errors:
+            return False, "Validation failed:\n" + "\n".join(f"  - {e}" for e in errors), None
+
+        # Determine version
+        script_path = SKILLS_DIR / f"{name}.py"
+        meta_path = SKILLS_DIR / f"{name}.json"
+        version = 1
+        if meta_path.exists():
+            try:
+                existing = json.loads(meta_path.read_text())
+                version = existing.get("version", 1) + 1
+            except Exception:
+                pass
+
+        # Save the Python script
+        try:
+            SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+            script_path.write_text(code, encoding="utf-8")
+            logger.info(f"Saved Python skill script: {script_path}")
+        except Exception as e:
+            return False, f"Failed to save script: {e}", None
+
+        # Save the metadata JSON
+        metadata = {
+            "name": name,
+            "type": "python",
+            "description": description,
+            "app": data.get("app", "python"),
+            "category": data.get("category", "custom"),
+            "triggers": data.get("triggers", []),
+            "required_params": data.get("required_params", []),
+            "optional_params": data.get("optional_params", []),
+            "script": f"{name}.py",
+            "version": version,
+            "reason": data.get("reason", "Agent created this Python skill"),
+        }
+        try:
+            meta_path.write_text(json.dumps(metadata, indent=2))
+            logger.info(f"Saved Python skill metadata: {meta_path}")
+        except Exception as e:
+            return False, f"Failed to save metadata: {e}", None
+
+        # Log the improvement
+        action = "updated" if version > 1 else "created"
+        self._log_improvement(ImprovementEntry(
+            timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
+            action=action,
+            skill_name=name,
+            reason=data.get("reason", "Agent created this Python skill"),
+            details={
+                "type": "python",
+                "version": version,
+                "category": metadata["category"],
+                "code_lines": len(code.splitlines()),
+                "triggers": metadata["triggers"],
+            },
+        ))
+
+        action_label = "Updated" if version > 1 else "Created"
+        return True, (
+            f"{action_label} Python skill '{name}' v{version} "
+            f"({len(code.splitlines())} lines, category: {metadata['category']}). "
+            f"It's now available for use with run_skill."
+        ), None  # Python skills don't return a DynamicSkill object
 
     # ── Loading ─────────────────────────────────────────────
 
