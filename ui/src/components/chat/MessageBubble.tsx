@@ -17,6 +17,7 @@ import {
   Check,
   Code2,
   FileEdit,
+  FileDown,
   Search,
   Play,
   Monitor,
@@ -49,6 +50,7 @@ const toolIconMap: Record<string, React.ElementType> = {
   filesystem: FileCode,
   browser: Search,
   pc: Monitor,
+  connector: Send,
 };
 
 const toolColorMap: Record<string, string> = {
@@ -59,6 +61,7 @@ const toolColorMap: Record<string, string> = {
   shell: "text-amber-400 bg-amber-500/10 border-amber-500/20",
   filesystem: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
   pc: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  connector: "text-purple-400 bg-purple-500/10 border-purple-500/20",
 };
 
 // ── Friendly operation labels ───────────────────────────────
@@ -124,6 +127,9 @@ const operationLabels: Record<string, string> = {
   mouse_click: "Clicking",
   mouse_move: "Moving mouse",
   take_screenshot: "Taking screenshot",
+  // Connectors
+  send: "Sending message",
+  send_file: "Sending file",
   // Skills
   run_skill: "Running skill",
   list_skills: "Listing skills",
@@ -275,6 +281,99 @@ function ScreenshotDisplay({ base64 }: { base64: string }) {
     </div>
   );
 }
+// ── Attachment Displays ───────────────────────────────────────────
+
+function AttachmentImageDisplay({
+  base64,
+  fileName,
+  caption,
+}: {
+  base64: string;
+  fileName: string;
+  caption: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Detect format from file extension
+  const ext = fileName.split(".").pop()?.toLowerCase() || "png";
+  const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+    : ext === "gif" ? "image/gif"
+    : ext === "webp" ? "image/webp"
+    : "image/png";
+
+  return (
+    <div className="bg-gray-900 border border-purple-500/20 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-purple-500/10 hover:bg-purple-500/15 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Camera className="w-3.5 h-3.5 text-purple-400" />
+          <span className="text-xs font-medium text-purple-400">
+            {caption || fileName}
+          </span>
+        </div>
+        {expanded ? (
+          <Minimize2 className="w-3.5 h-3.5 text-gray-500" />
+        ) : (
+          <Maximize2 className="w-3.5 h-3.5 text-gray-500" />
+        )}
+      </button>
+      <div className={`transition-all duration-300 ${expanded ? "max-h-[600px]" : "max-h-48"} overflow-hidden`}>
+        <img
+          src={`data:${mime};base64,${base64}`}
+          alt={caption || fileName}
+          className="w-full h-auto cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AttachmentFileDisplay({
+  fileName,
+  sizeKB,
+  filePath,
+  caption,
+}: {
+  fileName: string;
+  sizeKB: string;
+  filePath: string;
+  caption: string;
+}) {
+  const sizeLabel = parseInt(sizeKB) >= 1024
+    ? `${(parseInt(sizeKB) / 1024).toFixed(1)} MB`
+    : `${sizeKB} KB`;
+
+  const downloadUrl = `/api/files?path=${encodeURIComponent(filePath)}`;
+
+  return (
+    <div className="bg-gray-900 border border-gray-700/50 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0">
+          <FileDown className="w-5 h-5 text-gray-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-200 truncate">{fileName}</p>
+          <p className="text-xs text-gray-500">
+            {sizeLabel}
+            {caption ? ` — ${caption}` : ""}
+          </p>
+        </div>
+        <a
+          href={downloadUrl}
+          download={fileName}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium transition-colors"
+        >
+          <FileDown className="w-3.5 h-3.5" />
+          Download
+        </a>
+      </div>
+    </div>
+  );
+}
+
 // ── Accessibility Tree Snapshot Display ───────────────────────────
 
 function SnapshotDisplay({ content }: { content: string }) {
@@ -369,6 +468,33 @@ function ToolResultContent({ content }: { content: string }) {
   if (content.startsWith("__SCREENSHOT__:")) {
     const base64 = content.replace("__SCREENSHOT__:", "");
     return <ScreenshotDisplay base64={base64} />;
+  }
+
+  // Check if this is an image attachment
+  if (content.startsWith("__ATTACHMENT_IMAGE__:")) {
+    const rest = content.replace("__ATTACHMENT_IMAGE__:", "");
+    const firstColon = rest.indexOf(":");
+    const fileName = rest.slice(0, firstColon);
+    const remaining = rest.slice(firstColon + 1);
+    // Caption is after a newline, if present
+    const newlineIdx = remaining.indexOf("\n");
+    const base64 = newlineIdx >= 0 ? remaining.slice(0, newlineIdx) : remaining;
+    const caption = newlineIdx >= 0 ? remaining.slice(newlineIdx + 1) : "";
+    return <AttachmentImageDisplay base64={base64} fileName={fileName} caption={caption} />;
+  }
+
+  // Check if this is a file attachment
+  if (content.startsWith("__ATTACHMENT_FILE__:")) {
+    const rest = content.replace("__ATTACHMENT_FILE__:", "");
+    const parts = rest.split(":");
+    const fileName = parts[0] || "file";
+    const sizeKB = parts[1] || "0";
+    // file_path may contain colons (e.g. C:\...), and caption is after " — "
+    const pathAndCaption = parts.slice(2).join(":");
+    const dashIdx = pathAndCaption.indexOf(" — ");
+    const filePath = dashIdx >= 0 ? pathAndCaption.slice(0, dashIdx) : pathAndCaption;
+    const caption = dashIdx >= 0 ? pathAndCaption.slice(dashIdx + 3) : "";
+    return <AttachmentFileDisplay fileName={fileName} sizeKB={sizeKB} filePath={filePath} caption={caption} />;
   }
 
   // Check if this is an accessibility tree snapshot
