@@ -792,20 +792,25 @@ class AgentRuntime:
                     {"id": tc.id, "tool": tc.name, "arguments": tc.arguments},
                 )
 
-                # Check guardrails
-                operation = tc.arguments.get("operation")
-                decision = self._guardrails.check(tc.name, operation, tc.arguments)
+                # Internal tools (plan, memory) bypass guardrails entirely —
+                # they're bookkeeping tools that don't affect the system.
+                _INTERNAL_TOOLS = {"plan", "memory"}
 
-                if not decision.allowed:
-                    result_text = f"[DENIED] {decision.reason}"
-                    yield AgentEvent(
-                        "tool_result",
-                        {"id": tc.id, "tool": tc.name, "result": result_text, "denied": True},
-                    )
-                    await self._conversation.add_tool_result(tc.id, result_text)
-                    continue
+                if tc.name not in _INTERNAL_TOOLS:
+                    # Check guardrails for external tools
+                    operation = tc.arguments.get("operation")
+                    decision = self._guardrails.check(tc.name, operation, tc.arguments)
 
-                if decision.requires_approval:
+                    if not decision.allowed:
+                        result_text = f"[DENIED] {decision.reason}"
+                        yield AgentEvent(
+                            "tool_result",
+                            {"id": tc.id, "tool": tc.name, "result": result_text, "denied": True},
+                        )
+                        await self._conversation.add_tool_result(tc.id, result_text)
+                        continue
+
+                if tc.name not in _INTERNAL_TOOLS and decision.requires_approval:
                     yield AgentEvent(
                         "tool_approval_needed",
                         {
