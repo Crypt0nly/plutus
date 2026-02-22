@@ -20,8 +20,8 @@ const providers = [
 
 const defaultModels: Record<string, string[]> = {
   anthropic: [
-    "claude-opus-4-6-20260205",
-    "claude-sonnet-4-6-20250514",
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-20250514",
     "claude-haiku-4-5-20251001",
   ],
   openai: [
