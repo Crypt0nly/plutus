@@ -173,4 +173,36 @@ export const api = {
     request<Record<string, any>>(`/improvement/log?limit=${limit}`),
   getImprovementStats: () =>
     request<Record<string, any>>("/improvement/stats"),
+
+  // Connectors
+  getConnectors: () =>
+    request<Record<string, any>>("/connectors"),
+  getConnector: (name: string) =>
+    request<Record<string, any>>(`/connectors/${name}`),
+  updateConnectorConfig: (name: string, config: Record<string, any>) =>
+    request<Record<string, any>>(`/connectors/${name}/config`, {
+      method: "PUT",
+      body: JSON.stringify({ config }),
+    }),
+  testConnector: (name: string) =>
+    request<Record<string, any>>(`/connectors/${name}/test`, {
+      method: "POST",
+    }),
+  sendConnectorMessage: (name: string, text: string, params: Record<string, any> = {}) =>
+    request<Record<string, any>>(`/connectors/${name}/send`, {
+      method: "POST",
+      body: JSON.stringify({ text, params }),
+    }),
+  startConnector: (name: string) =>
+    request<Record<string, any>>(`/connectors/${name}/start`, {
+      method: "POST",
+    }),
+  stopConnector: (name: string) =>
+    request<Record<string, any>>(`/connectors/${name}/stop`, {
+      method: "POST",
+    }),
+  disconnectConnector: (name: string) =>
+    request<Record<string, any>>(`/connectors/${name}`, {
+      method: "DELETE",
+    }),
 };
