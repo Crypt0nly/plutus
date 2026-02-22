@@ -308,19 +308,55 @@ class PCControlTool(Tool):
             elif old_op == "page_up":
                 kwargs["direction"] = "up"
 
-        # If the LLM calls 'screenshot' while a browser is active, redirect to snapshot
-        if op == "screenshot" and self._browser and self._browser._initialized:
+        # ═══════════════════════════════════════════════
+        # HARD REDIRECTS: Force Layer 2/2.5 over Layer 3
+        # These prevent the LLM from using screenshot/mouse
+        # when accessibility-tree-based methods are available.
+        # ═══════════════════════════════════════════════
+        _browser_active = self._browser and self._browser._initialized
+
+        # screenshot → snapshot (when browser is active)
+        if op == "screenshot" and _browser_active:
             op = "snapshot"
-            logger.info("Auto-redirected 'screenshot' → 'snapshot' (browser is active)")
+            logger.warning("HARD REDIRECT: 'screenshot' → 'snapshot' (browser is active)")
+            kwargs["_redirected_from"] = "screenshot"
 
-        # If the LLM calls 'mouse_scroll' while a browser is active, redirect to browser_scroll
-        if op == "mouse_scroll" and self._browser and self._browser._initialized:
+        # mouse_scroll → browser_scroll (when browser is active)
+        if op == "mouse_scroll" and _browser_active:
             op = "browser_scroll"
-            logger.info("Auto-redirected 'mouse_scroll' → 'browser_scroll' (browser is active)")
+            logger.warning("HARD REDIRECT: 'mouse_scroll' → 'browser_scroll' (browser is active)")
+            kwargs["_redirected_from"] = "mouse_scroll"
 
-        # If the LLM calls mouse_click/keyboard_type on a native app, suggest desktop UIA instead
-        if op in ("mouse_click", "keyboard_type") and self._desktop and self._desktop._uia_available:
-            logger.info(f"Hint: Consider using desktop_snapshot + desktop_click_ref/desktop_type_ref instead of {op}")
+        # mouse_click → block and return error with instructions (when browser is active)
+        if op == "mouse_click" and _browser_active:
+            return {
+                "success": False,
+                "error": "BLOCKED: Do NOT use mouse_click for web pages. The browser is active.",
+                "correct_approach": (
+                    "1. pc(operation='snapshot') → get the accessibility tree with [ref] numbers\n"
+                    "2. pc(operation='click_ref', ref=N) → click the element you want\n"
+                    "NEVER use mouse_click or screenshot for web content."
+                ),
+            }
+
+        # read_screen / find_text_on_screen → block when browser is active
+        if op in ("read_screen", "find_text_on_screen") and _browser_active:
+            return {
+                "success": False,
+                "error": f"BLOCKED: Do NOT use {op} for web pages. The browser is active.",
+                "correct_approach": "Use pc(operation='snapshot') to read page content via accessibility tree.",
+            }
+
+        # keyboard_type → warn when browser is active (should use type_ref)
+        if op == "keyboard_type" and _browser_active:
+            logger.warning(
+                "keyboard_type used while browser is active — "
+                "consider type_ref(ref=N, text='...') instead"
+            )
+            kwargs["_warning"] = (
+                "⚠️ You used keyboard_type while the browser is active. "
+                "Next time, use: pc(operation='snapshot') then pc(operation='type_ref', ref=N, text='...')"
+            )
 
         # ═══════════════════════════════════════════════
         # LAYER 1: OS Operations (shell commands)
@@ -400,7 +436,17 @@ class PCControlTool(Tool):
             return await self._browser.navigate(url, tab_id=kwargs.get("tab_id"))
 
         elif op == "snapshot":
-            return await self._browser.snapshot()
+            result = await self._browser.snapshot()
+            # If this was redirected from screenshot, inject a correction warning
+            if kwargs.get("_redirected_from") == "screenshot":
+                if isinstance(result, dict):
+                    result["_warning"] = (
+                        "⚠️ AUTO-CORRECTED: You called 'screenshot' but the browser is active. "
+                        "I redirected to 'snapshot' (accessibility tree). "
+                        "ALWAYS use snapshot() for web pages, NEVER screenshot(). "
+                        "The accessibility tree gives you [ref] numbers to interact with elements."
+                    )
+            return result
 
         elif op == "click_ref":
             ref = kwargs.get("ref")
@@ -495,10 +541,20 @@ class PCControlTool(Tool):
             )
 
         elif op == "browser_scroll":
-            return await self._browser.scroll(
+            result = await self._browser.scroll(
                 direction=kwargs.get("direction", "down"),
                 amount=kwargs.get("amount", 500),
             )
+            # If redirected from mouse_scroll, inject a correction warning
+            if kwargs.get("_redirected_from") == "mouse_scroll":
+                if isinstance(result, dict):
+                    result["_warning"] = (
+                        "⚠️ AUTO-CORRECTED: You called 'mouse_scroll' but the browser is active. "
+                        "I redirected to 'browser_scroll'. "
+                        "ALWAYS use browser_scroll() for web pages. "
+                        "After scrolling, call snapshot() to see the updated accessibility tree."
+                    )
+            return result
 
         elif op == "browser_screenshot":
             return await self._browser.screenshot(full_page=kwargs.get("full_page", False))
@@ -657,7 +713,12 @@ class PCControlTool(Tool):
             self._ensure_desktop()
             if not self._keyboard:
                 return {"error": "Desktop control not available"}
-            return await self._keyboard.type_text(kwargs.get("text", ""))
+            result = await self._keyboard.type_text(kwargs.get("text", ""))
+            # Inject warning if browser was active
+            warning = kwargs.get("_warning")
+            if warning and isinstance(result, dict):
+                result["_warning"] = warning
+            return result
 
         elif op == "keyboard_press":
             self._ensure_desktop()
@@ -681,7 +742,15 @@ class PCControlTool(Tool):
             self._ensure_desktop()
             if not self._screen:
                 return {"error": "Desktop control not available"}
-            return await self._screen.capture(path=kwargs.get("file_path"))
+            result = await self._screen.capture(path=kwargs.get("file_path"))
+            # Always remind about snapshot-based alternatives
+            if isinstance(result, dict):
+                result["_hint"] = (
+                    "Tip: For web pages, use snapshot() instead of screenshot(). "
+                    "For native apps, use desktop_snapshot(). "
+                    "These give you [ref] numbers for precise interaction."
+                )
+            return result
 
         # ═══════════════════════════════════════════════
         # SKILLS
