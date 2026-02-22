@@ -266,7 +266,7 @@ Created tools are:
 {
   "model": {
     "provider": "anthropic",
-    "model": "claude-sonnet-4-6-20250514",
+    "model": "claude-sonnet-4-6",
     "temperature": 0.7,
     "max_tokens": 4096
   },
