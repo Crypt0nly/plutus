@@ -1,11 +1,11 @@
 """
 Browser Control Layer — OpenClaw-style Playwright/CDP browser automation.
 
-KEY DESIGN: Uses ACCESSIBILITY TREE SNAPSHOTS instead of screenshots.
+KEY DESIGN: Uses Playwright's NATIVE ACCESSIBILITY TREE instead of screenshots.
 The LLM sees a text-based representation of the page with numbered refs:
 
     [1] button "Sign In"
-    [2] textbox "Email" value=""
+    [2] textbox "Email" value="" focused
     [3] textbox "Password" value=""
     [4] link "Forgot password?"
     [5] heading "Welcome back"
@@ -13,7 +13,8 @@ The LLM sees a text-based representation of the page with numbered refs:
 The LLM then says "click ref 1" or "type ref 2 hello@email.com" — precise,
 deterministic, and uses 100x fewer tokens than screenshots.
 
-This is exactly how OpenClaw navigates the web.
+This uses the same approach as OpenClaw: Playwright's page.accessibility.snapshot()
+which returns the browser's own accessibility tree via the Chrome DevTools Protocol.
 """
 
 import asyncio
@@ -25,13 +26,31 @@ from pathlib import Path
 
 logger = logging.getLogger("plutus.pc.browser")
 
+# Roles considered interactive — these get ref numbers
+INTERACTIVE_ROLES = frozenset({
+    "link", "button", "textbox", "checkbox", "radio",
+    "combobox", "searchbox", "tab", "menuitem", "option",
+    "switch", "slider", "spinbutton", "treeitem",
+    "gridcell", "row", "columnheader", "rowheader",
+})
+
+# Roles shown for structural context (no ref number)
+STRUCTURAL_ROLES = frozenset({
+    "heading", "navigation", "main", "banner", "contentinfo",
+    "complementary", "form", "search", "region", "alert",
+    "dialog", "alertdialog", "status", "log", "marquee",
+    "timer", "toolbar", "menu", "menubar", "tablist",
+    "tabpanel", "tree", "treegrid", "grid", "table",
+    "list", "listitem", "group",
+})
+
 
 class BrowserControl:
     """
-    Playwright-based browser controller using accessibility tree snapshots.
+    Playwright-based browser controller using native accessibility tree snapshots.
     
-    The core loop:
-    1. snapshot() → returns numbered accessibility tree
+    The core loop (identical to OpenClaw):
+    1. snapshot() → returns numbered accessibility tree from Playwright's native API
     2. LLM reads the tree, decides what to do
     3. click_ref(3) / type_ref(2, "hello") / etc.
     4. snapshot() again to verify
@@ -44,7 +63,7 @@ class BrowserControl:
         self._pages: dict[str, Any] = {}
         self._active_tab: Optional[str] = None
         self._initialized = False
-        # Ref map: ref_number -> element locator info
+        # Ref map: ref_number -> accessibility node info + locator strategy
         self._ref_map: dict[int, dict] = {}
         self._ref_counter = 0
 
@@ -116,26 +135,107 @@ class BrowserControl:
         return None
 
     # ═══════════════════════════════════════════════════════════════
-    # CORE: Accessibility Tree Snapshot (OpenClaw's key innovation)
+    # CORE: Native Accessibility Tree Snapshot (OpenClaw approach)
     # ═══════════════════════════════════════════════════════════════
+
+    def _walk_ax_tree(self, node: dict, indent: int = 0) -> list[str]:
+        """
+        Recursively walk the Playwright accessibility tree and build a
+        numbered, text-based representation. Interactive elements get
+        ref numbers; structural elements are shown for context.
+        
+        This mirrors OpenClaw's buildRoleSnapshotFromAriaSnapshot().
+        """
+        lines = []
+        role = node.get("role", "")
+        name = node.get("name", "")
+        value = node.get("value", "")
+        focused = node.get("focused", False)
+        checked = node.get("checked")
+        disabled = node.get("disabled", False)
+        expanded = node.get("expanded")
+        level = node.get("level")
+        description = node.get("description", "")
+
+        is_interactive = role in INTERACTIVE_ROLES
+        is_structural = role in STRUCTURAL_ROLES
+
+        if is_interactive:
+            self._ref_counter += 1
+            ref = self._ref_counter
+
+            # Store in ref map for later interaction
+            # We store the role + name so we can build a Playwright locator
+            self._ref_map[ref] = {
+                "role": role,
+                "name": name,
+                "value": value,
+                "path": self._current_path[:],  # Copy of path for locator resolution
+            }
+
+            # Format the line
+            parts = [f"[{ref}]", role]
+            if name:
+                parts.append(f'"{name}"')
+            if value:
+                parts.append(f'value="{value}"')
+            if focused:
+                parts.append("focused")
+            if checked is True:
+                parts.append("checked")
+            elif checked == "mixed":
+                parts.append("mixed")
+            if disabled:
+                parts.append("disabled")
+            if expanded is True:
+                parts.append("expanded")
+            elif expanded is False:
+                parts.append("collapsed")
+
+            lines.append("  " * indent + " ".join(parts))
+
+        elif is_structural:
+            parts = [role]
+            if name:
+                parts.append(f'"{name}"')
+            if level:
+                parts.append(f"level={level}")
+            lines.append("  " * indent + " ".join(parts))
+
+        # Recurse into children
+        children = node.get("children", [])
+        child_indent = indent + 1 if (is_interactive or is_structural) else indent
+        
+        self._current_path.append({"role": role, "name": name})
+        for child in children:
+            lines.extend(self._walk_ax_tree(child, child_indent))
+        self._current_path.pop()
+
+        return lines
 
     async def snapshot(self) -> dict:
         """
-        Take an accessibility tree snapshot of the current page.
+        Take a native accessibility tree snapshot of the current page.
+        
+        Uses Playwright's page.accessibility.snapshot() which calls Chrome's
+        Accessibility.getFullAXTree via CDP — the same approach as OpenClaw.
         
         Returns a numbered, text-based representation of all interactive elements.
         This is the PRIMARY way the LLM "sees" the page — not screenshots.
         
         Example output:
-            Page: Google - https://www.google.com
+            Page: Google — https://www.google.com
             
-            [1] textbox "Search" value="" focused
-            [2] button "Google Search"
-            [3] button "I'm Feeling Lucky"
-            [4] link "Gmail"
-            [5] link "Images"
-            [6] link "About"
-            [7] link "Store"
+            navigation
+              [1] link "About"
+              [2] link "Gmail"
+              [3] button "Google apps"
+              [4] link "Sign in"
+            search
+              [5] combobox "Search" focused
+              [6] button "Search by voice"
+              [7] button "Google Search"
+              [8] button "I'm Feeling Lucky"
         """
         if not await self._ensure_browser():
             return {
@@ -152,253 +252,54 @@ class BrowserControl:
             title = await page.title()
             url = page.url
 
-            # Build the accessibility tree snapshot using JavaScript
-            # This extracts ALL interactive elements with their roles, names, and values
-            elements = await page.evaluate("""() => {
-                const results = [];
-                const seen = new Set();
-                
-                // Helper: get accessible name for an element
-                function getAccessibleName(el) {
-                    return (
-                        el.getAttribute('aria-label') ||
-                        el.getAttribute('aria-labelledby') && document.getElementById(el.getAttribute('aria-labelledby'))?.textContent ||
-                        el.getAttribute('title') ||
-                        el.getAttribute('alt') ||
-                        el.getAttribute('placeholder') ||
-                        el.labels?.[0]?.textContent?.trim() ||
-                        el.textContent?.trim()?.substring(0, 80) ||
-                        ''
-                    );
-                }
-                
-                // Helper: get element value
-                function getValue(el) {
-                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-                        return el.value || '';
-                    }
-                    if (el.tagName === 'SELECT') {
-                        return el.options[el.selectedIndex]?.text || '';
-                    }
-                    return '';
-                }
-                
-                // Helper: get role
-                function getRole(el) {
-                    const explicit = el.getAttribute('role');
-                    if (explicit) return explicit;
-                    
-                    const tag = el.tagName.toLowerCase();
-                    const type = (el.getAttribute('type') || '').toLowerCase();
-                    
-                    const roleMap = {
-                        'a': 'link',
-                        'button': 'button',
-                        'input': type === 'submit' ? 'button' :
-                                 type === 'checkbox' ? 'checkbox' :
-                                 type === 'radio' ? 'radio' :
-                                 type === 'search' ? 'searchbox' :
-                                 'textbox',
-                        'textarea': 'textbox',
-                        'select': 'combobox',
-                        'img': 'img',
-                        'h1': 'heading',
-                        'h2': 'heading',
-                        'h3': 'heading',
-                        'h4': 'heading',
-                        'nav': 'navigation',
-                        'main': 'main',
-                        'form': 'form',
-                        'table': 'table',
-                        'li': 'listitem',
-                        'ul': 'list',
-                        'ol': 'list',
-                    };
-                    
-                    return roleMap[tag] || '';
-                }
-                
-                // Helper: is element visible and interactive?
-                function isVisible(el) {
-                    const rect = el.getBoundingClientRect();
-                    if (rect.width === 0 && rect.height === 0) return false;
-                    const style = window.getComputedStyle(el);
-                    if (style.display === 'none' || style.visibility === 'hidden') return false;
-                    if (parseFloat(style.opacity) === 0) return false;
-                    return true;
-                }
-                
-                // Collect interactive elements
-                const selectors = [
-                    'a[href]',
-                    'button',
-                    'input:not([type="hidden"])',
-                    'textarea',
-                    'select',
-                    '[role="button"]',
-                    '[role="link"]',
-                    '[role="textbox"]',
-                    '[role="checkbox"]',
-                    '[role="radio"]',
-                    '[role="tab"]',
-                    '[role="menuitem"]',
-                    '[role="option"]',
-                    '[role="switch"]',
-                    '[role="combobox"]',
-                    '[role="searchbox"]',
-                    '[contenteditable="true"]',
-                    '[tabindex]:not([tabindex="-1"])',
-                    '[onclick]',
-                ];
-                
-                const allElements = document.querySelectorAll(selectors.join(','));
-                
-                allElements.forEach(el => {
-                    if (!isVisible(el)) return;
-                    
-                    // Deduplicate by position
-                    const rect = el.getBoundingClientRect();
-                    const key = `${Math.round(rect.x)},${Math.round(rect.y)},${Math.round(rect.width)}`;
-                    if (seen.has(key)) return;
-                    seen.add(key);
-                    
-                    const role = getRole(el);
-                    const name = getAccessibleName(el);
-                    const value = getValue(el);
-                    
-                    // Skip empty/useless elements
-                    if (!role && !name) return;
-                    
-                    // Build a unique CSS selector for this element
-                    let cssSelector = '';
-                    if (el.id) {
-                        cssSelector = '#' + CSS.escape(el.id);
-                    } else if (el.getAttribute('data-testid')) {
-                        cssSelector = `[data-testid="${el.getAttribute('data-testid')}"]`;
-                    } else if (el.getAttribute('name')) {
-                        cssSelector = `${el.tagName.toLowerCase()}[name="${el.getAttribute('name')}"]`;
-                    } else if (el.getAttribute('aria-label')) {
-                        cssSelector = `[aria-label="${el.getAttribute('aria-label')}"]`;
-                    } else {
-                        // Fallback: use tag + nth-of-type
-                        const parent = el.parentElement;
-                        if (parent) {
-                            const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
-                            const idx = siblings.indexOf(el) + 1;
-                            cssSelector = `${el.tagName.toLowerCase()}:nth-of-type(${idx})`;
-                            // Walk up to make it more specific
-                            if (parent.id) {
-                                cssSelector = '#' + CSS.escape(parent.id) + ' > ' + cssSelector;
-                            } else if (parent.className && typeof parent.className === 'string') {
-                                const cls = parent.className.trim().split(/\\s+/)[0];
-                                if (cls) cssSelector = '.' + CSS.escape(cls) + ' > ' + cssSelector;
-                            }
-                        }
-                    }
-                    
-                    results.push({
-                        role: role,
-                        name: name.substring(0, 100),
-                        value: value.substring(0, 100),
-                        selector: cssSelector,
-                        tag: el.tagName.toLowerCase(),
-                        type: el.getAttribute('type') || '',
-                        href: el.getAttribute('href') || '',
-                        checked: el.checked || false,
-                        disabled: el.disabled || false,
-                        focused: document.activeElement === el,
-                        rect: {
-                            x: Math.round(rect.x),
-                            y: Math.round(rect.y),
-                            width: Math.round(rect.width),
-                            height: Math.round(rect.height),
-                        },
-                    });
-                });
-                
-                // Also get headings for page structure context
-                const headings = [];
-                document.querySelectorAll('h1, h2, h3').forEach((h, i) => {
-                    if (i < 15 && h.textContent?.trim()) {
-                        headings.push({
-                            level: parseInt(h.tagName[1]),
-                            text: h.textContent.trim().substring(0, 120),
-                        });
-                    }
-                });
-                
-                // Get visible text summary (first 2000 chars)
-                const textContent = document.body?.innerText?.substring(0, 2000) || '';
-                
-                return { elements, headings, textContent };
-            }""")
+            # Use Playwright's native accessibility tree
+            # This calls Chrome's Accessibility API via CDP — same as OpenClaw
+            ax_tree = await page.accessibility.snapshot()
 
-            # Build the ref map and formatted snapshot
+            if not ax_tree:
+                # Fallback: try via CDP session directly (like OpenClaw's snapshotAriaViaPlaywright)
+                try:
+                    session = await page.context.new_cdp_session(page)
+                    await session.send("Accessibility.enable")
+                    res = await session.send("Accessibility.getFullAXTree")
+                    await session.detach()
+                    # Convert CDP format to our format
+                    nodes = res.get("nodes", [])
+                    if nodes:
+                        ax_tree = self._cdp_nodes_to_tree(nodes)
+                except Exception as cdp_err:
+                    logger.warning(f"CDP fallback also failed: {cdp_err}")
+
+            if not ax_tree:
+                return {
+                    "success": False,
+                    "error": "Could not get accessibility tree. The page may be empty or loading.",
+                }
+
+            # Reset ref map and walk the tree
             self._ref_map = {}
             self._ref_counter = 0
-            
-            lines = []
-            lines.append(f"Page: {title} — {url}")
-            lines.append("")
-            
-            # Add headings for context
-            if elements.get("headings"):
-                for h in elements["headings"]:
-                    prefix = "#" * h["level"]
-                    lines.append(f"  {prefix} {h['text']}")
-                lines.append("")
+            self._current_path = []
 
-            # Add interactive elements with ref numbers
-            for elem in elements.get("elements", []):
-                self._ref_counter += 1
-                ref = self._ref_counter
-                
-                # Store in ref map for later interaction
-                self._ref_map[ref] = {
-                    "selector": elem["selector"],
-                    "role": elem["role"],
-                    "name": elem["name"],
-                    "tag": elem["tag"],
-                    "rect": elem["rect"],
-                }
-                
-                # Format the line
-                role = elem["role"] or elem["tag"]
-                name = elem["name"]
-                value = elem.get("value", "")
-                
-                parts = [f"[{ref}]", role]
-                if name:
-                    parts.append(f'"{name}"')
-                if value:
-                    parts.append(f'value="{value}"')
-                if elem.get("checked"):
-                    parts.append("checked")
-                if elem.get("disabled"):
-                    parts.append("disabled")
-                if elem.get("focused"):
-                    parts.append("focused")
-                if elem.get("href") and elem["role"] == "link":
-                    href = elem["href"]
-                    if len(href) > 60:
-                        href = href[:57] + "..."
-                    parts.append(f"→ {href}")
-                
-                lines.append("  " + " ".join(parts))
+            lines = [f"Page: {title} — {url}", ""]
+            lines.extend(self._walk_ax_tree(ax_tree))
 
             snapshot_text = "\n".join(lines)
-            
-            # Also get a short text summary for context
-            text_preview = elements.get("textContent", "")[:500]
+
+            # Also get visible text for context (first 2000 chars)
+            try:
+                text_content = await page.evaluate("document.body?.innerText?.substring(0, 2000) || ''")
+            except Exception:
+                text_content = ""
 
             return {
                 "success": True,
                 "snapshot": snapshot_text,
                 "url": url,
                 "title": title,
-                "element_count": len(elements.get("elements", [])),
+                "element_count": self._ref_counter,
                 "tab_id": self._active_tab,
-                "text_preview": text_preview,
+                "text_preview": text_content[:500] if text_content else "",
                 "hint": "Use ref numbers to interact: click_ref(1), type_ref(2, 'text'), etc.",
             }
 
@@ -406,9 +307,159 @@ class BrowserControl:
             logger.error(f"Snapshot failed: {e}")
             return {"success": False, "error": str(e)}
 
+    def _cdp_nodes_to_tree(self, nodes: list[dict]) -> dict:
+        """
+        Convert CDP Accessibility.getFullAXTree nodes into a tree structure
+        compatible with Playwright's accessibility.snapshot() format.
+        This is the fallback when page.accessibility.snapshot() returns None.
+        """
+        if not nodes:
+            return {}
+
+        # Build a map of nodeId -> node
+        node_map = {}
+        for n in nodes:
+            nid = n.get("nodeId", "")
+            role = n.get("role", {}).get("value", "none")
+            name = n.get("name", {}).get("value", "")
+            value_obj = n.get("value", {})
+            value = value_obj.get("value", "") if isinstance(value_obj, dict) else ""
+
+            props = {}
+            for prop in n.get("properties", []):
+                pname = prop.get("name", "")
+                pval = prop.get("value", {}).get("value", "")
+                props[pname] = pval
+
+            node_map[nid] = {
+                "role": role,
+                "name": name,
+                "value": str(value) if value else "",
+                "focused": props.get("focused", False),
+                "checked": props.get("checked"),
+                "disabled": props.get("disabled", False),
+                "expanded": props.get("expanded"),
+                "level": props.get("level"),
+                "children": [],
+                "childIds": n.get("childIds", []),
+            }
+
+        # Build tree from root
+        root_id = nodes[0].get("nodeId", "") if nodes else ""
+        if root_id not in node_map:
+            return {}
+
+        def build_tree(nid):
+            node = node_map.get(nid)
+            if not node:
+                return None
+            result = {k: v for k, v in node.items() if k not in ("childIds",)}
+            result["children"] = []
+            for cid in node.get("childIds", []):
+                child = build_tree(cid)
+                if child:
+                    result["children"].append(child)
+            return result
+
+        return build_tree(root_id) or {}
+
     # ═══════════════════════════════════════════════════════════════
     # REF-BASED INTERACTION (the LLM uses ref numbers from snapshot)
     # ═══════════════════════════════════════════════════════════════
+
+    async def _resolve_ref_locator(self, ref: int, page):
+        """
+        Resolve a ref number to a Playwright locator.
+        
+        Uses the role + name from the accessibility tree to build a
+        get_by_role() locator — this is the most reliable way to find
+        elements, and it's how OpenClaw resolves refs too.
+        """
+        elem = self._ref_map.get(ref)
+        if not elem:
+            return None
+
+        role = elem["role"]
+        name = elem["name"]
+
+        # Map our role names to Playwright's get_by_role names
+        role_map = {
+            "link": "link",
+            "button": "button",
+            "textbox": "textbox",
+            "searchbox": "searchbox",
+            "combobox": "combobox",
+            "checkbox": "checkbox",
+            "radio": "radio",
+            "tab": "tab",
+            "menuitem": "menuitem",
+            "option": "option",
+            "switch": "switch",
+            "slider": "slider",
+            "spinbutton": "spinbutton",
+            "treeitem": "treeitem",
+            "gridcell": "gridcell",
+            "row": "row",
+            "columnheader": "columnheader",
+            "rowheader": "rowheader",
+        }
+
+        pw_role = role_map.get(role)
+        if not pw_role:
+            # Fallback: try using get_by_text if we have a name
+            if name:
+                return page.get_by_text(name, exact=False).first
+            return None
+
+        # Build the locator using role + name (exact match first, then fuzzy)
+        if name:
+            locator = page.get_by_role(pw_role, name=name, exact=True)
+            # Check if it exists
+            try:
+                count = await locator.count()
+                if count > 0:
+                    # If multiple matches, try to find the right one by index
+                    # Walk through the ref map to count how many refs with same role+name
+                    # came before this one
+                    nth = 0
+                    for r in range(1, ref):
+                        other = self._ref_map.get(r, {})
+                        if other.get("role") == role and other.get("name") == name:
+                            nth += 1
+                    return locator.nth(nth)
+            except Exception:
+                pass
+
+            # Try fuzzy match
+            locator = page.get_by_role(pw_role, name=name, exact=False)
+            try:
+                count = await locator.count()
+                if count > 0:
+                    nth = 0
+                    for r in range(1, ref):
+                        other = self._ref_map.get(r, {})
+                        if other.get("role") == role and other.get("name") == name:
+                            nth += 1
+                    return locator.nth(min(nth, count - 1))
+            except Exception:
+                pass
+
+        # Last resort: role only
+        locator = page.get_by_role(pw_role)
+        try:
+            count = await locator.count()
+            if count > 0:
+                # Count how many refs with same role came before this one
+                nth = 0
+                for r in range(1, ref):
+                    other = self._ref_map.get(r, {})
+                    if other.get("role") == role:
+                        nth += 1
+                return locator.nth(min(nth, count - 1))
+        except Exception:
+            pass
+
+        return None
 
     async def click_ref(self, ref: int, double_click: bool = False, right_click: bool = False) -> dict:
         """Click an element by its ref number from the last snapshot."""
@@ -419,13 +470,19 @@ class BrowserControl:
                 "available_refs": list(self._ref_map.keys())[:20],
             }
 
-        elem = self._ref_map[ref]
         page = self._get_active_page()
         if not page:
             return {"success": False, "error": "No active tab"}
 
+        elem = self._ref_map[ref]
+
         try:
-            locator = page.locator(elem["selector"]).first
+            locator = await self._resolve_ref_locator(ref, page)
+            if not locator:
+                return {
+                    "success": False,
+                    "error": f"Could not resolve ref [{ref}] to a page element. Take a new snapshot.",
+                }
 
             if double_click:
                 await locator.dblclick(timeout=5000)
@@ -442,26 +499,13 @@ class BrowserControl:
                 "hint": "Take a snapshot to see the updated page state.",
             }
         except Exception as e:
-            # Fallback: try clicking by coordinates from the rect
-            try:
-                rect = elem.get("rect", {})
-                x = rect.get("x", 0) + rect.get("width", 0) // 2
-                y = rect.get("y", 0) + rect.get("height", 0) // 2
-                await page.mouse.click(x, y)
-                return {
-                    "success": True,
-                    "action": "click (coordinate fallback)",
-                    "ref": ref,
-                    "element": f'{elem["role"]} "{elem["name"]}"',
-                    "coordinates": {"x": x, "y": y},
-                }
-            except Exception as e2:
-                return {
-                    "success": False,
-                    "error": f"Click failed: {e}. Coordinate fallback also failed: {e2}",
-                    "ref": ref,
-                    "suggestion": "Take a new snapshot — the page may have changed.",
-                }
+            return {
+                "success": False,
+                "error": f"Click ref [{ref}] failed: {e}",
+                "ref": ref,
+                "element": f'{elem["role"]} "{elem["name"]}"',
+                "suggestion": "Take a new snapshot — the page may have changed.",
+            }
 
     async def type_ref(self, ref: int, text: str, press_enter: bool = False, clear_first: bool = True) -> dict:
         """Type text into an element by its ref number from the last snapshot."""
@@ -471,17 +515,23 @@ class BrowserControl:
                 "error": f"Ref [{ref}] not found. Take a new snapshot first.",
             }
 
-        elem = self._ref_map[ref]
         page = self._get_active_page()
         if not page:
             return {"success": False, "error": "No active tab"}
 
+        elem = self._ref_map[ref]
+
         try:
-            locator = page.locator(elem["selector"]).first
+            locator = await self._resolve_ref_locator(ref, page)
+            if not locator:
+                return {
+                    "success": False,
+                    "error": f"Could not resolve ref [{ref}] to a page element.",
+                }
 
             if clear_first:
                 await locator.fill("", timeout=3000)
-            
+
             await locator.fill(text, timeout=5000)
 
             if press_enter:
@@ -498,42 +548,43 @@ class BrowserControl:
         except Exception as e:
             # Fallback: click the element first, then type via keyboard
             try:
-                rect = elem.get("rect", {})
-                x = rect.get("x", 0) + rect.get("width", 0) // 2
-                y = rect.get("y", 0) + rect.get("height", 0) // 2
-                await page.mouse.click(x, y)
-                await asyncio.sleep(0.2)
-                if clear_first:
-                    await page.keyboard.press("Control+a")
-                    await page.keyboard.press("Backspace")
-                await page.keyboard.type(text, delay=30)
-                if press_enter:
-                    await page.keyboard.press("Enter")
-                return {
-                    "success": True,
-                    "action": "type (keyboard fallback)",
-                    "ref": ref,
-                    "text": text[:50] + "..." if len(text) > 50 else text,
-                }
+                locator = await self._resolve_ref_locator(ref, page)
+                if locator:
+                    await locator.click(timeout=3000)
+                    await asyncio.sleep(0.2)
+                    if clear_first:
+                        await page.keyboard.press("Control+a")
+                        await page.keyboard.press("Backspace")
+                    await page.keyboard.type(text, delay=30)
+                    if press_enter:
+                        await page.keyboard.press("Enter")
+                    return {
+                        "success": True,
+                        "action": "type (keyboard fallback)",
+                        "ref": ref,
+                        "text": text[:50] + "..." if len(text) > 50 else text,
+                    }
             except Exception as e2:
-                return {
-                    "success": False,
-                    "error": f"Type failed: {e}. Keyboard fallback also failed: {e2}",
-                    "ref": ref,
-                }
+                pass
+            return {
+                "success": False,
+                "error": f"Type failed: {e}",
+                "ref": ref,
+            }
 
     async def select_ref(self, ref: int, value: str) -> dict:
         """Select an option from a dropdown by ref number."""
         if ref not in self._ref_map:
             return {"success": False, "error": f"Ref [{ref}] not found."}
 
-        elem = self._ref_map[ref]
         page = self._get_active_page()
         if not page:
             return {"success": False, "error": "No active tab"}
 
         try:
-            locator = page.locator(elem["selector"]).first
+            locator = await self._resolve_ref_locator(ref, page)
+            if not locator:
+                return {"success": False, "error": f"Could not resolve ref [{ref}]."}
             await locator.select_option(value, timeout=5000)
             return {"success": True, "action": "select", "ref": ref, "value": value}
         except Exception as e:
@@ -544,13 +595,14 @@ class BrowserControl:
         if ref not in self._ref_map:
             return {"success": False, "error": f"Ref [{ref}] not found."}
 
-        elem = self._ref_map[ref]
         page = self._get_active_page()
         if not page:
             return {"success": False, "error": "No active tab"}
 
         try:
-            locator = page.locator(elem["selector"]).first
+            locator = await self._resolve_ref_locator(ref, page)
+            if not locator:
+                return {"success": False, "error": f"Could not resolve ref [{ref}]."}
             if checked:
                 await locator.check(timeout=5000)
             else:
@@ -716,7 +768,7 @@ class BrowserControl:
                 self._active_tab = new_id
 
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            
+
             # Auto-snapshot after navigation
             snapshot_result = await self.snapshot()
 
@@ -744,7 +796,7 @@ class BrowserControl:
             delta = amount if direction == "down" else -amount
             await page.mouse.wheel(0, delta)
             await asyncio.sleep(0.5)  # Wait for scroll to settle
-            
+
             # Auto-snapshot after scroll
             snapshot_result = await self.snapshot()
 
@@ -768,11 +820,12 @@ class BrowserControl:
 
         try:
             if ref and ref in self._ref_map:
-                elem = self._ref_map[ref]
-                locator = page.locator(elem["selector"]).first
+                locator = await self._resolve_ref_locator(ref, page)
+                if not locator:
+                    return {"success": False, "error": f"Could not resolve ref [{ref}]."}
             else:
                 locator = self._build_locator(page, selector, text)
-            
+
             await locator.hover(timeout=5000)
             return {"success": True, "action": "hover", "target": ref or selector or text}
         except Exception as e:
@@ -924,7 +977,6 @@ class BrowserControl:
 
         try:
             import time
-            import base64
             screenshot_bytes = await page.screenshot(full_page=full_page, type="png")
             screenshot_dir = Path.home() / ".plutus" / "screenshots"
             screenshot_dir.mkdir(parents=True, exist_ok=True)

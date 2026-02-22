@@ -417,11 +417,19 @@ class PCControlTool(Tool):
             return await self._browser.fill_form(fields)
 
         elif op == "select_option":
-            return await self._browser.select_option(
-                value=kwargs.get("text", ""),
-                selector=kwargs.get("selector"),
-                label=kwargs.get("label"),
-            )
+            ref = kwargs.get("ref")
+            if ref:
+                return await self._browser.select_ref(int(ref), kwargs.get("text", ""))
+            # Fallback for legacy selector-based select
+            page = self._browser._get_active_page()
+            if page:
+                try:
+                    selector = kwargs.get("selector") or kwargs.get("label", "select")
+                    await page.locator(selector).first.select_option(kwargs.get("text", ""), timeout=5000)
+                    return {"success": True, "action": "select_option"}
+                except Exception as e:
+                    return {"success": False, "error": str(e)}
+            return {"success": False, "error": "No active page"}
 
         elif op == "browser_hover":
             return await self._browser.hover(
