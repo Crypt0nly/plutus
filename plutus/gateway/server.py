@@ -83,7 +83,7 @@ def _init_computer_use_agent(config: PlutusConfig, secrets: SecretsStore) -> Any
             pass
         else:
             # Default to Claude Sonnet for computer use
-            cu_model = "claude-sonnet-4-20250514"
+            cu_model = "claude-sonnet-4-6"
 
         executor = ComputerUseExecutor()
         agent = ComputerUseAgent(
