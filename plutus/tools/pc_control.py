@@ -88,24 +88,30 @@ class PCControlTool(Tool):
             "• list_processes, kill_process, get_clipboard, set_clipboard\n"
             "• send_notification, list_apps, system_info, active_window\n\n"
             "=== BROWSER OPERATIONS (snapshot → ref → act loop) ===\n"
-            "The core loop for ALL web interaction:\n"
-            "  1. navigate(url) → opens page and returns accessibility tree snapshot\n"
+            "MANDATORY for ALL web interaction — NEVER use desktop ops for web pages:\n"
+            "  1. navigate(url) → opens page AND returns accessibility tree snapshot\n"
             "  2. snapshot() → refreshes the accessibility tree with numbered [ref] elements\n"
             "  3. click_ref(ref=5) → clicks element [5] from the snapshot\n"
             "  4. type_ref(ref=3, text='hello') → types into element [3]\n"
-            "  5. snapshot() → verify the result\n\n"
+            "  5. select_ref(ref=7, value='option') → selects dropdown option\n"
+            "  6. check_ref(ref=9, checked=true) → toggles checkbox\n"
+            "  7. browser_scroll(direction='down') → scrolls the page, then call snapshot()\n"
+            "  8. snapshot() → verify the result after ANY action\n\n"
             "Snapshot example:\n"
             "  Page: Google — https://www.google.com\n"
             "  [1] textbox 'Search' value='' focused\n"
             "  [2] button 'Google Search'\n"
-            "  [3] button 'I'm Feeling Lucky'\n"
-            "  [4] link 'Gmail'\n\n"
+            "  [3] link 'Gmail'\n\n"
             "Then: type_ref(ref=1, text='weather today', press_enter=true)\n\n"
-            "Other browser ops: scroll, new_tab, close_tab, switch_tab, list_tabs,\n"
-            "  browser_press, fill_form, evaluate_js, wait_for_text, wait_for_navigation\n\n"
-            "=== DESKTOP OPERATIONS (fallback for native apps only) ===\n"
+            "Other browser ops: new_tab, close_tab, switch_tab, list_tabs,\n"
+            "  fill_form, evaluate_js, wait_for_text, wait_for_navigation\n\n"
+            "IMPORTANT: Use browser_scroll (NOT mouse_scroll/scroll) for web pages.\n"
+            "IMPORTANT: Use snapshot() (NOT screenshot) to see web page content.\n\n"
+            "=== DESKTOP OPERATIONS (ONLY for native apps, NEVER for web pages) ===\n"
             "• keyboard_type, keyboard_press, keyboard_hotkey, keyboard_shortcut\n"
-            "• mouse_click, mouse_move, mouse_scroll, screenshot\n\n"
+            "• mouse_click, mouse_move, mouse_scroll, screenshot\n"
+            "• These are ONLY for native desktop apps like Notepad, Spotify, etc.\n"
+            "• NEVER use screenshot or mouse_scroll on web pages — use snapshot/browser_scroll\n\n"
             "=== SKILLS (pre-built app workflows) ===\n"
             "• run_skill, list_skills, create_skill, update_skill, delete_skill\n"
             "• Two skill types: 'simple' (JSON step sequences) and 'python' (full Python scripts)\n"
@@ -216,6 +222,48 @@ class PCControlTool(Tool):
             return json.dumps({"error": str(e), "operation": op}, default=str)
 
     async def _dispatch(self, op: str, kwargs: dict) -> dict:
+
+        # ═══════════════════════════════════════════════
+        # AUTO-REDIRECT: Fix common LLM operation mistakes
+        # ═══════════════════════════════════════════════
+        _redirects = {
+            "scroll": "browser_scroll",
+            "scroll_down": "browser_scroll",
+            "scroll_up": "browser_scroll",
+            "page_down": "browser_scroll",
+            "page_up": "browser_scroll",
+            "take_screenshot": "snapshot",
+            "get_screenshot": "snapshot",
+            "capture": "snapshot",
+            "click": "click_ref",
+            "type": "type_ref",
+            "select": "select_ref",
+            "check": "check_ref",
+            "get_page": "snapshot",
+            "read_page": "snapshot",
+            "view_page": "snapshot",
+        }
+        if op in _redirects:
+            old_op = op
+            op = _redirects[op]
+            logger.info(f"Auto-redirected '{old_op}' → '{op}'")
+            # Fix direction for scroll_up/scroll_down
+            if old_op == "scroll_up":
+                kwargs["direction"] = "up"
+            elif old_op in ("scroll_down", "scroll", "page_down"):
+                kwargs["direction"] = "down"
+            elif old_op == "page_up":
+                kwargs["direction"] = "up"
+
+        # If the LLM calls 'screenshot' while a browser is active, redirect to snapshot
+        if op == "screenshot" and self._browser and self._browser._initialized:
+            op = "snapshot"
+            logger.info("Auto-redirected 'screenshot' → 'snapshot' (browser is active)")
+
+        # If the LLM calls 'mouse_scroll' while a browser is active, redirect to browser_scroll
+        if op == "mouse_scroll" and self._browser and self._browser._initialized:
+            op = "browser_scroll"
+            logger.info("Auto-redirected 'mouse_scroll' → 'browser_scroll' (browser is active)")
 
         # ═══════════════════════════════════════════════
         # LAYER 1: OS Operations (shell commands)
