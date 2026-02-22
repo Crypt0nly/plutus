@@ -63,7 +63,7 @@ class ComputerUseAgent:
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         executor: Any = None,
         max_iterations: int = 50,
     ):

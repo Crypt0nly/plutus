@@ -29,7 +29,7 @@ def config_path() -> Path:
 
 class ModelConfig(BaseModel):
     provider: str = "anthropic"
-    model: str = "claude-sonnet-4-6-20250514"
+    model: str = "claude-sonnet-4-6"
     api_key_env: str = "ANTHROPIC_API_KEY"
     base_url: str | None = None
     temperature: float = 0.7

@@ -116,7 +116,7 @@ def start(host: str | None, port: int | None, dev: bool, no_browser: bool) -> No
 
 
 @main.command()
-@click.option("--model", default=None, help="Override model (e.g., claude-sonnet-4-6-20250514)")
+@click.option("--model", default=None, help="Override model (e.g., claude-sonnet-4-6)")
 @click.option("--tier", default=None, help="Override tier (observer/assistant/operator/autonomous)")
 def chat(model: str | None, tier: str | None) -> None:
     """Interactive terminal chat with the Plutus agent."""
@@ -444,7 +444,7 @@ def setup() -> None:
 
     # Model
     default_models = {
-        "anthropic": "claude-sonnet-4-6-20250514",
+        "anthropic": "claude-sonnet-4-6",
         "openai": "gpt-4.1",
         "ollama": "llama3.2",
         "custom": "gpt-4.1",
