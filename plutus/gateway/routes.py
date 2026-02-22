@@ -70,6 +70,19 @@ class PlanStatusUpdate(BaseModel):
     status: str
 
 
+class MoodleConfigRequest(BaseModel):
+    email: str
+    password: str
+    base_url: str = "https://elearning.unyp.cz"
+    auto_submit: bool = False
+    course_filter: list[str] | None = None
+
+
+class MoodleCheckRequest(BaseModel):
+    email: str | None = None
+    password: str | None = None
+
+
 def create_router() -> APIRouter:
     router = APIRouter()
 
@@ -1161,5 +1174,109 @@ def create_router() -> APIRouter:
                 "total_created": 0, "total_updated": 0, "total_deleted": 0,
                 "categories": {}, "recent": [], "error": str(e),
             }
+
+    # ── Moodle Assignment Monitor ────────────────────────────────
+
+    @router.post("/moodle/check")
+    async def moodle_check_assignments(body: MoodleCheckRequest) -> dict[str, Any]:
+        """Check for pending Moodle assignments without submitting."""
+        try:
+            from plutus.moodle.monitor import MoodleMonitor
+            import json
+            from pathlib import Path
+
+            # Load saved credentials if not provided
+            creds_path = Path.home() / ".plutus" / "moodle_creds.json"
+            email = body.email
+            password = body.password
+
+            if not email or not password:
+                if creds_path.exists():
+                    creds = json.loads(creds_path.read_text())
+                    email = email or creds.get("email")
+                    password = password or creds.get("password")
+                else:
+                    raise HTTPException(400, "No credentials provided and none saved")
+
+            monitor = MoodleMonitor(email=email, password=password)
+            pending = await monitor.check_only()
+            return {"success": True, "pending_assignments": pending, "count": len(pending)}
+        except HTTPException:
+            raise
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    @router.post("/moodle/run")
+    async def moodle_run_monitor(body: MoodleConfigRequest) -> dict[str, Any]:
+        """Run the full Moodle monitor pipeline — check, complete, and optionally submit."""
+        try:
+            from plutus.moodle.monitor import MoodleMonitor
+            import json
+            from pathlib import Path
+
+            # Save credentials for future use
+            creds_path = Path.home() / ".plutus" / "moodle_creds.json"
+            creds_path.parent.mkdir(parents=True, exist_ok=True)
+            creds_path.write_text(json.dumps({
+                "email": body.email,
+                "password": body.password,
+                "base_url": body.base_url,
+            }))
+
+            monitor = MoodleMonitor(
+                email=body.email,
+                password=body.password,
+                base_url=body.base_url,
+                auto_submit=body.auto_submit,
+                course_filter=body.course_filter,
+            )
+            results = await monitor.run()
+            return {"success": True, **results}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    @router.get("/moodle/status")
+    async def moodle_get_status() -> dict[str, Any]:
+        """Get the status of the last Moodle monitor run."""
+        try:
+            from plutus.moodle.monitor import MoodleMonitor
+            monitor = MoodleMonitor(email="", password="")
+            return await monitor.get_status()
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    @router.post("/moodle/config")
+    async def moodle_save_config(body: MoodleConfigRequest) -> dict[str, str]:
+        """Save Moodle credentials and configuration."""
+        try:
+            import json
+            from pathlib import Path
+            creds_path = Path.home() / ".plutus" / "moodle_creds.json"
+            creds_path.parent.mkdir(parents=True, exist_ok=True)
+            creds_path.write_text(json.dumps({
+                "email": body.email,
+                "password": body.password,
+                "base_url": body.base_url,
+                "auto_submit": body.auto_submit,
+                "course_filter": body.course_filter,
+            }))
+            return {"status": "saved"}
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+    @router.get("/moodle/config")
+    async def moodle_get_config() -> dict[str, Any]:
+        """Get saved Moodle configuration (password masked)."""
+        try:
+            import json
+            from pathlib import Path
+            creds_path = Path.home() / ".plutus" / "moodle_creds.json"
+            if creds_path.exists():
+                creds = json.loads(creds_path.read_text())
+                creds["password"] = "***" if creds.get("password") else ""
+                return {"configured": True, **creds}
+            return {"configured": False}
+        except Exception as e:
+            return {"configured": False, "error": str(e)}
 
     return router
