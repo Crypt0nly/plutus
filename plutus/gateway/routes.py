@@ -1244,7 +1244,7 @@ def create_router() -> APIRouter:
 
     @router.post("/connectors/{name}/start")
     async def start_connector(name: str) -> dict[str, Any]:
-        """Start a connector (e.g., start polling for messages)."""
+        """Start a connector's two-way messaging (polling + agent bridge)."""
         from plutus.gateway.server import get_state
         state = get_state()
         connector_mgr = state.get("connector_manager")
@@ -1253,12 +1253,24 @@ def create_router() -> APIRouter:
         connector = connector_mgr.get(name)
         if not connector:
             raise HTTPException(404, f"Connector '{name}' not found")
-        await connector.start()
-        return {"message": f"{connector.display_name} started", "status": connector.status()}
+
+        if name == "telegram":
+            # Use the bridge for two-way Telegram messaging
+            from plutus.connectors.telegram_bridge import get_telegram_bridge
+            bridge = get_telegram_bridge()
+            await bridge.start()
+            return {
+                "message": f"{connector.display_name} two-way messaging started — you can now chat with Plutus via Telegram",
+                "status": connector.status(),
+                "listening": True,
+            }
+        else:
+            await connector.start()
+            return {"message": f"{connector.display_name} started", "status": connector.status()}
 
     @router.post("/connectors/{name}/stop")
     async def stop_connector(name: str) -> dict[str, Any]:
-        """Stop a connector."""
+        """Stop a connector's two-way messaging."""
         from plutus.gateway.server import get_state
         state = get_state()
         connector_mgr = state.get("connector_manager")
@@ -1267,8 +1279,28 @@ def create_router() -> APIRouter:
         connector = connector_mgr.get(name)
         if not connector:
             raise HTTPException(404, f"Connector '{name}' not found")
-        await connector.stop()
-        return {"message": f"{connector.display_name} stopped", "status": connector.status()}
+
+        if name == "telegram":
+            from plutus.connectors.telegram_bridge import get_telegram_bridge
+            bridge = get_telegram_bridge()
+            await bridge.stop()
+            return {
+                "message": f"{connector.display_name} two-way messaging stopped",
+                "status": connector.status(),
+                "listening": False,
+            }
+        else:
+            await connector.stop()
+            return {"message": f"{connector.display_name} stopped", "status": connector.status()}
+
+    @router.get("/connectors/{name}/bridge-status")
+    async def get_bridge_status(name: str) -> dict[str, Any]:
+        """Check if the two-way bridge is running for a connector."""
+        if name == "telegram":
+            from plutus.connectors.telegram_bridge import get_telegram_bridge
+            bridge = get_telegram_bridge()
+            return {"listening": bridge.is_running, "processing": bridge._processing}
+        return {"listening": False, "processing": False}
 
     @router.delete("/connectors/{name}")
     async def disconnect_connector(name: str) -> dict[str, Any]:

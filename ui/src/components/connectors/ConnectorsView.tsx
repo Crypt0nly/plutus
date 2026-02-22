@@ -14,6 +14,8 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Radio,
+  Phone,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -68,8 +70,11 @@ function ConnectorCard({
     {}
   );
   const [disconnecting, setDisconnecting] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [togglingListener, setTogglingListener] = useState(false);
 
   const Icon = ICON_MAP[connector.icon] || Plug;
+  const supportsTwoWay = connector.name === "telegram";
 
   // Initialize form data from existing config
   useEffect(() => {
@@ -79,6 +84,24 @@ function ConnectorCard({
     });
     setFormData(initial);
   }, [connector]);
+
+  // Poll bridge status for two-way connectors
+  useEffect(() => {
+    if (!supportsTwoWay || !connector.configured) return;
+
+    const checkStatus = async () => {
+      try {
+        const status = await api.getBridgeStatus(connector.name);
+        setListening(status.listening || false);
+      } catch {
+        // ignore
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 5000);
+    return () => clearInterval(interval);
+  }, [connector.name, connector.configured, supportsTwoWay]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -141,6 +164,10 @@ function ConnectorCard({
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
+      if (listening) {
+        await api.stopConnector(connector.name);
+        setListening(false);
+      }
       await api.disconnectConnector(connector.name);
       onRefresh();
     } catch (e: any) {
@@ -154,11 +181,30 @@ function ConnectorCard({
     setShowPasswords((prev) => ({ ...prev, [fieldName]: !prev[fieldName] }));
   };
 
+  const toggleListener = async () => {
+    setTogglingListener(true);
+    try {
+      if (listening) {
+        await api.stopConnector(connector.name);
+        setListening(false);
+      } else {
+        const result = await api.startConnector(connector.name);
+        setListening(result.listening || false);
+      }
+    } catch (e: any) {
+      console.error("Toggle listener failed:", e);
+    } finally {
+      setTogglingListener(false);
+    }
+  };
+
   return (
     <div
       className={`rounded-xl border transition-all ${
         connector.configured
-          ? "border-emerald-500/30 bg-gray-900/80"
+          ? listening
+            ? "border-blue-500/30 bg-gray-900/80"
+            : "border-emerald-500/30 bg-gray-900/80"
           : "border-gray-700/50 bg-gray-900/50"
       }`}
     >
@@ -169,7 +215,9 @@ function ConnectorCard({
       >
         <div
           className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-            connector.configured
+            listening
+              ? "bg-blue-500/15 text-blue-400"
+              : connector.configured
               ? "bg-emerald-500/15 text-emerald-400"
               : "bg-gray-800 text-gray-500"
           }`}
@@ -181,7 +229,13 @@ function ConnectorCard({
             <h3 className="font-semibold text-gray-100">
               {connector.display_name}
             </h3>
-            {connector.configured && (
+            {listening && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400">
+                <Radio className="w-3 h-3 animate-pulse" />
+                Listening
+              </span>
+            )}
+            {connector.configured && !listening && (
               <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">
                 <CheckCircle2 className="w-3 h-3" />
                 Connected
@@ -189,7 +243,10 @@ function ConnectorCard({
             )}
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
-            {connector.description}
+            {listening
+              ? "Two-way messaging active — chat with Plutus via " +
+                connector.display_name
+              : connector.description}
           </p>
         </div>
         <div
@@ -210,6 +267,62 @@ function ConnectorCard({
       {/* Expanded Content */}
       {expanded && (
         <div className="px-5 pb-5 space-y-4 border-t border-gray-800/50 pt-4">
+          {/* Two-Way Messaging Toggle (for Telegram) */}
+          {supportsTwoWay && connector.configured && (
+            <div className="rounded-lg bg-gray-800/50 border border-gray-700/30 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      listening
+                        ? "bg-blue-500/15 text-blue-400"
+                        : "bg-gray-700/50 text-gray-500"
+                    }`}
+                  >
+                    <Phone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-200">
+                      Two-Way Messaging
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {listening
+                        ? "Plutus is listening for your Telegram messages and will respond"
+                        : "Enable to chat with Plutus directly from Telegram"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={toggleListener}
+                  disabled={togglingListener}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+                    listening
+                      ? "bg-red-900/30 hover:bg-red-900/50 text-red-400"
+                      : "bg-blue-600 hover:bg-blue-500 text-white"
+                  }`}
+                >
+                  {togglingListener ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : listening ? (
+                    <Square className="w-3.5 h-3.5" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                  {listening ? "Stop" : "Start"}
+                </button>
+              </div>
+              {listening && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-blue-400/70">
+                  <Radio className="w-3 h-3 animate-pulse" />
+                  <span>
+                    Messages you send to the bot will be processed by Plutus and
+                    replied to automatically
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Config Form */}
           <div className="space-y-3">
             {connector.config_schema.map((field) => (
@@ -427,8 +540,8 @@ export default function ConnectorsView() {
           Connectors
         </h2>
         <p className="text-sm text-gray-500">
-          Link Plutus with external services to send messages, notifications,
-          and more
+          Link Plutus with external services for two-way communication —
+          chat with Plutus from Telegram, get email notifications, and more
         </p>
       </div>
 
@@ -487,8 +600,15 @@ export default function ConnectorsView() {
           <li className="flex items-start gap-2">
             <span className="text-plutus-400 mt-0.5">3.</span>
             <span>
-              Plutus can now send you messages through the connected service —
-              use it in skills, automations, or just ask Plutus to message you
+              Click "Start" to enable two-way messaging — Plutus will listen
+              for your messages and respond automatically
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-plutus-400 mt-0.5">4.</span>
+            <span>
+              You can also ask Plutus in the chat to "send me a Telegram message"
+              or use connectors in skills and automations
             </span>
           </li>
         </ul>
