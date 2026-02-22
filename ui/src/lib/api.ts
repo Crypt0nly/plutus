@@ -205,4 +205,6 @@ export const api = {
     request<Record<string, any>>(`/connectors/${name}`, {
       method: "DELETE",
     }),
+  getBridgeStatus: (name: string) =>
+    request<Record<string, any>>(`/connectors/${name}/bridge-status`),
 };
