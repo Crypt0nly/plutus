@@ -914,6 +914,13 @@ def create_router() -> APIRouter:
             return {"skills": [s.to_dict() for s in skills], "category": category}
         return {"skills": registry.list_all(), "categories": registry.list_categories()}
 
+    @router.get("/skills/saved")
+    async def list_saved_skills() -> dict[str, Any]:
+        """List all user-created / AI-created skills (not built-in)."""
+        from plutus.skills.creator import get_skill_creator
+        creator = get_skill_creator()
+        return {"skills": creator.list_saved_skills()}
+
     @router.get("/skills/{skill_name}")
     async def get_skill_detail(skill_name: str) -> dict[str, Any]:
         """Get details about a specific skill."""
@@ -1038,13 +1045,6 @@ def create_router() -> APIRouter:
         if not success:
             raise HTTPException(status_code=404, detail=msg)
         return {"success": True, "message": msg}
-
-    @router.get("/skills/saved")
-    async def list_saved_skills() -> dict[str, Any]:
-        """List all user-created / AI-created skills (not built-in)."""
-        from plutus.skills.creator import get_skill_creator
-        creator = get_skill_creator()
-        return {"skills": creator.list_saved_skills()}
 
     # ── Memory / Facts / Goals / Summaries ──────────────────────────
 
