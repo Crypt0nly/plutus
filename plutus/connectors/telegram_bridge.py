@@ -9,6 +9,7 @@ Flow:
   6. Collects the agent's text response events
   7. Sends the response back to the user via Telegram
   8. Also broadcasts events to WebSocket so the UI stays in sync
+  9. Screenshots and files generated during processing are sent as photos/docs
 
 The bridge processes messages sequentially via a queue to prevent
 concurrent agent calls from interfering with each other.
@@ -17,8 +18,10 @@ concurrent agent calls from interfering with each other.
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
-import traceback
+import tempfile
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("plutus.connectors.telegram_bridge")
@@ -41,7 +44,10 @@ class TelegramBridge:
 
         telegram = self._get_telegram()
         if not telegram:
-            logger.error("Cannot start Telegram bridge — Telegram connector not available or not configured")
+            logger.error(
+                "Cannot start Telegram bridge — "
+                "Telegram connector not available or not configured"
+            )
             return
 
         # Set ourselves as the message handler BEFORE starting polling
@@ -108,7 +114,10 @@ class TelegramBridge:
 
     async def _on_telegram_message(self, text: str, metadata: dict[str, Any]) -> None:
         """Callback when a Telegram message arrives — queue it for processing."""
-        logger.info(f"Queuing Telegram message from {metadata.get('from_name', 'unknown')}: {text[:80]}")
+        logger.info(
+            f"Queuing Telegram message from "
+            f"{metadata.get('from_name', 'unknown')}: {text[:80]}"
+        )
         await self._queue.put((text, metadata))
 
     async def _process_queue(self) -> None:
@@ -116,8 +125,10 @@ class TelegramBridge:
         logger.info("Queue processor started")
         while self._running:
             try:
-                text, metadata = await asyncio.wait_for(self._queue.get(), timeout=2.0)
-            except asyncio.TimeoutError:
+                text, metadata = await asyncio.wait_for(
+                    self._queue.get(), timeout=2.0
+                )
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
@@ -143,7 +154,8 @@ class TelegramBridge:
         if not agent:
             logger.error("Agent not available for Telegram message processing")
             await self._send_reply(
-                "⚠️ Plutus agent is not initialized. Please check the web UI and ensure an API key is configured.",
+                "⚠️ Plutus agent is not initialized. "
+                "Please check the web UI and ensure an API key is configured.",
                 metadata,
             )
             return
@@ -162,7 +174,10 @@ class TelegramBridge:
             from plutus.gateway.ws import manager as ws_manager
             await ws_manager.broadcast({
                 "type": "telegram_message",
-                "content": f"📱 **Telegram** ({metadata.get('from_name', 'User')}): {text}",
+                "content": (
+                    f"📱 **Telegram** "
+                    f"({metadata.get('from_name', 'User')}): {text}"
+                ),
                 "source": "telegram",
             })
         except Exception as e:
@@ -171,6 +186,7 @@ class TelegramBridge:
         # Process through the agent — collect text responses
         response_parts: list[str] = []
         tool_summaries: list[str] = []
+        screenshots_sent = 0
 
         try:
             logger.info("Sending message to agent for processing...")
@@ -191,13 +207,28 @@ class TelegramBridge:
                 elif event.type == "tool_call":
                     tool_name = event.data.get("tool", "")
                     if tool_name not in ("plan", "memory"):
-                        operation = event.data.get("arguments", {}).get("operation", "")
-                        summary = f"🔧 {tool_name}.{operation}" if operation else f"🔧 {tool_name}"
+                        operation = (
+                            event.data.get("arguments", {}).get("operation", "")
+                        )
+                        summary = (
+                            f"🔧 {tool_name}.{operation}"
+                            if operation
+                            else f"🔧 {tool_name}"
+                        )
                         tool_summaries.append(summary)
                         logger.debug(f"Agent tool call: {summary}")
 
                         # Refresh typing indicator for long operations
                         await telegram.send_typing(chat_id=chat_id)
+
+                elif event.type == "tool_result":
+                    # Forward screenshots to Telegram as photos
+                    if event.data.get("screenshot") and event.data.get("image_base64"):
+                        sent = await self._send_screenshot(
+                            event.data["image_base64"], chat_id, telegram
+                        )
+                        if sent:
+                            screenshots_sent += 1
 
                 elif event.type == "error":
                     error_msg = event.data.get("message", "Unknown error")
@@ -215,10 +246,13 @@ class TelegramBridge:
         final_response = "\n".join(response_parts).strip()
 
         if not final_response:
-            if tool_summaries:
+            if tool_summaries or screenshots_sent:
                 final_response = "✅ Done!"
             else:
-                final_response = "I received your message but had no response to give. Could you try rephrasing?"
+                final_response = (
+                    "I received your message but had no response to give. "
+                    "Could you try rephrasing?"
+                )
 
         # Append tool call summary if there were any (max 8)
         if tool_summaries:
@@ -226,7 +260,9 @@ class TelegramBridge:
             actions_str = "\n".join(shown)
             if len(tool_summaries) > 8:
                 actions_str += f"\n... and {len(tool_summaries) - 8} more"
-            final_response = f"{final_response}\n\n📋 Actions:\n{actions_str}"
+            final_response = (
+                f"{final_response}\n\n📋 Actions:\n{actions_str}"
+            )
 
         logger.info(f"Sending reply to Telegram ({len(final_response)} chars)")
 
@@ -248,9 +284,51 @@ class TelegramBridge:
         # Send as plain text (no parse_mode) to avoid HTML/Markdown parsing issues
         result = await telegram.send_message(text, chat_id=chat_id, parse_mode="")
         if result.get("success"):
-            logger.info(f"Reply sent to Telegram (msg_ids={result.get('message_ids')})")
+            logger.info(
+                f"Reply sent to Telegram (msg_ids={result.get('message_ids')})"
+            )
         else:
-            logger.error(f"Failed to send Telegram reply: {result.get('message')}")
+            logger.error(
+                f"Failed to send Telegram reply: {result.get('message')}"
+            )
+
+    async def _send_screenshot(
+        self,
+        image_base64: str,
+        chat_id: str | int | None,
+        telegram: Any,
+    ) -> bool:
+        """Decode a base64 screenshot and send it as a photo to Telegram."""
+        try:
+            img_bytes = base64.b64decode(image_base64)
+
+            # Write to a temp file so send_photo can read it
+            with tempfile.NamedTemporaryFile(
+                suffix=".png", delete=False
+            ) as tmp:
+                tmp.write(img_bytes)
+                tmp_path = tmp.name
+
+            try:
+                result = await telegram.send_photo(
+                    tmp_path, caption="📸 Screenshot", chat_id=chat_id
+                )
+                if result.get("success"):
+                    logger.info("Screenshot sent to Telegram")
+                    return True
+                else:
+                    logger.warning(
+                        f"Failed to send screenshot to Telegram: "
+                        f"{result.get('message')}"
+                    )
+                    return False
+            finally:
+                # Clean up temp file
+                Path(tmp_path).unlink(missing_ok=True)
+
+        except Exception as e:
+            logger.error(f"Failed to send screenshot to Telegram: {e}")
+            return False
 
 
 # Singleton bridge instance

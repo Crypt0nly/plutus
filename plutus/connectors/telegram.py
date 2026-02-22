@@ -271,6 +271,44 @@ class TelegramConnector(BaseConnector):
         except Exception:
             pass
 
+    async def send_photo(
+        self,
+        file_path: str,
+        caption: str = "",
+        chat_id: str | int | None = None,
+    ) -> dict[str, Any]:
+        """Send a photo via Telegram (displayed inline, not as a file attachment)."""
+        import os
+        target = chat_id or self._chat_id
+        if not target:
+            return {"success": False, "message": "No chat_id configured"}
+
+        try:
+            session = await self._get_send_session()
+            url = f"{self._api_url}/sendPhoto"
+
+            data = aiohttp.FormData()
+            data.add_field("chat_id", str(target))
+            if caption:
+                data.add_field("caption", caption[:1024])
+            data.add_field(
+                "photo",
+                open(file_path, "rb"),
+                filename=os.path.basename(file_path),
+            )
+
+            async with session.post(url, data=data) as resp:
+                result = await resp.json()
+                if result.get("ok"):
+                    return {"success": True, "message": "Photo sent via Telegram"}
+                else:
+                    desc = result.get("description", "Failed")
+                    logger.warning(f"sendPhoto failed: {desc}, falling back to sendDocument")
+                    return await self.send_document(file_path, caption, chat_id)
+
+        except Exception as e:
+            return {"success": False, "message": f"Failed to send photo: {str(e)}"}
+
     async def send_document(
         self,
         file_path: str,

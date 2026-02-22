@@ -166,6 +166,25 @@ export default function App() {
           });
           break;
 
+        case "attachment": {
+          // File or image sent by the agent — show inline in chat
+          if (msg.is_image && msg.image_base64) {
+            const caption = msg.caption ? `\n${msg.caption}` : "";
+            addMessage({
+              role: "tool",
+              content: `__ATTACHMENT_IMAGE__:${msg.file_name}:${msg.image_base64}${caption}`,
+            });
+          } else {
+            const sizeKB = Math.round((msg.file_size || 0) / 1024);
+            const caption = msg.caption ? ` — ${msg.caption}` : "";
+            addMessage({
+              role: "tool",
+              content: `__ATTACHMENT_FILE__:${msg.file_name}:${sizeKB}:${msg.file_path}${caption}`,
+            });
+          }
+          break;
+        }
+
         case "plan_update":
           break;
       }

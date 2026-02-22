@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from plutus.guardrails.tiers import Tier, get_tier_info
@@ -1175,6 +1176,34 @@ def create_router() -> APIRouter:
                 "total_created": 0, "total_updated": 0, "total_deleted": 0,
                 "categories": {}, "recent": [], "error": str(e),
             }
+
+    # ── Files ──────────────────────────────────────────────────────
+
+    @router.get("/files")
+    async def download_file(path: str) -> FileResponse:
+        """Serve a file for download (used by the UI for attachment previews)."""
+        from pathlib import Path as P
+
+        file = P(path)
+        if not file.exists() or not file.is_file():
+            raise HTTPException(404, "File not found")
+
+        # Security: only allow files under home dir or /tmp
+        home = P.home()
+        allowed = (home, P("/tmp"))
+        try:
+            resolved = file.resolve()
+            if not any(
+                str(resolved).startswith(str(d)) for d in allowed
+            ):
+                raise HTTPException(403, "Access denied")
+        except Exception:
+            raise HTTPException(403, "Access denied")
+
+        return FileResponse(
+            path=str(resolved),
+            filename=file.name,
+        )
 
     # ── Connectors ────────────────────────────────────────────────
 
