@@ -4,19 +4,21 @@ Flow:
   1. User sends message to the Telegram bot
   2. Polling loop in TelegramConnector picks it up
   3. This bridge receives it via the on_message callback
-  4. Routes it through the Standard Agent (same as WebSocket chat)
-  5. Collects the agent's text response events
-  6. Sends the response back to the user via Telegram
-  7. Also broadcasts events to WebSocket so the UI stays in sync
+  4. Sends an immediate "thinking..." indicator to Telegram
+  5. Routes it through the Standard Agent (same as WebSocket chat)
+  6. Collects the agent's text response events
+  7. Sends the response back to the user via Telegram
+  8. Also broadcasts events to WebSocket so the UI stays in sync
 
-The bridge maintains a separate conversation context for Telegram messages
-so they don't interfere with the web UI conversation.
+The bridge processes messages sequentially via a queue to prevent
+concurrent agent calls from interfering with each other.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import traceback
 from typing import Any
 
 logger = logging.getLogger("plutus.connectors.telegram_bridge")
@@ -27,38 +29,32 @@ class TelegramBridge:
 
     def __init__(self) -> None:
         self._running = False
-        self._processing = False  # Lock to prevent concurrent agent calls
+        self._processing = False
         self._queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
         self._worker_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """Start the bridge — begins processing incoming Telegram messages."""
         if self._running:
+            logger.info("Telegram bridge already running")
             return
 
-        from plutus.gateway.server import get_state
-        state = get_state()
-        connector_mgr = state.get("connector_manager")
-
-        if not connector_mgr:
-            logger.error("Cannot start Telegram bridge — connector manager not available")
+        telegram = self._get_telegram()
+        if not telegram:
+            logger.error("Cannot start Telegram bridge — Telegram connector not available or not configured")
             return
 
-        telegram = connector_mgr.get("telegram")
-        if not telegram or not telegram.is_configured:
-            logger.warning("Cannot start Telegram bridge — Telegram not configured")
-            return
-
-        # Set ourselves as the message handler
+        # Set ourselves as the message handler BEFORE starting polling
         telegram.set_message_handler(self._on_telegram_message)
+        logger.info("Message handler registered")
 
         # Start the Telegram polling loop
         await telegram.start()
+        logger.info("Telegram polling started")
 
         # Start our message processing worker
         self._running = True
         self._worker_task = asyncio.create_task(self._process_queue())
-
         logger.info("Telegram bridge started — two-way messaging active")
 
     async def stop(self) -> None:
@@ -74,13 +70,9 @@ class TelegramBridge:
         self._worker_task = None
 
         # Stop the Telegram polling
-        from plutus.gateway.server import get_state
-        state = get_state()
-        connector_mgr = state.get("connector_manager")
-        if connector_mgr:
-            telegram = connector_mgr.get("telegram")
-            if telegram:
-                await telegram.stop()
+        telegram = self._get_telegram()
+        if telegram:
+            await telegram.stop()
 
         logger.info("Telegram bridge stopped")
 
@@ -88,29 +80,56 @@ class TelegramBridge:
     def is_running(self) -> bool:
         return self._running
 
+    def _get_telegram(self):
+        """Get the Telegram connector from the server state."""
+        try:
+            from plutus.gateway.server import get_state
+            state = get_state()
+            connector_mgr = state.get("connector_manager")
+            if not connector_mgr:
+                return None
+            telegram = connector_mgr.get("telegram")
+            if not telegram or not telegram.is_configured:
+                return None
+            return telegram
+        except Exception as e:
+            logger.error(f"Failed to get Telegram connector: {e}")
+            return None
+
+    def _get_agent(self):
+        """Get the Plutus agent from the server state."""
+        try:
+            from plutus.gateway.server import get_state
+            state = get_state()
+            return state.get("agent")
+        except Exception as e:
+            logger.error(f"Failed to get agent: {e}")
+            return None
+
     async def _on_telegram_message(self, text: str, metadata: dict[str, Any]) -> None:
         """Callback when a Telegram message arrives — queue it for processing."""
-        logger.info(f"Telegram message from {metadata.get('from_name', 'unknown')}: {text[:80]}")
+        logger.info(f"Queuing Telegram message from {metadata.get('from_name', 'unknown')}: {text[:80]}")
         await self._queue.put((text, metadata))
 
     async def _process_queue(self) -> None:
         """Worker that processes queued Telegram messages one at a time."""
+        logger.info("Queue processor started")
         while self._running:
             try:
-                text, metadata = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+                text, metadata = await asyncio.wait_for(self._queue.get(), timeout=2.0)
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
 
+            logger.info(f"Processing queued message: {text[:80]}")
             try:
                 self._processing = True
                 await self._handle_message(text, metadata)
             except Exception as e:
                 logger.exception(f"Error processing Telegram message: {e}")
-                # Try to send error back to user
                 await self._send_reply(
-                    f"Sorry, I encountered an error processing your message: {str(e)}",
+                    f"⚠️ Sorry, I encountered an error:\n{str(e)[:500]}",
                     metadata,
                 )
             finally:
@@ -118,117 +137,120 @@ class TelegramBridge:
 
     async def _handle_message(self, text: str, metadata: dict[str, Any]) -> None:
         """Route a Telegram message through the agent and send the response back."""
-        from plutus.gateway.server import get_state
-        from plutus.gateway.ws import manager as ws_manager
-
-        state = get_state()
-        agent = state.get("agent")
+        agent = self._get_agent()
+        telegram = self._get_telegram()
 
         if not agent:
+            logger.error("Agent not available for Telegram message processing")
             await self._send_reply(
-                "Plutus agent is not initialized. Please check the web UI.",
+                "⚠️ Plutus agent is not initialized. Please check the web UI and ensure an API key is configured.",
                 metadata,
             )
             return
 
-        # Send a "typing" indicator
-        await self._send_typing(metadata)
+        if not telegram:
+            logger.error("Telegram connector not available")
+            return
+
+        chat_id = metadata.get("chat_id")
+
+        # Send typing indicator immediately
+        await telegram.send_typing(chat_id=chat_id)
 
         # Broadcast to WebSocket UI so the user can see Telegram messages there too
-        await ws_manager.broadcast({
-            "type": "text",
-            "content": f"📱 **Telegram** ({metadata.get('from_name', 'User')}): {text}",
-        })
+        try:
+            from plutus.gateway.ws import manager as ws_manager
+            await ws_manager.broadcast({
+                "type": "telegram_message",
+                "content": f"📱 **Telegram** ({metadata.get('from_name', 'User')}): {text}",
+                "source": "telegram",
+            })
+        except Exception as e:
+            logger.debug(f"Could not broadcast to WebSocket: {e}")
 
         # Process through the agent — collect text responses
         response_parts: list[str] = []
         tool_summaries: list[str] = []
 
         try:
+            logger.info("Sending message to agent for processing...")
             async for event in agent.process_message(text):
-                event_dict = event.to_dict()
-
-                # Also broadcast to WebSocket so UI stays in sync
-                await ws_manager.broadcast(event_dict)
+                # Broadcast to WebSocket so UI stays in sync
+                try:
+                    from plutus.gateway.ws import manager as ws_manager
+                    event_dict = event.to_dict()
+                    await ws_manager.broadcast(event_dict)
+                except Exception:
+                    pass
 
                 if event.type == "text" and event.data.get("content"):
-                    response_parts.append(event.data["content"])
+                    content = event.data["content"]
+                    response_parts.append(content)
+                    logger.debug(f"Agent text: {content[:100]}")
 
                 elif event.type == "tool_call":
                     tool_name = event.data.get("tool", "")
-                    # Don't report internal tools
                     if tool_name not in ("plan", "memory"):
                         operation = event.data.get("arguments", {}).get("operation", "")
-                        if operation:
-                            tool_summaries.append(f"🔧 {tool_name}.{operation}")
-                        else:
-                            tool_summaries.append(f"🔧 {tool_name}")
+                        summary = f"🔧 {tool_name}.{operation}" if operation else f"🔧 {tool_name}"
+                        tool_summaries.append(summary)
+                        logger.debug(f"Agent tool call: {summary}")
+
+                        # Refresh typing indicator for long operations
+                        await telegram.send_typing(chat_id=chat_id)
 
                 elif event.type == "error":
                     error_msg = event.data.get("message", "Unknown error")
-                    response_parts.append(f"⚠️ Error: {error_msg}")
+                    response_parts.append(f"⚠️ {error_msg}")
+                    logger.warning(f"Agent error event: {error_msg}")
+
+                elif event.type == "done":
+                    logger.info("Agent processing complete")
 
         except Exception as e:
             logger.exception("Agent processing failed for Telegram message")
-            response_parts.append(f"⚠️ Processing error: {str(e)}")
+            response_parts.append(f"⚠️ Processing error: {str(e)[:300]}")
 
         # Build the final response
         final_response = "\n".join(response_parts).strip()
 
         if not final_response:
-            final_response = "✅ Done! (No text response — I performed the requested actions.)"
+            if tool_summaries:
+                final_response = "✅ Done!"
+            else:
+                final_response = "I received your message but had no response to give. Could you try rephrasing?"
 
-        # If there were tool calls, add a brief summary
-        if tool_summaries and len(tool_summaries) <= 5:
-            actions_str = "\n".join(tool_summaries)
-            final_response = f"{final_response}\n\n📋 Actions taken:\n{actions_str}"
+        # Append tool call summary if there were any (max 8)
+        if tool_summaries:
+            shown = tool_summaries[:8]
+            actions_str = "\n".join(shown)
+            if len(tool_summaries) > 8:
+                actions_str += f"\n... and {len(tool_summaries) - 8} more"
+            final_response = f"{final_response}\n\n📋 Actions:\n{actions_str}"
+
+        logger.info(f"Sending reply to Telegram ({len(final_response)} chars)")
 
         # Send the response back via Telegram
         await self._send_reply(final_response, metadata)
 
     async def _send_reply(self, text: str, metadata: dict[str, Any]) -> None:
         """Send a reply back to the Telegram user."""
-        from plutus.gateway.server import get_state
-
-        state = get_state()
-        connector_mgr = state.get("connector_manager")
-        if not connector_mgr:
-            return
-
-        telegram = connector_mgr.get("telegram")
+        telegram = self._get_telegram()
         if not telegram:
+            logger.error("Cannot send reply — Telegram connector not available")
             return
 
         chat_id = metadata.get("chat_id") or telegram._chat_id
         if not chat_id:
+            logger.error("Cannot send reply — no chat_id")
             return
 
-        # Try HTML first, fall back to plain text
+        # Send as plain text (no parse_mode) to avoid HTML/Markdown parsing issues
         result = await telegram.send_message(text, chat_id=chat_id, parse_mode="")
-        if not result.get("success"):
+        if result.get("success"):
+            logger.info(f"Reply sent to Telegram (msg_ids={result.get('message_ids')})")
+        else:
             logger.error(f"Failed to send Telegram reply: {result.get('message')}")
-
-    async def _send_typing(self, metadata: dict[str, Any]) -> None:
-        """Send a 'typing' indicator to the Telegram chat."""
-        from plutus.gateway.server import get_state
-
-        state = get_state()
-        connector_mgr = state.get("connector_manager")
-        if not connector_mgr:
-            return
-
-        telegram = connector_mgr.get("telegram")
-        if not telegram:
-            return
-
-        chat_id = metadata.get("chat_id") or telegram._chat_id
-        if not chat_id:
-            return
-
-        try:
-            await telegram._api_call("sendChatAction", chat_id=chat_id, action="typing")
-        except Exception:
-            pass  # Typing indicator is non-critical
 
 
 # Singleton bridge instance
