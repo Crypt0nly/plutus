@@ -207,4 +207,9 @@ export const api = {
     }),
   getBridgeStatus: (name: string) =>
     request<Record<string, any>>(`/connectors/${name}/bridge-status`),
+  setConnectorAutoStart: (name: string, auto_start: boolean) =>
+    request<Record<string, any>>(`/connectors/${name}/auto-start`, {
+      method: "PUT",
+      body: JSON.stringify({ auto_start }),
+    }),
 };

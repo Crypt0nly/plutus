@@ -79,6 +79,10 @@ class ConnectorSendMessage(BaseModel):
     params: dict[str, Any] = {}
 
 
+class ConnectorAutoStartUpdate(BaseModel):
+    auto_start: bool
+
+
 
 def create_router() -> APIRouter:
     router = APIRouter()
@@ -1296,11 +1300,46 @@ def create_router() -> APIRouter:
     @router.get("/connectors/{name}/bridge-status")
     async def get_bridge_status(name: str) -> dict[str, Any]:
         """Check if the two-way bridge is running for a connector."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        connector = connector_mgr.get(name) if connector_mgr else None
+        auto_start = connector.auto_start if connector else False
+
         if name == "telegram":
             from plutus.connectors.telegram_bridge import get_telegram_bridge
             bridge = get_telegram_bridge()
-            return {"listening": bridge.is_running, "processing": bridge._processing}
-        return {"listening": False, "processing": False}
+            return {
+                "listening": bridge.is_running,
+                "processing": bridge._processing,
+                "auto_start": auto_start,
+            }
+        return {"listening": False, "processing": False, "auto_start": auto_start}
+
+    @router.put("/connectors/{name}/auto-start")
+    async def set_connector_auto_start(name: str, body: ConnectorAutoStartUpdate) -> dict[str, Any]:
+        """Enable or disable auto-start for a connector on Plutus launch."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        if not connector.is_configured:
+            raise HTTPException(
+                400,
+                f"{connector.display_name} must be configured before enabling auto-start",
+            )
+
+        connector.set_auto_start(body.auto_start)
+        action = "enabled" if body.auto_start else "disabled"
+        return {
+            "message": f"Auto-start {action} for {connector.display_name}",
+            "auto_start": connector.auto_start,
+            "status": connector.status(),
+        }
 
     @router.delete("/connectors/{name}")
     async def disconnect_connector(name: str) -> dict[str, Any]:
