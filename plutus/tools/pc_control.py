@@ -107,7 +107,10 @@ class PCControlTool(Tool):
             "• keyboard_type, keyboard_press, keyboard_hotkey, keyboard_shortcut\n"
             "• mouse_click, mouse_move, mouse_scroll, screenshot\n\n"
             "=== SKILLS (pre-built app workflows) ===\n"
-            "• run_skill, list_skills, create_skill, update_skill, delete_skill\n\n"
+            "• run_skill, list_skills, create_skill, update_skill, delete_skill\n"
+            "• Two skill types: 'simple' (JSON step sequences) and 'python' (full Python scripts)\n"
+            "• Python skills can use loops, LLM calls, browser automation, file I/O — for complex tasks\n"
+            "• When creating a skill, set type='python' and provide 'code' with async def run(ctx, params)\n\n"
             "=== STRATEGY ===\n"
             "1. Open apps → ALWAYS use open_app\n"
             "2. Web tasks → navigate + snapshot + click_ref/type_ref\n"
@@ -478,9 +481,34 @@ class PCControlTool(Tool):
             skill_params = kwargs.get("skill_params", {})
             if not skill_name:
                 return {"error": "Provide skill_name. Use list_skills to see available skills."}
+
+            # Check if it's a Python skill first
+            from pathlib import Path
+            skills_dir = Path.home() / ".plutus" / "skills"
+            meta_path = skills_dir / f"{skill_name}.json"
+            if meta_path.exists():
+                import json as _json
+                try:
+                    meta = _json.loads(meta_path.read_text())
+                    if meta.get("type") == "python":
+                        from plutus.skills.python_runner import PythonSkillRunner
+                        runner = PythonSkillRunner()
+                        result = await runner.run(skill_name, skill_params)
+                        return result.to_dict()
+                except Exception:
+                    pass
+
+            # Fall back to simple skill engine
             registry = _ensure_skills()
             skill = registry.get(skill_name)
             if not skill:
+                # Also check if Python skill exists without metadata
+                script_path = skills_dir / f"{skill_name}.py"
+                if script_path.exists():
+                    from plutus.skills.python_runner import PythonSkillRunner
+                    runner = PythonSkillRunner()
+                    result = await runner.run(skill_name, skill_params)
+                    return result.to_dict()
                 available = registry.list_names()
                 return {"error": f"Unknown skill: {skill_name}", "available_skills": available}
             engine = _get_skill_engine(self)
@@ -490,10 +518,44 @@ class PCControlTool(Tool):
         elif op == "list_skills":
             registry = _ensure_skills()
             category = kwargs.get("category")
+            
+            # Get simple skills
             if category:
                 skills = registry.find_by_category(category)
-                return {"skills": [s.to_dict() for s in skills], "category": category}
-            return {"skills": registry.list_all(), "categories": registry.list_categories()}
+                simple_skills = [s.to_dict() for s in skills]
+            else:
+                simple_skills = registry.list_all()
+            
+            # Also list Python skills
+            from pathlib import Path
+            import json as _json
+            skills_dir = Path.home() / ".plutus" / "skills"
+            python_skills = []
+            if skills_dir.exists():
+                for meta_path in sorted(skills_dir.glob("*.json")):
+                    try:
+                        meta = _json.loads(meta_path.read_text())
+                        if meta.get("type") == "python":
+                            if category and meta.get("category") != category:
+                                continue
+                            python_skills.append({
+                                "name": meta.get("name", meta_path.stem),
+                                "type": "python",
+                                "description": meta.get("description", ""),
+                                "category": meta.get("category", "custom"),
+                                "triggers": meta.get("triggers", []),
+                                "required_params": meta.get("required_params", []),
+                                "version": meta.get("version", 1),
+                            })
+                    except Exception:
+                        pass
+            
+            all_skills = simple_skills + python_skills
+            categories = list(set(
+                (registry.list_categories() if not category else [category])
+                + [s.get("category", "custom") for s in python_skills]
+            ))
+            return {"skills": all_skills, "categories": categories}
 
         # ═══════════════════════════════════════════════
         # SELF-IMPROVEMENT
@@ -503,20 +565,41 @@ class PCControlTool(Tool):
             skill_def = kwargs.get("skill_definition", {})
             if not skill_def:
                 return {
-                    "error": "Provide skill_definition",
-                    "example": {
+                    "error": "Provide skill_definition with 'type' field ('simple' or 'python')",
+                    "simple_example": {
+                        "type": "simple",
                         "name": "twitter_post_tweet",
                         "description": "Post a tweet on Twitter/X",
                         "app": "Twitter",
                         "category": "social",
                         "triggers": ["tweet", "post on twitter"],
                         "required_params": ["tweet_text"],
-                        "optional_params": [],
                         "steps": [
                             {"description": "Open Twitter", "operation": "open_url", "params": {"url": "https://twitter.com/compose/tweet"}, "wait_after": 3.0},
-                            {"description": "Type the tweet", "operation": "browser_type", "params": {"text": "{{tweet_text}}", "selector": "[data-testid='tweetTextarea_0']"}, "wait_after": 1.0},
-                            {"description": "Click Post", "operation": "browser_click", "params": {"text": "Post"}, "wait_after": 2.0},
+                            {"description": "Type the tweet", "operation": "browser_type", "params": {"text": "{{tweet_text}}"}, "wait_after": 1.0},
                         ],
+                    },
+                    "python_example": {
+                        "type": "python",
+                        "name": "stock_checker",
+                        "description": "Check stock prices and send a summary",
+                        "category": "finance",
+                        "triggers": ["stock", "stock price", "portfolio"],
+                        "required_params": ["symbols"],
+                        "code": (
+                            'async def run(ctx, params):\n'
+                            '    """Check stock prices for given symbols."""\n'
+                            '    symbols = params.get("symbols", [])\n'
+                            '    results = []\n'
+                            '    for symbol in symbols:\n'
+                            '        await ctx.browser_navigate(f"https://finance.yahoo.com/quote/{symbol}")\n'
+                            '        text = await ctx.browser_get_text()\n'
+                            '        price = await ctx.llm_ask(f"Extract the current price from: {text[:500]}")\n'
+                            '        results.append({"symbol": symbol, "price": price})\n'
+                            '        ctx.log(f"{symbol}: {price}")\n'
+                            '    ctx.save_state("last_check", results)\n'
+                            '    return {"success": True, "result": results}\n'
+                        ),
                     },
                 }
             skill_def["reason"] = kwargs.get("reason", "Agent created this skill")
