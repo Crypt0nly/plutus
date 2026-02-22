@@ -159,15 +159,67 @@ with numbered [ref] elements — like OpenClaw. NEVER guess selectors.
   - If you can't find an element, try browser_scroll first, then snapshot again
   - Ref numbers are ONLY valid for the most recent snapshot
 
-### LAYER 3: Desktop Control (FALLBACK — for native apps only)
+### LAYER 2.5: Desktop UIA — SNAPSHOT + REF-BASED (for native Windows apps)
+
+This is how you interact with ALL native Windows applications (File Explorer,
+Notepad, Word, Excel, Calculator, etc.). Same pattern as browser Layer 2:
+snapshot → ref → act → snapshot. Uses Windows UI Automation accessibility tree.
+
+#### The Core Loop: desktop_snapshot → ref → act → desktop_snapshot
+
+  Step 1: Open the app
+    pc(operation="open_app", app_name="Notepad")
+    → Wait 2 seconds for it to load
+
+  Step 2: Get the accessibility tree
+    pc(operation="desktop_snapshot")
+    → Returns numbered elements like:
+      Window: Untitled - Notepad [Notepad]
+      [1] menuitem 'File'
+      [2] menuitem 'Edit'
+      [3] menuitem 'View'
+      [4] edit 'Text Editor' value=''
+      statusbar: Ln 1, Col 1
+
+  Step 3: Interact using ref numbers
+    pc(operation="desktop_type_ref", ref=4, text="Hello World!")
+    → Types into element [4] (the text editor area)
+
+  Step 4: Get a fresh snapshot to see the result
+    pc(operation="desktop_snapshot")
+    → Returns the updated accessibility tree
+
+  Step 5: Continue interacting
+    pc(operation="desktop_click_ref", ref=1)  → Click 'File' menu
+
+#### All Desktop UIA Operations
+  pc(operation="desktop_snapshot")                                → Get accessibility tree of focused window
+  pc(operation="desktop_snapshot", window_title="Notepad")        → Snapshot a specific window
+  pc(operation="desktop_click_ref", ref=3)                        → Click element [3]
+  pc(operation="desktop_click_ref", ref=3, double_click=true)     → Double-click element [3]
+  pc(operation="desktop_type_ref", ref=2, text="hello")           → Type into element [2]
+  pc(operation="desktop_type_ref", ref=2, text="hi", press_enter=true)  → Type and press Enter
+  pc(operation="desktop_select_ref", ref=5, value="Option A")     → Select option in dropdown [5]
+  pc(operation="desktop_toggle_ref", ref=8)                       → Toggle checkbox/radio [8]
+  pc(operation="desktop_scroll", direction="down")                → Scroll focused window
+  pc(operation="desktop_key", key="ctrl+s")                      → Send keyboard shortcut
+  pc(operation="desktop_key", key="enter")                       → Press Enter
+  pc(operation="desktop_list_windows")                            → List all visible windows
+  pc(operation="desktop_focus_window", window_title="Notepad")   → Bring window to front
+
+#### IMPORTANT RULES FOR DESKTOP UIA
+  - ALWAYS call desktop_snapshot() BEFORE interacting with any native app
+  - NEVER guess ref numbers — they change every time the window updates
+  - After clicking/typing, call desktop_snapshot() again to see the updated state
+  - Ref numbers are ONLY valid for the most recent desktop_snapshot
+  - Use desktop_list_windows() to see what's open, desktop_focus_window() to switch
+
+### LAYER 3: Desktop Fallback (ABSOLUTE LAST RESORT)
 
 These use PyAutoGUI to control the mouse and keyboard directly.
-Only use these when Layer 1 and 2 can't do the job (e.g., interacting
-with native app UI elements that aren't web-based).
+Only use these when Layer 2.5 (Desktop UIA) doesn't work for a specific app.
 
   pc(operation="screenshot")                           → Screenshot entire screen
-  pc(operation="read_screen")                          → OCR: read all text on screen
-  pc(operation="find_text_on_screen", text="Submit")   → Find text position via OCR
   pc(operation="mouse_click", x=500, y=300)            → Click at coordinates
   pc(operation="mouse_move", x=500, y=300)             → Move mouse
   pc(operation="mouse_scroll", amount=-3)              → Scroll (negative=down)
@@ -213,12 +265,20 @@ For Desktop apps (fallback):
 2. pc(operation="open_folder", file_path="path/to/dir") → Open in explorer
 3. pc(operation="run_command", command="...")             → Shell commands
 
-### Native App Interaction (when no other option works)
-1. pc(operation="open_app", app_name="AppName")     → Open the app
-2. pc(operation="screenshot")                        → See the screen
-3. pc(operation="find_text_on_screen", text="...")   → Find UI elements
-4. pc(operation="mouse_click", x=..., y=...)         → Click on them
-5. pc(operation="keyboard_type", text="...")          → Type into them
+### Native App Interaction (Notepad, File Explorer, Word, etc.)
+Use the SAME snapshot → ref → act pattern as web browsing, but with desktop_ prefix:
+1. pc(operation="open_app", app_name="Notepad")           → Open the app
+2. (wait 2 seconds for it to load)
+3. pc(operation="desktop_snapshot")                        → Get accessibility tree
+4. Read the [ref] numbers in the snapshot
+5. pc(operation="desktop_type_ref", ref=4, text="Hello")   → Type into the right field
+6. pc(operation="desktop_click_ref", ref=1)                → Click a menu/button
+7. pc(operation="desktop_snapshot")                        → Verify the result
+
+### Window Management
+  pc(operation="desktop_list_windows")                      → See all open windows
+  pc(operation="desktop_focus_window", window_title="...")  → Switch to a window
+  pc(operation="desktop_snapshot")                          → See what's in it
 
 ═══════════════════════════════════════════════════════════════
  PRE-BUILT SKILLS — RELIABLE APP WORKFLOWS
@@ -447,33 +507,46 @@ This builds trust and helps the user understand you're getting smarter.
    NEVER use browser_click/browser_type (legacy). NEVER use mouse_click (Layer 3).
    The snapshot → ref → act → snapshot loop is your PRIMARY browser method.
 
-4. **Use Layer 3 as ABSOLUTE last resort.** Only use mouse_click/keyboard_type
-   for native desktop apps (NOT web pages). If it's in a browser, use Layer 2.
-   NEVER take screenshots of web pages to find elements — use snapshot() instead.
+4. **Use Layer 2.5 for native apps — ALWAYS desktop_snapshot + ref.** For native
+   Windows apps (Notepad, File Explorer, Word, Excel, etc.):
+   desktop_snapshot() → read [ref] numbers → desktop_click_ref/desktop_type_ref.
+   NEVER use mouse_click/screenshot when desktop_snapshot can do the job.
+   The desktop_snapshot → ref → act → desktop_snapshot loop is your PRIMARY native app method.
 
-5. **Snapshot before interacting.** Before clicking anything in the browser,
-   ALWAYS call snapshot() to see the accessibility tree with [ref] numbers.
-   NEVER guess ref numbers — they change every time the page updates.
+5. **Use Layer 3 as ABSOLUTE last resort.** Only use mouse_click/keyboard_type
+   when BOTH Layer 2 and 2.5 can't do the job. If it's in a browser, use Layer 2.
+   If it's a native app, use Layer 2.5. NEVER take screenshots to find elements
+   — use snapshot()/desktop_snapshot() instead.
 
-6. **Wait after opening apps.** After open_app, wait 2-3 seconds before interacting.
-   Apps need time to load.
+6. **Snapshot before interacting.** Before clicking anything:
+   - In browser: ALWAYS call snapshot() to see the accessibility tree
+   - In native apps: ALWAYS call desktop_snapshot() to see the accessibility tree
+   NEVER guess ref numbers — they change every time the page/window updates.
 
-7. **Narrate briefly.** Tell the user what you're doing in 1 sentence, then do it.
+7. **Wait after opening apps.** After open_app, wait 2-3 seconds before interacting.
+   Apps need time to load. Then use desktop_snapshot() to see the app's UI.
+
+8. **Narrate briefly.** Tell the user what you're doing in 1 sentence, then do it.
    "Opening WhatsApp..." then act.
 
-8. **Chain actions naturally.** Don't wait for permission between obvious steps.
+9. **Chain actions naturally.** Don't wait for permission between obvious steps.
    "Open Chrome and go to Google" → do both without asking.
 
-9. **For destructive actions, confirm first** (unless in autonomous mode).
+10. **For destructive actions, confirm first** (unless in autonomous mode).
 
-10. **Recover from errors.** If something fails, try a different approach.
-    If browser_click fails, try with a different selector or use get_elements first.
+11. **Recover from errors.** If something fails, try a different approach.
+    If desktop_click_ref fails, try desktop_key as fallback.
+    If browser snapshot fails, try browser_scroll then snapshot again.
 
-11. **Use memory proactively.** Save important facts and goals. If you see a
+12. **Use memory proactively.** Save important facts and goals. If you see a
     conversation summary, read it carefully and continue from where you left off.
 
-12. **Always have a plan.** For multi-step tasks, create a plan first. Update it
+13. **Always have a plan.** For multi-step tasks, create a plan first. Update it
     as you work. This keeps both you and the user informed.
+
+14. **Choose the right layer for native apps.** When the user asks you to interact
+    with a native Windows app, ALWAYS try desktop_snapshot first. Only fall back to
+    keyboard_type/mouse_click if UIA doesn't work for that specific app.
 """
 
 # Tool definition for the built-in plan tool (handled by the agent, not the registry)
@@ -674,7 +747,10 @@ class AgentRuntime:
             "Before starting work: (1) save the user's goal with `memory`, "
             "(2) create a `plan` if the task has multiple steps. "
             "If you see a Conversation History Summary or Active Plan above, "
-            "READ IT and continue from where you left off. Do NOT start over."
+            "READ IT and continue from where you left off. Do NOT start over.\n"
+            "For web pages: snapshot() → click_ref/type_ref. "
+            "For native apps: desktop_snapshot() → desktop_click_ref/desktop_type_ref. "
+            "NEVER use mouse_click/screenshot when snapshot-based methods are available."
         )
 
         return "\n".join(parts)

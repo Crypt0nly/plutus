@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plutus-ai"
-version = "0.2.0"
+version = "0.2.5"
 description = "Autonomous AI agent with subprocess orchestration, dynamic tool creation, and a local-first web interface"
 readme = "README.md"
 license = "MIT"
@@ -38,6 +38,7 @@ dependencies = [
     "pyautogui>=0.9.54",
     "anthropic>=0.40.0",
     "pyperclip>=1.8.0",
+    "pywinauto>=0.6.8; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

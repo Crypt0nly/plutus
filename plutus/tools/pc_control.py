@@ -4,12 +4,13 @@ PC Control Tool — OpenClaw-style unified interface for all machine interaction
 Architecture:
   1. SHELL: Open apps, run commands, manage processes via OS-native commands
   2. BROWSER (Accessibility Tree + Refs): Navigate web, snapshot page, interact by ref numbers
-  3. DESKTOP (PyAutoGUI fallback): Mouse/keyboard for native apps only
+  2.5 DESKTOP UIA (Accessibility Tree + Refs): Navigate native Windows apps the same way
+  3. DESKTOP FALLBACK (PyAutoGUI): Mouse/keyboard when UIA isn't available
 
-The KEY INNOVATION is the snapshot → ref → act loop:
-  1. snapshot() → returns numbered accessibility tree of the page
+The KEY INNOVATION is the snapshot → ref → act loop (works for BOTH web AND native apps):
+  1. snapshot() / desktop_snapshot() → returns numbered accessibility tree
   2. LLM reads the tree, picks a ref number
-  3. click_ref(3) / type_ref(2, "hello") → precise, deterministic interaction
+  3. click_ref(3) / desktop_click_ref(3) → precise, deterministic interaction
 """
 
 from __future__ import annotations
@@ -48,21 +49,34 @@ def _get_skill_engine(pc_tool):
 class PCControlTool(Tool):
     """
     Unified PC control — the primary way the AI interacts with the computer.
-    
-    Two clean layers:
+
+    Three clean layers:
     1. OS Control: shell commands for apps, files, processes
     2. Browser Control: accessibility tree snapshots + ref-based interaction for web
-    + Desktop fallback for native apps when needed
+    2.5 Desktop UIA: accessibility tree snapshots + ref-based interaction for native Windows apps
+    3. Desktop Fallback: PyAutoGUI mouse/keyboard when UIA isn't available
     """
 
     def __init__(self):
         self._os = OSControl()
         self._browser = BrowserControl()
+        self._desktop = None  # Lazy-loaded DesktopControl (UIA)
         self._mouse = None
         self._keyboard = None
         self._screen = None
 
-    def _ensure_desktop(self):
+    def _ensure_desktop_uia(self):
+        """Lazy-load the Windows UIA desktop controller."""
+        if self._desktop is None:
+            try:
+                from plutus.pc.desktop_control import DesktopControl
+                self._desktop = DesktopControl()
+                logger.info("Desktop UIA controller loaded")
+            except Exception as e:
+                logger.warning(f"Desktop UIA not available: {e}")
+
+    def _ensure_desktop_fallback(self):
+        """Lazy-load PyAutoGUI fallback controllers."""
         if self._mouse is None:
             try:
                 from plutus.pc.mouse import MouseController
@@ -72,7 +86,11 @@ class PCControlTool(Tool):
                 self._keyboard = KeyboardController("natural")
                 self._screen = ScreenReader()
             except Exception as e:
-                logger.warning(f"Desktop control not available: {e}")
+                logger.warning(f"Desktop fallback control not available: {e}")
+
+    # Keep backward compat
+    def _ensure_desktop(self):
+        self._ensure_desktop_fallback()
 
     @property
     def name(self) -> str:
@@ -81,13 +99,13 @@ class PCControlTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Control the computer — open apps, browse the web, run commands.\n\n"
+            "Control the computer — open apps, browse the web, navigate native Windows apps, run commands.\n\n"
             "=== OS OPERATIONS (always use for opening apps and system tasks) ===\n"
             "• open_app: Open any app by name (WhatsApp, Chrome, Spotify, etc.)\n"
             "• close_app, open_url, open_file, open_folder, run_command\n"
             "• list_processes, kill_process, get_clipboard, set_clipboard\n"
             "• send_notification, list_apps, system_info, active_window\n\n"
-            "=== BROWSER OPERATIONS (snapshot → ref → act loop) ===\n"
+            "=== BROWSER OPERATIONS (snapshot → ref → act loop for WEB PAGES) ===\n"
             "MANDATORY for ALL web interaction — NEVER use desktop ops for web pages:\n"
             "  1. navigate(url) → opens page AND returns accessibility tree snapshot\n"
             "  2. snapshot() → refreshes the accessibility tree with numbered [ref] elements\n"
@@ -97,31 +115,43 @@ class PCControlTool(Tool):
             "  6. check_ref(ref=9, checked=true) → toggles checkbox\n"
             "  7. browser_scroll(direction='down') → scrolls the page, then call snapshot()\n"
             "  8. snapshot() → verify the result after ANY action\n\n"
-            "Snapshot example:\n"
-            "  Page: Google — https://www.google.com\n"
-            "  [1] textbox 'Search' value='' focused\n"
-            "  [2] button 'Google Search'\n"
-            "  [3] link 'Gmail'\n\n"
-            "Then: type_ref(ref=1, text='weather today', press_enter=true)\n\n"
+            "=== DESKTOP UIA OPERATIONS (snapshot → ref → act loop for NATIVE WINDOWS APPS) ===\n"
+            "Same pattern as browser, but for native apps (File Explorer, Notepad, Word, etc.):\n"
+            "  1. desktop_snapshot() → accessibility tree of the focused native window\n"
+            "  2. desktop_click_ref(ref=3) → clicks element [3] in the native app\n"
+            "  3. desktop_type_ref(ref=2, text='hello') → types into element [2]\n"
+            "  4. desktop_select_ref(ref=5, value='option') → selects an option\n"
+            "  5. desktop_toggle_ref(ref=4) → toggles a checkbox/radio button\n"
+            "  6. desktop_scroll(direction='down') → scrolls the focused window\n"
+            "  7. desktop_key(key='ctrl+s') → sends a keyboard shortcut\n"
+            "  8. desktop_list_windows() → lists all visible windows\n"
+            "  9. desktop_focus_window(window_title='Notepad') → brings a window to front\n"
+            "  10. desktop_snapshot() → verify the result after ANY action\n\n"
+            "Desktop UIA snapshot example:\n"
+            "  Window: Untitled - Notepad [Notepad]\n"
+            "  [1] menubar 'Application'\n"
+            "  [2] menuitem 'File'\n"
+            "  [3] menuitem 'Edit'\n"
+            "  [4] edit 'Text Editor' value='Hello world'\n"
+            "  [5] statusbar: Ln 1, Col 12\n\n"
+            "Then: desktop_type_ref(ref=4, text='New content', clear_first=true)\n\n"
+            "IMPORTANT: Use desktop_snapshot (NOT screenshot) to see native app content.\n"
+            "IMPORTANT: Use desktop_click_ref (NOT mouse_click) to interact with native apps.\n\n"
             "Other browser ops: new_tab, close_tab, switch_tab, list_tabs,\n"
             "  fill_form, evaluate_js, wait_for_text, wait_for_navigation\n\n"
-            "IMPORTANT: Use browser_scroll (NOT mouse_scroll/scroll) for web pages.\n"
-            "IMPORTANT: Use snapshot() (NOT screenshot) to see web page content.\n\n"
-            "=== DESKTOP OPERATIONS (ONLY for native apps, NEVER for web pages) ===\n"
+            "=== DESKTOP FALLBACK (ONLY when UIA is not available) ===\n"
             "• keyboard_type, keyboard_press, keyboard_hotkey, keyboard_shortcut\n"
             "• mouse_click, mouse_move, mouse_scroll, screenshot\n"
-            "• These are ONLY for native desktop apps like Notepad, Spotify, etc.\n"
-            "• NEVER use screenshot or mouse_scroll on web pages — use snapshot/browser_scroll\n\n"
+            "• These are ONLY for when UIA-based desktop control doesn't work\n\n"
             "=== SKILLS (pre-built app workflows) ===\n"
             "• run_skill, list_skills, create_skill, update_skill, delete_skill\n"
-            "• Two skill types: 'simple' (JSON step sequences) and 'python' (full Python scripts)\n"
-            "• Python skills can use loops, LLM calls, browser automation, file I/O — for complex tasks\n"
-            "• When creating a skill, set type='python' and provide 'code' with async def run(ctx, params)\n\n"
+            "• Two skill types: 'simple' (JSON step sequences) and 'python' (full Python scripts)\n\n"
             "=== STRATEGY ===\n"
             "1. Open apps → ALWAYS use open_app\n"
             "2. Web tasks → navigate + snapshot + click_ref/type_ref\n"
-            "3. Native apps → open_app + keyboard_type/keyboard_press\n"
-            "4. NEVER guess coordinates — use snapshot to see what's on the page"
+            "3. Native apps → open_app + desktop_snapshot + desktop_click_ref/desktop_type_ref\n"
+            "4. NEVER guess coordinates — use snapshot/desktop_snapshot to see what's available\n"
+            "5. NEVER use screenshot/mouse_click when snapshot/click_ref can do the job"
         )
 
     @property
@@ -146,7 +176,12 @@ class PCControlTool(Tool):
                         "browser_screenshot",
                         "new_tab", "close_tab", "switch_tab", "list_tabs",
                         "evaluate_js", "wait_for_text", "wait_for_navigation",
-                        # Desktop operations (fallback)
+                        # Desktop UIA operations — snapshot + ref-based (for native apps)
+                        "desktop_snapshot", "desktop_click_ref", "desktop_type_ref",
+                        "desktop_select_ref", "desktop_toggle_ref",
+                        "desktop_scroll", "desktop_key",
+                        "desktop_list_windows", "desktop_focus_window",
+                        # Desktop fallback operations (PyAutoGUI)
                         "mouse_click", "mouse_move", "mouse_scroll",
                         "keyboard_type", "keyboard_press", "keyboard_hotkey", "keyboard_shortcut",
                         "screenshot",
@@ -166,13 +201,17 @@ class PCControlTool(Tool):
                 "pid": {"type": "integer", "description": "Process ID"},
                 "notification_title": {"type": "string", "description": "Notification title"},
                 "notification_message": {"type": "string", "description": "Notification message"},
-                # Ref-based browser params (PRIMARY)
+                # Ref-based params (shared by browser AND desktop UIA)
                 "ref": {"type": "integer", "description": "Element ref number from snapshot (e.g., 5 to click [5])"},
                 "text": {"type": "string", "description": "Text to type, find, or match"},
                 "press_enter": {"type": "boolean", "description": "Press Enter after typing"},
                 "clear_first": {"type": "boolean", "description": "Clear field before typing (default: true)"},
                 "checked": {"type": "boolean", "description": "Check state for check_ref"},
-                "value": {"type": "string", "description": "Value for select_ref"},
+                "value": {"type": "string", "description": "Value for select_ref/desktop_select_ref"},
+                # Desktop UIA params
+                "window_title": {"type": "string", "description": "Window title for desktop_snapshot/desktop_focus_window"},
+                "max_depth": {"type": "integer", "description": "Max tree depth for desktop_snapshot (default: 8)"},
+                "double_click": {"type": "boolean", "description": "Double-click for click_ref/desktop_click_ref"},
                 # Legacy browser params
                 "selector": {"type": "string", "description": "CSS selector (prefer ref-based ops instead)"},
                 "label": {"type": "string", "description": "Input field label"},
@@ -190,13 +229,12 @@ class PCControlTool(Tool):
                 "amount": {"type": "integer", "description": "Scroll amount in pixels"},
                 "full_page": {"type": "boolean", "description": "Full page screenshot"},
                 "browser": {"type": "string", "description": "Specific browser for open_url"},
-                "double_click": {"type": "boolean", "description": "Double-click"},
                 "right_click": {"type": "boolean", "description": "Right-click"},
-                # Desktop params
+                # Desktop fallback params
                 "x": {"type": "integer", "description": "X coordinate for mouse"},
                 "y": {"type": "integer", "description": "Y coordinate for mouse"},
                 "button": {"type": "string", "description": "Mouse button (left/right/middle)"},
-                "key": {"type": "string", "description": "Key name for keyboard_press"},
+                "key": {"type": "string", "description": "Key name for keyboard_press/desktop_key"},
                 "hotkey": {"type": "string", "description": "Key combo for keyboard_hotkey (ctrl+c, alt+tab)"},
                 "shortcut_name": {"type": "string", "description": "Named shortcut (copy, paste, save, undo)"},
                 "timeout": {"type": "integer", "description": "Timeout in milliseconds"},
@@ -227,21 +265,36 @@ class PCControlTool(Tool):
         # AUTO-REDIRECT: Fix common LLM operation mistakes
         # ═══════════════════════════════════════════════
         _redirects = {
+            # Browser scroll redirects
             "scroll": "browser_scroll",
             "scroll_down": "browser_scroll",
             "scroll_up": "browser_scroll",
             "page_down": "browser_scroll",
             "page_up": "browser_scroll",
+            # Snapshot redirects
             "take_screenshot": "snapshot",
             "get_screenshot": "snapshot",
             "capture": "snapshot",
+            "get_page": "snapshot",
+            "read_page": "snapshot",
+            "view_page": "snapshot",
+            # Ref-based redirects
             "click": "click_ref",
             "type": "type_ref",
             "select": "select_ref",
             "check": "check_ref",
-            "get_page": "snapshot",
-            "read_page": "snapshot",
-            "view_page": "snapshot",
+            # Desktop UIA redirects (common mistakes)
+            "win_snapshot": "desktop_snapshot",
+            "window_snapshot": "desktop_snapshot",
+            "app_snapshot": "desktop_snapshot",
+            "desktop_click": "desktop_click_ref",
+            "desktop_type": "desktop_type_ref",
+            "desktop_select": "desktop_select_ref",
+            "desktop_toggle": "desktop_toggle_ref",
+            "win_click": "desktop_click_ref",
+            "win_type": "desktop_type_ref",
+            "list_windows": "desktop_list_windows",
+            "focus_window": "desktop_focus_window",
         }
         if op in _redirects:
             old_op = op
@@ -264,6 +317,10 @@ class PCControlTool(Tool):
         if op == "mouse_scroll" and self._browser and self._browser._initialized:
             op = "browser_scroll"
             logger.info("Auto-redirected 'mouse_scroll' → 'browser_scroll' (browser is active)")
+
+        # If the LLM calls mouse_click/keyboard_type on a native app, suggest desktop UIA instead
+        if op in ("mouse_click", "keyboard_type") and self._desktop and self._desktop._uia_available:
+            logger.info(f"Hint: Consider using desktop_snapshot + desktop_click_ref/desktop_type_ref instead of {op}")
 
         # ═══════════════════════════════════════════════
         # LAYER 1: OS Operations (shell commands)
@@ -477,7 +534,105 @@ class PCControlTool(Tool):
             return await self._browser.wait_for_navigation(timeout=kwargs.get("timeout", 30000))
 
         # ═══════════════════════════════════════════════
-        # LAYER 3: Desktop (PyAutoGUI — native apps only)
+        # LAYER 2.5: Desktop UIA — Snapshot + Ref-Based
+        # (Same pattern as browser, but for native Windows apps)
+        # ═══════════════════════════════════════════════
+
+        elif op == "desktop_snapshot":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {
+                    "error": "Desktop UIA not available. Install pywinauto: pip install pywinauto",
+                    "hint": "Use keyboard_type/keyboard_press as fallback for native apps.",
+                }
+            return await self._desktop.snapshot(
+                window_title=kwargs.get("window_title"),
+                max_depth=kwargs.get("max_depth", 8),
+            )
+
+        elif op == "desktop_click_ref":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            ref = kwargs.get("ref")
+            if ref is None:
+                return {"error": "Provide ref number from desktop_snapshot (e.g., ref=3)"}
+            return await self._desktop.click_ref(
+                int(ref),
+                double_click=kwargs.get("double_click", False),
+            )
+
+        elif op == "desktop_type_ref":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            ref = kwargs.get("ref")
+            text = kwargs.get("text", "")
+            if ref is None:
+                return {"error": "Provide ref number from desktop_snapshot (e.g., ref=2)"}
+            if not text:
+                return {"error": "Provide text to type"}
+            return await self._desktop.type_ref(
+                int(ref),
+                text,
+                clear_first=kwargs.get("clear_first", True),
+                press_enter=kwargs.get("press_enter", False),
+            )
+
+        elif op == "desktop_select_ref":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            ref = kwargs.get("ref")
+            value = kwargs.get("value") or kwargs.get("text", "")
+            if ref is None:
+                return {"error": "Provide ref number"}
+            return await self._desktop.select_ref(int(ref), value)
+
+        elif op == "desktop_toggle_ref":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            ref = kwargs.get("ref")
+            if ref is None:
+                return {"error": "Provide ref number"}
+            return await self._desktop.toggle_ref(int(ref))
+
+        elif op == "desktop_scroll":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            return await self._desktop.scroll_window(
+                direction=kwargs.get("direction", "down"),
+                amount=kwargs.get("amount", 3),
+            )
+
+        elif op == "desktop_key":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            key = kwargs.get("key") or kwargs.get("hotkey") or kwargs.get("text", "")
+            if not key:
+                return {"error": "Provide key (e.g., 'enter', 'ctrl+s', 'alt+f4')"}
+            return await self._desktop.press_key(key)
+
+        elif op == "desktop_list_windows":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            return await self._desktop.list_windows()
+
+        elif op == "desktop_focus_window":
+            self._ensure_desktop_uia()
+            if not self._desktop:
+                return {"error": "Desktop UIA not available"}
+            title = kwargs.get("window_title") or kwargs.get("text", "")
+            if not title:
+                return {"error": "Provide window_title (e.g., 'Notepad', 'File Explorer')"}
+            return await self._desktop.focus_window(title)
+
+        # ═══════════════════════════════════════════════
+        # LAYER 3: Desktop Fallback (PyAutoGUI — native apps only)
         # ═══════════════════════════════════════════════
 
         elif op == "mouse_click":
@@ -711,7 +866,11 @@ class PCControlTool(Tool):
                                        "browser_scroll", "browser_screenshot",
                                        "new_tab", "close_tab", "switch_tab", "list_tabs",
                                        "evaluate_js", "wait_for_text", "wait_for_navigation"],
-                    "desktop": ["mouse_click", "mouse_move", "mouse_scroll",
+                    "desktop_uia": ["desktop_snapshot", "desktop_click_ref", "desktop_type_ref",
+                                    "desktop_select_ref", "desktop_toggle_ref",
+                                    "desktop_scroll", "desktop_key",
+                                    "desktop_list_windows", "desktop_focus_window"],
+                    "desktop_fallback": ["mouse_click", "mouse_move", "mouse_scroll",
                                "keyboard_type", "keyboard_press", "keyboard_hotkey",
                                "keyboard_shortcut", "screenshot"],
                     "skills": ["run_skill", "list_skills"],
