@@ -1,14 +1,14 @@
 """WebSocket handler for real-time chat with the agent.
 
 Plutus uses TWO agent modes:
-  1. Computer Use mode (PRIMARY): Uses Anthropic's native Computer Use Tool.
-     Claude sees screenshots, clicks, types, scrolls — like a human at the keyboard.
-  2. Standard mode (FALLBACK): Uses LiteLLM + function calling for code editing,
-     analysis, and other non-desktop tasks.
+  1. Standard mode (PRIMARY): Uses LiteLLM + function calling with the `pc` tool.
+     The agent reads the screen via accessibility tree snapshots (not screenshots)
+     and interacts with elements by ref number — fast, precise, token-efficient.
+  2. Computer Use mode (EXPLICIT ONLY): Uses Anthropic's native Computer Use Tool.
+     Screenshot-based vision — only activated when the user explicitly requests it
+     via the UI toggle or by saying "use computer use" / "use screenshots".
 
-The WebSocket handler automatically routes to the Computer Use agent for all
-messages by default. If the CU agent is not available (no Anthropic key, or
-non-Anthropic provider), it falls back to the standard agent.
+The Standard agent handles ALL messages by default, including desktop interaction.
 """
 
 from __future__ import annotations
@@ -22,45 +22,12 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 logger = logging.getLogger("plutus.ws")
 
 
-# ── Keywords that indicate the user wants desktop interaction ────────
-# (Used as a hint, but by default ALL messages go through CU agent)
-_DESKTOP_KEYWORDS = {
-    "open", "click", "type", "scroll", "screenshot", "browser", "tab",
-    "window", "app", "application", "desktop", "mouse", "keyboard",
-    "whatsapp", "chrome", "firefox", "safari", "edge", "notepad",
-    "vscode", "vs code", "terminal", "finder", "explorer", "file manager",
-    "search", "google", "youtube", "spotify", "slack", "discord",
-    "telegram", "signal", "email", "outlook", "gmail", "settings",
-    "control panel", "system preferences", "task manager",
-    "send", "message", "navigate", "go to", "visit", "download",
-    "install", "uninstall", "close", "minimize", "maximize",
-    "drag", "drop", "select", "copy", "paste", "cut", "undo", "redo",
-    "save", "print", "zoom", "fullscreen", "switch", "move",
+# ── Keywords that FORCE Computer Use mode (explicit user request) ────
+_FORCE_CU_KEYWORDS = {
+    "use computer use", "computer use mode", "use screenshots",
+    "screenshot mode", "vision mode", "use vision",
+    "switch to computer use", "enable computer use",
 }
-
-# Keywords that indicate code/file work (use standard agent)
-_CODE_KEYWORDS = {
-    "analyze code", "edit file", "create file", "read file", "write code",
-    "python script", "javascript", "refactor", "debug", "compile",
-    "git commit", "git push", "run tests", "lint", "format code",
-}
-
-
-def _should_use_computer_use(message: str) -> bool:
-    """Determine if a message should use the Computer Use agent.
-
-    By default, returns True for most messages. Only returns False
-    for messages that are clearly about code/file operations.
-    """
-    lower = message.lower()
-
-    # Check if it's clearly a code/file task
-    for kw in _CODE_KEYWORDS:
-        if kw in lower:
-            return False
-
-    # Default: use computer use for everything
-    return True
 
 
 class ConnectionManager:
@@ -136,10 +103,28 @@ async def _handle_message(ws: WebSocket, message: dict[str, Any]) -> None:
         await ws.send_json({"type": "error", "message": f"Unknown message type: {msg_type}"})
 
 
+def _should_use_computer_use(message: str) -> bool:
+    """Determine if a message should use the Computer Use agent.
+
+    Returns True ONLY if the user explicitly requests Computer Use mode.
+    The Standard agent (with accessibility tree snapshots) is the default
+    for ALL messages, including desktop interaction.
+    """
+    lower = message.lower()
+
+    # Only use CU if the user explicitly asks for it
+    for kw in _FORCE_CU_KEYWORDS:
+        if kw in lower:
+            return True
+
+    # Default: use Standard agent (accessibility tree, not screenshots)
+    return False
+
+
 async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
     """Process a user chat message.
 
-    Routes to the Computer Use agent (primary) or standard agent (fallback).
+    Routes to the Standard agent (primary) or Computer Use agent (explicit only).
     """
     from plutus.gateway.server import get_state
 
@@ -161,9 +146,10 @@ async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
         heartbeat.reset_consecutive()
 
     # Decide which agent to use
-    use_cu = message.get("computer_use", None)  # Explicit override from UI
+    # Priority: explicit UI override > explicit keyword > default (standard)
+    use_cu = message.get("computer_use", None)  # Explicit override from UI toggle
     if use_cu is None:
-        # Auto-detect: use CU agent if available and message seems desktop-related
+        # Only use CU if user explicitly asks for it AND the CU agent is available
         use_cu = cu_agent is not None and _should_use_computer_use(user_text)
 
     if use_cu and cu_agent:
@@ -282,7 +268,7 @@ async def _handle_standard_chat(ws: WebSocket, agent: Any, user_text: str) -> No
     await ws.send_json({
         "type": "mode",
         "mode": "standard",
-        "message": "Using standard mode for code and file operations",
+        "message": "🖥️ Computer Use mode — I can see and control your screen",
     })
 
     async for event in agent.process_message(user_text):
@@ -302,16 +288,23 @@ async def _handle_approval(ws: WebSocket, message: dict[str, Any]) -> None:
     approval_id = message.get("approval_id")
     approved = message.get("approved", False)
 
-    if guardrails and approval_id:
-        success = guardrails.resolve_approval(approval_id, approved)
-        await ws.send_json(
-            {
-                "type": "approval_resolved",
-                "approval_id": approval_id,
-                "approved": approved,
-                "success": success,
-            }
-        )
+    if not guardrails:
+        await ws.send_json({"type": "error", "message": "Guardrails not initialized"})
+        return
+
+    if not approval_id:
+        await ws.send_json({"type": "error", "message": "Missing approval_id"})
+        return
+
+    success = guardrails.resolve_approval(approval_id, approved)
+    await ws.send_json(
+        {
+            "type": "approval_resolved",
+            "approval_id": approval_id,
+            "approved": approved,
+            "success": success,
+        }
+    )
 
 
 async def _handle_new_conversation(ws: WebSocket) -> None:
@@ -370,37 +363,27 @@ async def _handle_heartbeat_control(ws: WebSocket, message: dict[str, Any]) -> N
         await ws.send_json({"type": "error", "message": "Heartbeat not initialized"})
         return
 
-    action = message.get("action")
+    action = message.get("action", "")
 
     if action == "start":
-        config.heartbeat.enabled = True
-        config.save()
-        heartbeat.update_config(config.heartbeat)
-        if not heartbeat.running:
-            heartbeat.start()
+        interval = message.get("interval") or (config.heartbeat.interval if config else 300)
+        heartbeat.start(interval)
+        await ws.send_json({"type": "heartbeat_status", "status": "running", "interval": interval})
     elif action == "stop":
-        config.heartbeat.enabled = False
-        config.save()
         heartbeat.stop()
+        await ws.send_json({"type": "heartbeat_status", "status": "stopped"})
     elif action == "pause":
         heartbeat.pause()
+        await ws.send_json({"type": "heartbeat_status", "status": "paused"})
     elif action == "resume":
         heartbeat.resume()
-    elif action == "configure":
-        if "interval_seconds" in message:
-            config.heartbeat.interval_seconds = message["interval_seconds"]
-        if "quiet_hours_start" in message:
-            config.heartbeat.quiet_hours_start = message["quiet_hours_start"]
-        if "quiet_hours_end" in message:
-            config.heartbeat.quiet_hours_end = message["quiet_hours_end"]
-        if "max_consecutive" in message:
-            config.heartbeat.max_consecutive = message["max_consecutive"]
-        if "prompt" in message:
-            config.heartbeat.prompt = message["prompt"]
-        config.save()
-        heartbeat.update_config(config.heartbeat)
+        await ws.send_json({"type": "heartbeat_status", "status": "running"})
+    elif action == "status":
+        await ws.send_json({
+            "type": "heartbeat_status",
+            "status": "running" if heartbeat.is_running else "stopped",
+            "paused": heartbeat.is_paused,
+            "interval": heartbeat.interval,
+        })
     else:
         await ws.send_json({"type": "error", "message": f"Unknown heartbeat action: {action}"})
-        return
-
-    await ws.send_json({"type": "heartbeat_status", **heartbeat.status()})

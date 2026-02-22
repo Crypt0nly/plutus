@@ -1,12 +1,14 @@
 """Main FastAPI application — serves the API and static UI files.
 
 Plutus operates in two modes:
-  1. Standard mode: LLM + function-calling tools (code editing, analysis, etc.)
-  2. Computer Use mode: Anthropic's native Computer Use Tool (screenshot-based vision)
+  1. Standard mode (PRIMARY): LLM + function-calling tools with accessibility tree
+     snapshots for web and desktop interaction. Handles ALL messages by default.
+  2. Computer Use mode (EXPLICIT ONLY): Anthropic's native Computer Use Tool
+     (screenshot-based vision). Only activated when user explicitly requests it.
 
-Both modes are available simultaneously. The WebSocket handler automatically
-routes to the computer use agent when the user's message involves desktop
-interaction, or the user can explicitly request it.
+Both modes are available simultaneously. The Standard agent is always preferred
+because it uses accessibility tree snapshots (fast, precise, token-efficient)
+instead of screenshots (slow, imprecise, token-heavy).
 """
 
 from __future__ import annotations
