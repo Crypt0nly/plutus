@@ -442,11 +442,14 @@ This builds trust and helps the user understand you're getting smarter.
    open_app is more reliable than clicking desktop icons.
    run_command is more reliable than navigating file explorer.
 
-3. **Use Layer 2 for web.** For anything in a browser, use browser_click,
-   browser_type, get_page, etc. These target DOM elements directly — no guessing.
+3. **Use Layer 2 for web — ALWAYS snapshot + ref.** For ANYTHING in a browser:
+   snapshot() → read [ref] numbers → click_ref/type_ref/select_ref.
+   NEVER use browser_click/browser_type (legacy). NEVER use mouse_click (Layer 3).
+   The snapshot → ref → act → snapshot loop is your PRIMARY browser method.
 
-4. **Use Layer 3 as last resort.** Only use mouse_click/keyboard_type when
-   you're interacting with a native app that isn't a web page.
+4. **Use Layer 3 as ABSOLUTE last resort.** Only use mouse_click/keyboard_type
+   for native desktop apps (NOT web pages). If it's in a browser, use Layer 2.
+   NEVER take screenshots of web pages to find elements — use snapshot() instead.
 
 5. **Snapshot before interacting.** Before clicking anything in the browser,
    ALWAYS call snapshot() to see the accessibility tree with [ref] numbers.
