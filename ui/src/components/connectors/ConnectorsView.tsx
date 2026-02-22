@@ -35,6 +35,7 @@ interface ConnectorData {
   icon: string;
   configured: boolean;
   connected: boolean;
+  auto_start: boolean;
   config: Record<string, any>;
   config_schema: ConnectorField[];
 }
@@ -72,6 +73,8 @@ function ConnectorCard({
   const [disconnecting, setDisconnecting] = useState(false);
   const [listening, setListening] = useState(false);
   const [togglingListener, setTogglingListener] = useState(false);
+  const [autoStart, setAutoStart] = useState(connector.auto_start || false);
+  const [togglingAutoStart, setTogglingAutoStart] = useState(false);
 
   const Icon = ICON_MAP[connector.icon] || Plug;
   const supportsTwoWay = connector.name === "telegram";
@@ -93,6 +96,9 @@ function ConnectorCard({
       try {
         const status = await api.getBridgeStatus(connector.name);
         setListening(status.listening || false);
+        if (status.auto_start !== undefined) {
+          setAutoStart(status.auto_start);
+        }
       } catch {
         // ignore
       }
@@ -195,6 +201,19 @@ function ConnectorCard({
       console.error("Toggle listener failed:", e);
     } finally {
       setTogglingListener(false);
+    }
+  };
+
+  const toggleAutoStart = async () => {
+    setTogglingAutoStart(true);
+    try {
+      const newValue = !autoStart;
+      await api.setConnectorAutoStart(connector.name, newValue);
+      setAutoStart(newValue);
+    } catch (e: any) {
+      console.error("Toggle auto-start failed:", e);
+    } finally {
+      setTogglingAutoStart(false);
     }
   };
 
@@ -320,6 +339,33 @@ function ConnectorCard({
                   </span>
                 </div>
               )}
+
+              {/* Auto-start toggle */}
+              <div className="mt-3 flex items-center justify-between pt-3 border-t border-gray-700/30">
+                <div>
+                  <h5 className="text-xs font-medium text-gray-300">
+                    Start on launch
+                  </h5>
+                  <p className="text-[11px] text-gray-600 mt-0.5">
+                    Automatically start two-way messaging when Plutus starts
+                  </p>
+                </div>
+                <button
+                  onClick={toggleAutoStart}
+                  disabled={togglingAutoStart}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    autoStart
+                      ? "bg-blue-600"
+                      : "bg-gray-700"
+                  } ${togglingAutoStart ? "opacity-50" : ""}`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                      autoStart ? "translate-x-[18px]" : "translate-x-[3px]"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           )}
 

@@ -104,6 +104,24 @@ def _init_computer_use_agent(config: PlutusConfig, secrets: SecretsStore) -> Any
         return None
 
 
+async def _auto_start_connectors(connector_manager) -> None:
+    """Auto-start connectors that have auto_start enabled in their config."""
+    for connector in connector_manager.get_configured():
+        if not connector.auto_start:
+            continue
+        try:
+            if connector.name == "telegram":
+                from plutus.connectors.telegram_bridge import get_telegram_bridge
+                bridge = get_telegram_bridge()
+                await bridge.start()
+                logger.info("Telegram bridge auto-started")
+            else:
+                await connector.start()
+                logger.info(f"Connector auto-started: {connector.name}")
+        except Exception as e:
+            logger.error(f"Failed to auto-start connector {connector.name}: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
@@ -175,6 +193,9 @@ async def lifespan(app: FastAPI):
         f"model={config.model.provider}/{config.model.model}, "
         f"api_key={key_status}, computer_use={cu_status}, heartbeat={heartbeat_status}"
     )
+
+    # Auto-start connectors that have auto_start enabled (e.g. Telegram bridge)
+    await _auto_start_connectors(connector_manager)
 
     yield
 

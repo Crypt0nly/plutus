@@ -66,6 +66,16 @@ class BaseConnector(ABC):
         return bool(self._config.get("configured"))
 
     @property
+    def auto_start(self) -> bool:
+        """Whether this connector should auto-start when Plutus launches."""
+        return bool(self._config.get("auto_start", False))
+
+    def set_auto_start(self, enabled: bool) -> None:
+        """Set whether this connector should auto-start on launch."""
+        self._config["auto_start"] = enabled
+        self._config_store.save(self._config)
+
+    @property
     def is_connected(self) -> bool:
         """Whether the connector is currently active/connected."""
         return self._running
@@ -137,6 +147,7 @@ class BaseConnector(ABC):
             "icon": self.icon,
             "configured": self.is_configured,
             "connected": self.is_connected,
+            "auto_start": self.auto_start,
             "config": self.get_config(),
             "config_schema": self.config_schema(),
         }
