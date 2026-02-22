@@ -124,4 +124,5 @@ export type WSMessage =
   | { type: "heartbeat_paused"; reason: string; count: number }
   | { type: "heartbeat_status"; [key: string]: any }
   | { type: "plan_update"; result: string }
+  | { type: "attachment"; file_name: string; file_path: string; file_size: number; is_image: boolean; caption?: string; image_base64?: string }
   | { type: "pong" };
