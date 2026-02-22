@@ -150,6 +150,13 @@ async def lifespan(app: FastAPI):
     if config.heartbeat.enabled:
         heartbeat.start()
 
+    # Initialize connector manager and register connector tool
+    from plutus.connectors import create_connector_manager
+    from plutus.tools.connector_tool import ConnectorTool
+    connector_manager = create_connector_manager()
+    connector_tool = ConnectorTool(connector_manager)
+    tool_registry.register(connector_tool)
+
     _state["config"] = config
     _state["secrets"] = secrets
     _state["memory"] = memory
@@ -158,6 +165,7 @@ async def lifespan(app: FastAPI):
     _state["agent"] = agent
     _state["cu_agent"] = cu_agent
     _state["heartbeat"] = heartbeat
+    _state["connector_manager"] = connector_manager
 
     key_status = "configured" if agent.key_configured else "NOT configured"
     cu_status = "enabled" if cu_agent else "disabled"
@@ -171,6 +179,7 @@ async def lifespan(app: FastAPI):
     yield
 
     heartbeat.stop()
+    await connector_manager.stop_all()
     await agent.shutdown()
     logger.info("Plutus shut down")
 

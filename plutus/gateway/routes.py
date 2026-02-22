@@ -70,6 +70,15 @@ class PlanStatusUpdate(BaseModel):
     status: str
 
 
+class ConnectorConfigUpdate(BaseModel):
+    config: dict[str, Any]
+
+
+class ConnectorSendMessage(BaseModel):
+    text: str
+    params: dict[str, Any] = {}
+
+
 
 def create_router() -> APIRouter:
     router = APIRouter()
@@ -1162,5 +1171,118 @@ def create_router() -> APIRouter:
                 "total_created": 0, "total_updated": 0, "total_deleted": 0,
                 "categories": {}, "recent": [], "error": str(e),
             }
+
+    # ── Connectors ────────────────────────────────────────────────
+
+    @router.get("/connectors")
+    async def list_connectors() -> dict[str, Any]:
+        """List all available connectors and their status."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            return {"connectors": []}
+        return {"connectors": connector_mgr.list_all()}
+
+    @router.get("/connectors/{name}")
+    async def get_connector(name: str) -> dict[str, Any]:
+        """Get a single connector's status and config."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        return connector.status()
+
+    @router.put("/connectors/{name}/config")
+    async def update_connector_config(name: str, body: ConnectorConfigUpdate) -> dict[str, Any]:
+        """Save configuration for a connector."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        connector.save_config(body.config)
+        return {"message": f"{connector.display_name} configuration saved", "status": connector.status()}
+
+    @router.post("/connectors/{name}/test")
+    async def test_connector(name: str) -> dict[str, Any]:
+        """Test a connector's connection."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        result = await connector.test_connection()
+        # If test detected new config (e.g. chat_id), return updated status
+        result["status"] = connector.status()
+        return result
+
+    @router.post("/connectors/{name}/send")
+    async def send_connector_message(name: str, body: ConnectorSendMessage) -> dict[str, Any]:
+        """Send a test message through a connector."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        if not connector.is_configured:
+            raise HTTPException(400, f"{connector.display_name} is not configured")
+        return await connector.send_message(body.text, **body.params)
+
+    @router.post("/connectors/{name}/start")
+    async def start_connector(name: str) -> dict[str, Any]:
+        """Start a connector (e.g., start polling for messages)."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        await connector.start()
+        return {"message": f"{connector.display_name} started", "status": connector.status()}
+
+    @router.post("/connectors/{name}/stop")
+    async def stop_connector(name: str) -> dict[str, Any]:
+        """Stop a connector."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        await connector.stop()
+        return {"message": f"{connector.display_name} stopped", "status": connector.status()}
+
+    @router.delete("/connectors/{name}")
+    async def disconnect_connector(name: str) -> dict[str, Any]:
+        """Remove a connector's configuration."""
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        await connector.stop()
+        connector.clear_config()
+        return {"message": f"{connector.display_name} disconnected", "status": connector.status()}
 
     return router

@@ -9,6 +9,7 @@ import {
   Sparkles,
   Monitor,
   Brain,
+  Plug,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 
@@ -39,6 +40,7 @@ const navSections: NavSection[] = [
   {
     label: "System",
     items: [
+      { id: "connectors", label: "Connectors", icon: Plug, badge: "New" },
       { id: "guardrails", label: "Guardrails", icon: Shield },
       { id: "settings", label: "Settings", icon: Settings },
     ],
@@ -125,8 +127,8 @@ export function Sidebar() {
       <div className="px-3 pb-2">
         <div className="rounded-lg bg-plutus-500/10 border border-plutus-500/20 px-3 py-2">
           <p className="text-[9px] font-semibold text-plutus-400 uppercase tracking-wider">Latest Update</p>
-          <p className="text-xs text-gray-300 mt-0.5 font-medium">Windows UI Automation</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">v0.2.5 · Feb 22, 2026</p>
+          <p className="text-xs text-gray-300 mt-0.5 font-medium">Connectors</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">v0.2.6 · Feb 22, 2026</p>
         </div>
       </div>
 
