@@ -102,11 +102,19 @@ class WindowManager:
             except Exception:
                 return (1920, 1080)
         else:
+            # Use platform_utils for robust Linux detection (X11 + Wayland)
+            try:
+                from plutus.pc.platform_utils import get_screen_size_linux
+                dims = get_screen_size_linux()
+                if dims:
+                    return dims
+            except Exception:
+                pass
+            # Manual fallback
             out, _, _ = await self._run("xdpyinfo 2>/dev/null | grep dimensions")
             match = re.search(r'(\d+)x(\d+)', out)
             if match:
                 return (int(match.group(1)), int(match.group(2)))
-            # Fallback: try xrandr
             out, _, _ = await self._run("xrandr 2>/dev/null | grep '*'")
             match = re.search(r'(\d+)x(\d+)', out)
             if match:
@@ -181,6 +189,20 @@ class WindowManager:
 
     async def _list_windows_linux(self) -> list[dict[str, Any]]:
         windows = []
+
+        # Try swaymsg first (Sway/Wayland compositor)
+        if shutil.which("swaymsg"):
+            try:
+                out, _, rc = await self._run("swaymsg -t get_tree --raw")
+                if rc == 0:
+                    import json as _json
+                    tree = _json.loads(out)
+                    self._walk_sway_tree(tree, windows)
+                    if windows:
+                        return windows
+            except Exception:
+                pass
+
         if shutil.which("wmctrl"):
             out, _, _ = await self._run("wmctrl -l -p -G")
             for line in out.strip().split("\n"):
@@ -213,6 +235,34 @@ class WindowManager:
                     pid=int(pid_out.strip()) if pid_out.strip().isdigit() else 0,
                 ).to_dict())
         return windows
+
+    def _find_sway_focused(self, node: dict) -> dict | None:
+        """Find the focused window in the Sway IPC tree."""
+        if node.get("focused") and node.get("type") == "con" and node.get("name"):
+            return node
+        for child in node.get("nodes", []) + node.get("floating_nodes", []):
+            result = self._find_sway_focused(child)
+            if result:
+                return result
+        return None
+
+    def _walk_sway_tree(self, node: dict, windows: list) -> None:
+        """Recursively walk the Sway IPC tree to find windows."""
+        if node.get("type") == "con" and node.get("name") and node.get("pid"):
+            rect = node.get("rect", {})
+            windows.append(WindowInfo(
+                id=str(node.get("id", "")),
+                title=node.get("name", ""),
+                app=node.get("app_id", "") or node.get("window_properties", {}).get("class", ""),
+                x=rect.get("x", 0),
+                y=rect.get("y", 0),
+                width=rect.get("width", 0),
+                height=rect.get("height", 0),
+                is_active=node.get("focused", False),
+                pid=node.get("pid", 0),
+            ).to_dict())
+        for child in node.get("nodes", []) + node.get("floating_nodes", []):
+            self._walk_sway_tree(child, windows)
 
     # ─── Window Finding ───
 
@@ -259,7 +309,9 @@ class WindowManager:
             cmd = f'osascript -e \'tell application "{app}" to activate\''
         else:
             wid = window.get("id", "")
-            if wid and shutil.which("wmctrl"):
+            if wid and shutil.which("swaymsg"):
+                cmd = f'swaymsg "[con_id={wid}] focus"'
+            elif wid and shutil.which("wmctrl"):
                 cmd = f"wmctrl -i -a {wid}"
             elif wid and shutil.which("xdotool"):
                 cmd = f"xdotool windowactivate {wid}"
@@ -289,7 +341,9 @@ class WindowManager:
             cmd = f'osascript -e \'tell application "{app}" to quit\''
         else:
             wid = window.get("id", "")
-            if wid and shutil.which("wmctrl"):
+            if wid and shutil.which("swaymsg"):
+                cmd = f'swaymsg "[con_id={wid}] kill"'
+            elif wid and shutil.which("wmctrl"):
                 cmd = f"wmctrl -i -c {wid}"
             elif wid and shutil.which("xdotool"):
                 cmd = f"xdotool windowclose {wid}"
@@ -516,7 +570,14 @@ class WindowManager:
                 f"set size of window 1 to {{{w}, {h}}}'"
             )
         else:
-            if shutil.which("wmctrl") and wid:
+            if shutil.which("swaymsg") and wid:
+                # Sway: use floating + move/resize
+                cmd = (
+                    f'swaymsg "[con_id={wid}] floating enable, '
+                    f'move position {x} {y}, '
+                    f'resize set {w} {h}"'
+                )
+            elif shutil.which("wmctrl") and wid:
                 cmd = f"wmctrl -i -r {wid} -e 0,{x},{y},{w},{h}"
             elif shutil.which("xdotool") and wid:
                 cmd = f"xdotool windowmove {wid} {x} {y} && xdotool windowsize {wid} {w} {h}"
@@ -613,8 +674,24 @@ class WindowManager:
             out, _, _ = await self._run(cmd)
             return {"app": out.strip(), "title": out.strip()}
         else:
+            # Try swaymsg first (Wayland/Sway)
+            if shutil.which("swaymsg"):
+                try:
+                    import json as _json
+                    out, _, rc = await self._run("swaymsg -t get_tree --raw")
+                    if rc == 0:
+                        tree = _json.loads(out)
+                        focused = self._find_sway_focused(tree)
+                        if focused:
+                            return {
+                                "id": str(focused.get("id", "")),
+                                "title": focused.get("name", ""),
+                                "app": focused.get("app_id", ""),
+                            }
+                except Exception:
+                    pass
             if shutil.which("xdotool"):
                 wid_out, _, _ = await self._run("xdotool getactivewindow")
                 name_out, _, _ = await self._run(f"xdotool getwindowname {wid_out.strip()}")
                 return {"id": wid_out.strip(), "title": name_out.strip()}
-            return {"error": "xdotool not available"}
+            return {"error": "No window tool available (install xdotool or swaymsg)"}

@@ -124,17 +124,11 @@ class ComputerUseExecutor:
 
         else:  # Linux
             try:
-                result = subprocess.run(
-                    ["xdpyinfo"], capture_output=True, text=True, timeout=5
-                )
-                for line in result.stdout.splitlines():
-                    if "dimensions:" in line:
-                        dims = line.split()[1]
-                        w, h = dims.split("x")
-                        self._screen_width = int(w)
-                        self._screen_height = int(h)
-                        break
-                if self._screen_width == 0:
+                from plutus.pc.platform_utils import get_screen_size_linux
+                dims = get_screen_size_linux()
+                if dims:
+                    self._screen_width, self._screen_height = dims
+                else:
                     self._screen_width, self._screen_height = 1920, 1080
             except Exception:
                 self._screen_width, self._screen_height = 1920, 1080
@@ -224,7 +218,7 @@ class ComputerUseExecutor:
         try:
             import pyautogui
             screenshot = pyautogui.screenshot()
-        except Exception as e:
+        except Exception:
             # Fallback: try using scrot on Linux or other methods
             return self._fallback_screenshot()
 
@@ -262,10 +256,18 @@ class ComputerUseExecutor:
 
         try:
             if system == "Linux":
-                subprocess.run(
-                    ["scrot", "-o", str(screenshot_path)],
-                    timeout=5, check=True
-                )
+                from plutus.pc.platform_utils import get_screenshot_command
+                linux_cmd = get_screenshot_command()
+                if linux_cmd:
+                    subprocess.run(
+                        [*linux_cmd, str(screenshot_path)],
+                        timeout=5, check=True,
+                    )
+                else:
+                    subprocess.run(
+                        ["scrot", "-o", str(screenshot_path)],
+                        timeout=5, check=True,
+                    )
             elif system == "Darwin":
                 subprocess.run(
                     ["screencapture", "-x", str(screenshot_path)],

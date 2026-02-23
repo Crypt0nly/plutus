@@ -7,11 +7,8 @@ hotkeys, scrolling, and on-screen image location. Works cross-platform
 
 from __future__ import annotations
 
-import base64
-import io
 import os
-import platform
-import time
+from pathlib import Path
 from typing import Any
 
 from plutus.tools.base import Tool
@@ -168,7 +165,11 @@ class DesktopTool(Tool):
 
     def _screenshot(self, kwargs: dict) -> str:
         pag = _get_pyautogui()
-        path = kwargs.get("path", "/tmp/plutus_desktop_screenshot.png")
+        default_path = os.path.join(
+            str(Path.home() / ".plutus" / "screenshots"), "desktop_screenshot.png"
+        )
+        os.makedirs(os.path.dirname(default_path), exist_ok=True)
+        path = kwargs.get("path", default_path)
         region = kwargs.get("region")
 
         if region:
