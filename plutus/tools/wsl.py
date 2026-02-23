@@ -61,7 +61,9 @@ class WSLTool(Tool):
                 "shell scripting, SSH, Docker, compilers, or any Linux-native CLI "
                 "utility. Supports choosing a specific WSL distro, setting the "
                 "working directory, managing distros, and translating paths between "
-                "Windows and Linux."
+                "Windows and Linux. "
+                "The command string is passed directly to bash — write normal Linux "
+                "commands with quotes, pipes, and redirects as-is (no Windows escaping needed)."
             )
         return (
             "Execute Linux / Unix shell commands. "
@@ -169,15 +171,17 @@ class WSLTool(Tool):
         working_dir: str | None = kwargs.get("working_directory")
         timeout: int = kwargs.get("timeout", 120)
 
-        full_cmd = self._build_command(command, distro=distro, user=user, cwd=working_dir)
+        if platform.system() == "Windows" and _wsl_available():
+            # Use argv list so CMD.exe never interprets the command string.
+            argv = self._build_wsl_argv(
+                command, distro=distro, user=user, cwd=working_dir,
+            )
+            return await self._exec(argv, timeout=timeout)
 
-        # On Windows, run via wsl.exe.  Elsewhere run natively.
-        if platform.system() == "Windows":
-            cwd = None  # WSL manages its own cwd via --cd
-        else:
-            cwd = working_dir or os.path.expanduser("~")
-
-        return await self._exec(full_cmd, cwd=cwd, timeout=timeout)
+        # Native Linux / macOS — run through the shell directly.
+        shell_cmd = self._build_native_shell_cmd(command, cwd=working_dir)
+        cwd = working_dir or os.path.expanduser("~")
+        return await self._exec(shell_cmd, cwd=cwd, timeout=timeout)
 
     async def _list_distros(self, _kwargs: dict[str, Any]) -> str:
         if platform.system() != "Windows":
@@ -190,7 +194,7 @@ class WSLTool(Tool):
             return "[ERROR] WSL is not installed or not found on PATH."
 
         # wsl --list --verbose gives name, state, and version
-        return await self._exec("wsl.exe --list --verbose", timeout=15)
+        return await self._exec(["wsl.exe", "--list", "--verbose"], timeout=15)
 
     async def _set_default(self, kwargs: dict[str, Any]) -> str:
         distro: str | None = kwargs.get("distro")
@@ -203,7 +207,7 @@ class WSLTool(Tool):
         if not _wsl_available():
             return "[ERROR] WSL is not installed or not found on PATH."
 
-        return await self._exec(f"wsl.exe --set-default {distro}", timeout=15)
+        return await self._exec(["wsl.exe", "--set-default", distro], timeout=15)
 
     async def _path_to_linux(self, kwargs: dict[str, Any]) -> str:
         path: str | None = kwargs.get("path")
@@ -216,7 +220,7 @@ class WSLTool(Tool):
         if not _wsl_available():
             return "[ERROR] WSL is not installed or not found on PATH."
 
-        result = await self._exec(f'wsl.exe wslpath -u "{path}"', timeout=10)
+        result = await self._exec(["wsl.exe", "wslpath", "-u", path], timeout=10)
         return f"linux_path: {result.strip()}" if "[" not in result else result
 
     async def _path_to_windows(self, kwargs: dict[str, Any]) -> str:
@@ -230,7 +234,7 @@ class WSLTool(Tool):
         if not _wsl_available():
             return "[ERROR] WSL is not installed or not found on PATH."
 
-        result = await self._exec(f'wsl.exe wslpath -w "{path}"', timeout=10)
+        result = await self._exec(["wsl.exe", "wslpath", "-w", path], timeout=10)
         return f"windows_path: {result.strip()}" if "[" not in result else result
 
     async def _info(self, _kwargs: dict[str, Any]) -> str:
@@ -243,11 +247,11 @@ class WSLTool(Tool):
                 return "\n".join(parts)
 
             # WSL version
-            ver = await self._exec("wsl.exe --version", timeout=10)
+            ver = await self._exec(["wsl.exe", "--version"], timeout=10)
             parts.append(f"wsl_version:\n{ver.strip()}")
 
             # Default distro
-            distros = await self._exec("wsl.exe --list --verbose", timeout=10)
+            distros = await self._exec(["wsl.exe", "--list", "--verbose"], timeout=10)
             parts.append(f"distros:\n{distros.strip()}")
         else:
             import shutil as _shutil
@@ -265,47 +269,70 @@ class WSLTool(Tool):
 
     # ── Helpers ───────────────────────────────────────────────
 
-    def _build_command(
-        self,
+    @staticmethod
+    def _build_wsl_argv(
         command: str,
         *,
         distro: str | None = None,
         user: str | None = None,
         cwd: str | None = None,
-    ) -> str:
-        """Wrap *command* in the right invocation for the current OS."""
-        if platform.system() != "Windows":
-            # Native — just run it directly
-            if cwd:
-                return f"cd {_shell_quote(cwd)} && {command}"
-            return command
+    ) -> list[str]:
+        """Build an argument list for ``wsl.exe`` that bypasses CMD parsing.
 
-        if not _wsl_available():
-            # Fallback: run in PowerShell even on Windows
-            return command
-
-        parts = ["wsl.exe"]
+        Returns a list of strings suitable for ``create_subprocess_exec`` so
+        that Windows CMD.exe never interprets quotes, pipes, redirects, or
+        heredocs in *command*.
+        """
+        argv = ["wsl.exe"]
         if distro:
-            parts += ["-d", distro]
+            argv += ["-d", distro]
         if user:
-            parts += ["-u", user]
+            argv += ["-u", user]
         if cwd:
-            parts += ["--cd", cwd]
-        parts += ["--", "bash", "-ic", _shell_quote(command)]
-        return " ".join(parts)
+            argv += ["--cd", cwd]
+        # Pass the command to bash -ic as a single token.
+        # Because we use create_subprocess_exec (no shell), the command
+        # string is handed to wsl.exe → bash verbatim — no CMD mangling.
+        argv += ["--", "bash", "-ic", command]
+        return argv
+
+    @staticmethod
+    def _build_native_shell_cmd(
+        command: str,
+        *,
+        cwd: str | None = None,
+    ) -> str:
+        """Build a shell command string for native Linux/macOS execution."""
+        if cwd:
+            return f"cd {_shell_quote(cwd)} && {command}"
+        return command
 
     @staticmethod
     async def _exec(
-        cmd: str, *, cwd: str | None = None, timeout: int = 120
+        cmd: str | list[str], *, cwd: str | None = None, timeout: int = 120
     ) -> str:
-        """Run *cmd* asynchronously and return formatted output."""
+        """Run *cmd* asynchronously and return formatted output.
+
+        *cmd* can be a string (passed to the shell) or a list of arguments
+        (executed directly, bypassing the shell).  On Windows the list form
+        **must** be used for WSL commands so that CMD.exe does not mangle
+        quotes, pipes, or special characters.
+        """
         try:
-            process = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
+            if isinstance(cmd, list):
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                )
+            else:
+                process = await asyncio.create_subprocess_shell(
+                    cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                )
 
             stdout, stderr = await asyncio.wait_for(
                 process.communicate(), timeout=timeout
