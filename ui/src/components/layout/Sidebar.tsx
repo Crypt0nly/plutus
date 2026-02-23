@@ -60,7 +60,7 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="font-bold text-lg leading-none">Plutus</h1>
-            <p className="text-xs text-gray-500 mt-0.5">v0.2.6</p>
+            <p className="text-xs text-gray-500 mt-0.5">v0.2.7</p>
           </div>
         </div>
       </div>
@@ -127,8 +127,8 @@ export function Sidebar() {
       <div className="px-3 pb-2">
         <div className="rounded-lg bg-plutus-500/10 border border-plutus-500/20 px-3 py-2">
           <p className="text-[9px] font-semibold text-plutus-400 uppercase tracking-wider">Latest Update</p>
-          <p className="text-xs text-gray-300 mt-0.5 font-medium">Approval flow fix</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">v0.2.6 · Feb 23, 2026</p>
+          <p className="text-xs text-gray-300 mt-0.5 font-medium">Native Linux & macOS support</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">v0.2.7 · Feb 23, 2026</p>
         </div>
       </div>
 
