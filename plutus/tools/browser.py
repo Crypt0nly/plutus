@@ -194,7 +194,14 @@ class BrowserTool(Tool):
         return None
 
     async def _screenshot(self, kwargs: dict) -> str:
-        path = kwargs.get("path", "/tmp/plutus_screenshot.png")
+        import os
+        from pathlib import Path
+
+        default_path = os.path.join(
+            str(Path.home() / ".plutus" / "screenshots"), "browser_screenshot.png"
+        )
+        os.makedirs(os.path.dirname(default_path), exist_ok=True)
+        path = kwargs.get("path", default_path)
         await self._page.screenshot(path=path, full_page=True)
         return f"Screenshot saved to: {path}"
 

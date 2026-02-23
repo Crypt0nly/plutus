@@ -10,13 +10,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
-import json
 import os
 import platform
 import re
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -97,6 +96,29 @@ class ScreenReader:
                 raise RuntimeError("pyautogui not installed")
         return self._pag
 
+    def _capture_fallback(self, path: str) -> Any:
+        """Capture screenshot using platform-native tools when PyAutoGUI fails.
+
+        Used on Wayland where PyAutoGUI can't access the display, and as a
+        general fallback on macOS/Linux.
+        """
+        from PIL import Image
+
+        if SYSTEM == "Darwin":
+            subprocess.run(
+                ["screencapture", "-x", path], timeout=5, check=True,
+            )
+            return Image.open(path)
+
+        if SYSTEM == "Linux":
+            from plutus.pc.platform_utils import get_screenshot_command
+            cmd = get_screenshot_command()
+            if cmd:
+                subprocess.run([*cmd, path], timeout=5, check=True)
+                return Image.open(path)
+
+        raise RuntimeError("No screenshot method available for this platform")
+
     async def capture(
         self,
         region: ScreenRegion | None = None,
@@ -107,16 +129,32 @@ class ScreenReader:
 
         Returns path to saved image and optionally base64-encoded data.
         """
-        pag = self._get_pag()
-
         if path is None:
             timestamp = int(time.time() * 1000)
             path = os.path.join(self._screenshots_dir, f"screen_{timestamp}.png")
 
-        if region:
-            img = pag.screenshot(region=region.to_tuple())
-        else:
-            img = pag.screenshot()
+        img = None
+
+        # Try PyAutoGUI first (works on X11, Windows, macOS)
+        try:
+            pag = self._get_pag()
+            if region:
+                img = pag.screenshot(region=region.to_tuple())
+            else:
+                img = pag.screenshot()
+        except Exception:
+            # Fallback: use platform-native tools (Wayland, headless, etc.)
+            try:
+                img = self._capture_fallback(path)
+            except Exception as e:
+                return {
+                    "error": f"Screenshot failed: {e}",
+                    "hint": (
+                        "On Wayland, install grim: sudo apt install grim\n"
+                        "On macOS, grant screen recording permission.\n"
+                        "On X11, install scrot: sudo apt install scrot"
+                    ),
+                }
 
         img.save(path)
         self._last_capture_path = path
