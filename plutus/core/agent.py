@@ -369,6 +369,18 @@ runs natively so you can always use it for Unix tasks.
   wsl(operation="path_to_windows", path="/mnt/c/Users/me/file.txt") → Convert Linux→Windows path
   wsl(operation="info")                                        → WSL version, distros, status
 
+  QUOTING & ESCAPING:
+  The `command` parameter is passed directly to bash inside WSL — it is NOT
+  interpreted by Windows CMD.exe.  Write commands exactly as you would in a
+  normal Linux terminal:
+  - Quotes, pipes, redirects, heredocs, subshells all work as-is.
+  - DO NOT add extra escaping layers for Windows.
+  - Single and double quotes behave like normal bash.
+  Good:  command='curl -s "https://example.com" | jq .title'
+  Good:  command="echo 'hello world' > /tmp/out.txt"
+  Good:  command="cat <<'EOF'\nline1\nline2\nEOF"
+  Bad:   command="curl -s \\"https://example.com\\"" (double-escaping — don't do this)
+
   WHEN TO USE `wsl` vs `shell`:
   - Need Linux tools (apt, grep, sed, awk, ssh, docker, gcc) → `wsl`
   - Need Windows tools (PowerShell, .NET, winget) → `shell`
