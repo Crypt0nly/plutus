@@ -2,15 +2,16 @@ import { Shield, Activity, Key } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 
 const viewTitles: Record<string, { title: string; subtitle: string }> = {
-  chat: { title: "Chat", subtitle: "Talk to your AI agent" },
+  chat: { title: "Chat", subtitle: "Talk to Plutus" },
   dashboard: { title: "Dashboard", subtitle: "Activity overview" },
   guardrails: { title: "Guardrails", subtitle: "Safety & permissions" },
   settings: { title: "Settings", subtitle: "Configuration" },
   tools: { title: "Tools", subtitle: "Agent capabilities" },
   workers: { title: "Workers", subtitle: "Subprocess monitor" },
   "tool-creator": { title: "Tool Creator", subtitle: "Build custom tools" },
-  "pc-control": { title: "Computer Use", subtitle: "Plutus sees your screen, clicks, types, and controls your PC" },
-  skills: { title: "Skills", subtitle: "Browse, import, and share app skills" },
+  skills: { title: "Skills", subtitle: "Browse, import, and share skills" },
+  memory: { title: "Memory & Plans", subtitle: "What Plutus remembers" },
+  connectors: { title: "Connectors", subtitle: "Link Plutus with external apps" },
 };
 
 export function Header() {

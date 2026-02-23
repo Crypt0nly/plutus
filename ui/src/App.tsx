@@ -10,7 +10,6 @@ import { SettingsView } from "./components/settings/SettingsView";
 import { ToolsView } from "./components/tools/ToolsView";
 import { WorkersView } from "./components/workers/WorkersView";
 import { ToolCreatorView } from "./components/tool-creator/ToolCreatorView";
-import PCControlView from "./components/pc-control/PCControlView";
 import SkillsView from "./components/skills/SkillsView";
 import { MemoryView } from "./components/memory/MemoryView";
 import ConnectorsView from "./components/connectors/ConnectorsView";
@@ -41,7 +40,6 @@ export default function App() {
           break;
 
         case "tool_call": {
-          // Handle both standard tool calls and computer use actions
           const toolName = msg.tool || "";
           const args = msg.arguments || {};
 
@@ -49,28 +47,34 @@ export default function App() {
           if (toolName.startsWith("computer.")) {
             const action = toolName.replace("computer.", "");
             const actionLabels: Record<string, string> = {
-              screenshot: "📸 Taking screenshot...",
-              click: `🖱️ Clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
-              left_click: `🖱️ Clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
-              right_click: `🖱️ Right-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
-              double_click: `🖱️ Double-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
-              type: `⌨️ Typing: "${(args.text || "").slice(0, 50)}${(args.text || "").length > 50 ? "..." : ""}"`,
-              key: `⌨️ Pressing: ${args.text}`,
-              scroll: `📜 Scrolling ${args.coordinate ? `at (${args.coordinate[0]}, ${args.coordinate[1]})` : ""} ${args.delta_x || args.delta_y ? `by (${args.delta_x || 0}, ${args.delta_y || 0})` : ""}`,
-              move: `🖱️ Moving to (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
-              wait: "⏳ Waiting...",
-              triple_click: `🖱️ Triple-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              screenshot: "Taking screenshot...",
+              click: `Clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              left_click: `Clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              right_click: `Right-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              double_click: `Double-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              type: `Typing: "${(args.text || "").slice(0, 50)}${(args.text || "").length > 50 ? "..." : ""}"`,
+              key: `Pressing: ${args.text}`,
+              scroll: `Scrolling ${args.coordinate ? `at (${args.coordinate[0]}, ${args.coordinate[1]})` : ""}`,
+              move: `Moving to (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
+              wait: "Waiting...",
+              triple_click: `Triple-clicking at (${args.coordinate?.[0]}, ${args.coordinate?.[1]})`,
             };
 
             addMessage({
               role: "assistant",
-              content: actionLabels[action] || `🖥️ ${action}`,
+              content: actionLabels[action] || action,
               tool_calls: [{ id: msg.id || "", name: toolName, arguments: args }],
             });
           } else {
+            // Standard tool calls — show friendly operation label
+            const operation = args.operation || args.action || "";
+            const friendlyName = operation
+              ? operation.replace(/_/g, " ")
+              : toolName.replace(/_/g, " ");
+
             addMessage({
               role: "assistant",
-              content: `Using tool: **${toolName}**`,
+              content: `Using tool: **${friendlyName}**`,
               tool_calls: [{ id: msg.id || "", name: toolName, arguments: args }],
             });
           }
@@ -78,7 +82,6 @@ export default function App() {
         }
 
         case "tool_result": {
-          // Handle screenshot results with images
           if (msg.screenshot && msg.image_base64) {
             addMessage({
               role: "tool",
@@ -110,17 +113,10 @@ export default function App() {
           break;
 
         case "mode":
-          // Computer use mode indicator
-          addMessage({
-            role: "system",
-            content: msg.mode === "computer_use"
-              ? "🖥️ Computer Use mode — I can see and control your screen"
-              : "💻 Standard mode — code and file operations",
-          });
+          // Mode indicator — no longer show separate mode banners
           break;
 
         case "iteration":
-          // Progress indicator for computer use loops
           addMessage({
             role: "system",
             content: `Step ${msg.number}/${msg.max}`,
@@ -138,7 +134,7 @@ export default function App() {
 
         case "cancelled":
         case "task_stopped":
-          addMessage({ role: "system", content: `⏹️ ${msg.message || "Task stopped"}` });
+          addMessage({ role: "system", content: `${msg.message || "Task stopped"}` });
           setProcessing(false);
           break;
 
@@ -219,7 +215,6 @@ export default function App() {
     tools: <ToolsView />,
     workers: <WorkersView />,
     "tool-creator": <ToolCreatorView />,
-    "pc-control": <PCControlView />,
     skills: <SkillsView />,
     memory: <MemoryView />,
     connectors: <ConnectorsView />,

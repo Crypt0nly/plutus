@@ -7,7 +7,6 @@ import {
   Wrench,
   Cpu,
   Sparkles,
-  Monitor,
   Brain,
   Plug,
 } from "lucide-react";
@@ -15,7 +14,7 @@ import { useAppStore, type View } from "../../stores/appStore";
 
 interface NavSection {
   label: string;
-  items: { id: View; label: string; icon: React.ElementType; badge?: string; primary?: boolean }[];
+  items: { id: View; label: string; icon: React.ElementType; badge?: string }[];
 }
 
 const navSections: NavSection[] = [
@@ -23,7 +22,6 @@ const navSections: NavSection[] = [
     label: "Main",
     items: [
       { id: "chat", label: "Chat", icon: MessageSquare },
-      { id: "pc-control", label: "Computer Use", icon: Monitor, primary: true },
       { id: "skills", label: "Skills", icon: Brain, badge: "New" },
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
@@ -31,7 +29,7 @@ const navSections: NavSection[] = [
   {
     label: "Agent",
     items: [
-      { id: "memory", label: "Memory & Plans", icon: Brain, badge: "New" },
+      { id: "memory", label: "Memory & Plans", icon: Brain },
       { id: "tools", label: "Tools", icon: Wrench },
       { id: "workers", label: "Workers", icon: Cpu },
       { id: "tool-creator", label: "Tool Creator", icon: Sparkles },
@@ -98,13 +96,9 @@ export function Sidebar() {
                   <button
                     key={item.id}
                     onClick={() => setView(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       active
-                        ? item.primary
-                          ? "bg-blue-600/20 text-blue-400 shadow-sm shadow-blue-500/10"
-                          : "bg-plutus-600/20 text-plutus-400 shadow-sm"
-                        : item.primary
-                        ? "text-blue-400/70 hover:text-blue-300 hover:bg-blue-900/20"
+                        ? "bg-plutus-600/20 text-plutus-400 shadow-sm"
                         : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
                     }`}
                   >
@@ -127,7 +121,7 @@ export function Sidebar() {
       <div className="px-3 pb-2">
         <div className="rounded-lg bg-plutus-500/10 border border-plutus-500/20 px-3 py-2">
           <p className="text-[9px] font-semibold text-plutus-400 uppercase tracking-wider">Latest Update</p>
-          <p className="text-xs text-gray-300 mt-0.5 font-medium">Native Linux & macOS support</p>
+          <p className="text-xs text-gray-300 mt-0.5 font-medium">UI Improvements</p>
           <p className="text-[10px] text-gray-500 mt-0.5">v0.2.7 · Feb 23, 2026</p>
         </div>
       </div>
