@@ -1,19 +1,24 @@
-"""Model Router — intelligent model selection based on task complexity.
+"""Model Router — Coordinator-centric model selection for workers.
 
-Routes tasks to the most appropriate model:
-  - Claude Opus:   Complex reasoning, multi-step planning, code architecture
-  - Claude Sonnet: Balanced — good for most tasks (default)
-  - Claude Haiku:  Simple tasks, fast responses, summaries, classification
-  - GPT-5.2:       Alternative provider — all complexity levels
+Architecture:
+  - The COORDINATOR (main agent) always uses the model chosen by the user
+    in Settings. This never changes automatically.
+  - When the Coordinator spawns WORKERS, it decides which model each worker
+    should use based on the task it's delegating.
+  - The Coordinator can either:
+    (a) Explicitly pick a model: worker(model_key="claude-haiku", ...)
+    (b) Let the router auto-select: worker(model_key="auto", ...)
 
-The router classifies task complexity using keyword analysis and explicit
-hints from the agent, then selects the cheapest model that can handle it.
+Available models:
+  - Claude Opus:   Complex reasoning, multi-step planning, deep analysis
+  - Claude Sonnet: Balanced — good for most tasks
+  - Claude Haiku:  Fast & cheap — summaries, lookups, simple tasks
+  - GPT-5.2:       OpenAI alternative for complex tasks
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -24,7 +29,7 @@ from plutus.config import SecretsStore
 logger = logging.getLogger("plutus.model_router")
 
 
-# ── Complexity tiers ──────────────────────────────────────────────────────────
+# ── Complexity tiers (used for worker model selection) ───────────────────────
 
 class Complexity(str, Enum):
     SIMPLE = "simple"      # Quick lookups, summaries, classification, chat
@@ -41,10 +46,11 @@ class ModelSpec:
     provider: str                    # "anthropic" or "openai"
     display_name: str                # "Claude Sonnet"
     complexity_tier: Complexity      # What it's best at
+    description: str = ""            # Human-readable description of strengths
     max_tokens: int = 4096
     supports_tools: bool = True
     supports_vision: bool = True
-    cost_per_1k_input: float = 0.0   # For display/budgeting
+    cost_per_1k_input: float = 0.0
     cost_per_1k_output: float = 0.0
 
 
@@ -56,6 +62,7 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         provider="anthropic",
         display_name="Claude Opus",
         complexity_tier=Complexity.COMPLEX,
+        description="Most intelligent. Best for complex reasoning, architecture, deep analysis, long-form writing.",
         max_tokens=4096,
         cost_per_1k_input=0.015,
         cost_per_1k_output=0.075,
@@ -65,6 +72,7 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         provider="anthropic",
         display_name="Claude Sonnet",
         complexity_tier=Complexity.MODERATE,
+        description="Balanced intelligence and speed. Good for most tasks.",
         max_tokens=4096,
         cost_per_1k_input=0.003,
         cost_per_1k_output=0.015,
@@ -74,6 +82,7 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         provider="anthropic",
         display_name="Claude Haiku",
         complexity_tier=Complexity.SIMPLE,
+        description="Fastest and cheapest. Great for summaries, lookups, classification, simple tasks.",
         max_tokens=4096,
         cost_per_1k_input=0.00025,
         cost_per_1k_output=0.00125,
@@ -84,6 +93,7 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         provider="openai",
         display_name="GPT-5.2",
         complexity_tier=Complexity.COMPLEX,
+        description="OpenAI's most capable model. Alternative for complex tasks.",
         max_tokens=4096,
         cost_per_1k_input=0.005,
         cost_per_1k_output=0.015,
@@ -91,9 +101,8 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
 }
 
 
-# ── Complexity classifier ─────────────────────────────────────────────────────
+# ── Complexity classifier (for auto worker model selection) ──────────────────
 
-# Keywords/patterns that suggest task complexity
 _COMPLEX_PATTERNS = [
     r"\b(architect|design system|refactor|multi.?step|comprehensive|in.?depth)\b",
     r"\b(analyze|debug.*complex|plan.*project|write.*report)\b",
@@ -104,7 +113,7 @@ _COMPLEX_PATTERNS = [
     r"\b(every.*day|daily|weekly|schedule|cron|automat)\b",
     r"\b(while.*also|simultaneously|parallel|worker)\b",
     r"\b(financial|market|stock|crypto|investment)\b",
-    r"\b(\d{3,}\s*word)\b",  # e.g. "5000 word"
+    r"\b(\d{3,}\s*word)\b",
 ]
 
 _SIMPLE_PATTERNS = [
@@ -113,34 +122,26 @@ _SIMPLE_PATTERNS = [
     r"\b(summarize this|tldr|quick question|simple)\b",
     r"\b(translate|convert|format|rename|list)\b",
     r"\b(open|close|click|scroll|navigate to)\b",
+    r"\b(fetch|get|check|look up|find)\b",
 ]
 
 
-def classify_complexity(prompt: str, tool_count: int = 0, context_length: int = 0) -> Complexity:
-    """Classify the complexity of a task based on the prompt and context.
+def classify_complexity(prompt: str, tool_count: int = 0) -> Complexity:
+    """Classify the complexity of a worker task based on its description.
 
-    Args:
-        prompt: The user's message or task description
-        tool_count: Number of tools likely needed (hint from planner)
-        context_length: Current conversation context length in messages
-
-    Returns:
-        Complexity tier (SIMPLE, MODERATE, or COMPLEX)
+    This is used when the Coordinator sets model_key="auto" for a worker.
     """
     prompt_lower = prompt.lower().strip()
 
-    # Very short messages are usually simple
     if len(prompt_lower) < 20:
         return Complexity.SIMPLE
 
-    # Check for explicit complexity hints
     if any(re.search(p, prompt_lower) for p in _COMPLEX_PATTERNS):
         return Complexity.COMPLEX
 
     if any(re.search(p, prompt_lower) for p in _SIMPLE_PATTERNS):
         return Complexity.SIMPLE
 
-    # Heuristics based on message characteristics
     word_count = len(prompt_lower.split())
 
     if word_count > 60 or tool_count > 4:
@@ -150,7 +151,6 @@ def classify_complexity(prompt: str, tool_count: int = 0, context_length: int = 
     elif word_count < 15 and tool_count <= 1:
         return Complexity.SIMPLE
 
-    # Default to moderate
     return Complexity.MODERATE
 
 
@@ -158,26 +158,24 @@ def classify_complexity(prompt: str, tool_count: int = 0, context_length: int = 
 
 @dataclass
 class ModelRoutingConfig:
-    """User-configurable model routing preferences."""
-    primary_provider: str = "anthropic"          # "anthropic" or "openai"
+    """User-configurable model routing preferences.
+
+    Note: The coordinator_model is set separately in the main Settings
+    (ModelConfig component). This config is only for worker/scheduler defaults.
+    """
     enabled_models: list[str] = field(default_factory=lambda: [
-        "claude-opus", "claude-sonnet", "claude-haiku"
+        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2"
     ])
-    default_model: str = "claude-sonnet"         # Fallback when routing is uncertain
-    auto_route: bool = True                      # Enable automatic model selection
-    cost_conscious: bool = False                 # Prefer cheaper models when possible
-    worker_model: str = "claude-haiku"           # Default model for worker subprocesses
-    scheduler_model: str = "claude-haiku"        # Default model for scheduled tasks
+    cost_conscious: bool = False                 # Prefer cheaper worker models
+    default_worker_model: str = "auto"           # "auto" or a specific model key
+    default_scheduler_model: str = "auto"        # "auto" or a specific model key
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "primary_provider": self.primary_provider,
             "enabled_models": self.enabled_models,
-            "default_model": self.default_model,
-            "auto_route": self.auto_route,
             "cost_conscious": self.cost_conscious,
-            "worker_model": self.worker_model,
-            "scheduler_model": self.scheduler_model,
+            "default_worker_model": self.default_worker_model,
+            "default_scheduler_model": self.default_scheduler_model,
         }
 
     @classmethod
@@ -188,18 +186,23 @@ class ModelRoutingConfig:
 # ── Model Router ──────────────────────────────────────────────────────────────
 
 class ModelRouter:
-    """Selects the optimal model for each task based on complexity and user preferences.
+    """Helps the Coordinator select models for workers and scheduled jobs.
+
+    The Coordinator (main agent) always uses the user's chosen model.
+    This router is ONLY used for worker model selection.
 
     Usage:
         router = ModelRouter(config, secrets)
-        model = router.route("Write a comprehensive analysis of...")
-        # → ModelSpec for Claude Opus
 
-        model = router.route("hello")
-        # → ModelSpec for Claude Haiku
+        # Coordinator picks explicitly
+        model = router.get_model("claude-haiku")
 
-        model = router.route_for_worker()
-        # → ModelSpec for Claude Haiku (fast + cheap for workers)
+        # Coordinator says "auto" — router picks based on task
+        model = router.select_for_worker("Research AI trends and write a summary")
+        # → Claude Sonnet or Opus depending on complexity
+
+        model = router.select_for_worker("Fetch the headlines from HackerNews")
+        # → Claude Haiku (simple task)
     """
 
     def __init__(
@@ -209,7 +212,7 @@ class ModelRouter:
     ):
         self._config = config or ModelRoutingConfig()
         self._secrets = secrets or SecretsStore()
-        self._usage_stats: dict[str, dict[str, int]] = {}  # model_key → {calls, tokens}
+        self._usage_stats: dict[str, dict[str, int]] = {}
 
     @property
     def config(self) -> ModelRoutingConfig:
@@ -218,71 +221,78 @@ class ModelRouter:
     def update_config(self, config: ModelRoutingConfig) -> None:
         self._config = config
 
-    def route(
+    def get_model(self, model_key: str) -> ModelSpec | None:
+        """Get a specific model by key. Returns None if not available."""
+        if model_key in AVAILABLE_MODELS:
+            spec = AVAILABLE_MODELS[model_key]
+            if self._is_available(spec):
+                return spec
+        return None
+
+    def select_for_worker(
         self,
-        prompt: str,
-        complexity_override: Complexity | None = None,
-        model_override: str | None = None,
-        tool_count: int = 0,
-        context_length: int = 0,
+        task_description: str,
+        model_key: str | None = None,
     ) -> ModelSpec:
-        """Select the best model for a given task.
+        """Select a model for a worker task.
 
         Args:
-            prompt: The task/message to route
-            complexity_override: Explicit complexity (skips classification)
-            model_override: Explicit model key (e.g. "claude-opus")
-            tool_count: Estimated number of tools needed
-            context_length: Current conversation length
+            task_description: What the worker will do
+            model_key: Explicit model choice from the Coordinator.
+                       "auto" or None = auto-select based on task complexity.
+                       Any other value = use that specific model.
 
         Returns:
             ModelSpec for the selected model
         """
-        # Explicit model override — agent or user requested a specific model
-        if model_override and model_override in AVAILABLE_MODELS:
-            spec = AVAILABLE_MODELS[model_override]
-            if self._is_available(spec):
-                logger.info(f"Model override: {spec.display_name}")
+        # Explicit model choice from the Coordinator
+        if model_key and model_key != "auto":
+            spec = self.get_model(model_key)
+            if spec:
+                logger.info(f"Worker model (explicit): {spec.display_name} for '{task_description[:50]}'")
+                return spec
+            logger.warning(f"Requested model '{model_key}' not available, falling back to auto")
+
+        # Check if there's a default worker model set (not "auto")
+        default_key = self._config.default_worker_model
+        if default_key and default_key != "auto":
+            spec = self.get_model(default_key)
+            if spec:
+                logger.info(f"Worker model (default): {spec.display_name} for '{task_description[:50]}'")
                 return spec
 
-        # Auto-routing disabled — use default
-        if not self._config.auto_route:
-            return self._get_default()
-
-        # Classify complexity
-        complexity = complexity_override or classify_complexity(
-            prompt, tool_count, context_length
-        )
-
-        # Find the best model for this complexity
+        # Auto-select based on task complexity
+        complexity = classify_complexity(task_description)
         model = self._select_for_complexity(complexity)
         logger.info(
-            f"Routed [{complexity.value}] → {model.display_name} "
-            f"(prompt: {prompt[:50]}...)"
+            f"Worker model (auto [{complexity.value}]): {model.display_name} "
+            f"for '{task_description[:50]}'"
         )
         return model
 
-    def route_for_worker(self, task_description: str = "") -> ModelSpec:
-        """Select a model for a worker subprocess (defaults to fast/cheap)."""
-        worker_key = self._config.worker_model
-        if worker_key in AVAILABLE_MODELS:
-            spec = AVAILABLE_MODELS[worker_key]
-            if self._is_available(spec):
-                return spec
-        # Fallback: cheapest available
-        return self._get_cheapest()
-
-    def route_for_scheduler(self, job_description: str = "") -> ModelSpec:
+    def select_for_scheduler(
+        self,
+        job_description: str,
+        model_key: str | None = None,
+    ) -> ModelSpec:
         """Select a model for a scheduled job."""
-        sched_key = self._config.scheduler_model
-        if sched_key in AVAILABLE_MODELS:
-            spec = AVAILABLE_MODELS[sched_key]
-            if self._is_available(spec):
+        if model_key and model_key != "auto":
+            spec = self.get_model(model_key)
+            if spec:
                 return spec
-        return self._get_cheapest()
+
+        default_key = self._config.default_scheduler_model
+        if default_key and default_key != "auto":
+            spec = self.get_model(default_key)
+            if spec:
+                return spec
+
+        # Auto-select based on job complexity
+        complexity = classify_complexity(job_description)
+        return self._select_for_complexity(complexity)
 
     def get_available_models(self) -> list[dict[str, Any]]:
-        """Return list of available models with their status."""
+        """Return list of all models with their status and usage."""
         result = []
         for key, spec in AVAILABLE_MODELS.items():
             available = self._is_available(spec)
@@ -292,11 +302,10 @@ class ModelRouter:
                 "id": spec.id,
                 "provider": spec.provider,
                 "display_name": spec.display_name,
+                "description": spec.description,
                 "complexity_tier": spec.complexity_tier.value,
                 "enabled": key in self._config.enabled_models,
                 "available": available,
-                "is_default": key == self._config.default_model,
-                "is_worker_model": key == self._config.worker_model,
                 "cost_per_1k_input": spec.cost_per_1k_input,
                 "cost_per_1k_output": spec.cost_per_1k_output,
                 "calls": stats["calls"],
@@ -326,7 +335,6 @@ class ModelRouter:
 
     def _is_available(self, spec: ModelSpec) -> bool:
         """Check if a model is available (API key exists + enabled)."""
-        # Check if the model key is enabled
         model_key = None
         for key, s in AVAILABLE_MODELS.items():
             if s.id == spec.id:
@@ -334,44 +342,18 @@ class ModelRouter:
                 break
         if model_key and model_key not in self._config.enabled_models:
             return False
-
-        # Check if API key exists for the provider
         return self._secrets.has_key(spec.provider)
 
-    def _get_default(self) -> ModelSpec:
-        """Get the default model."""
-        key = self._config.default_model
-        if key in AVAILABLE_MODELS:
-            spec = AVAILABLE_MODELS[key]
-            if self._is_available(spec):
-                return spec
-        # Fallback to first available
-        for key in self._config.enabled_models:
-            if key in AVAILABLE_MODELS and self._is_available(AVAILABLE_MODELS[key]):
-                return AVAILABLE_MODELS[key]
-        # Last resort — return sonnet even if not available (will error at call time)
-        return AVAILABLE_MODELS["claude-sonnet"]
-
     def _select_for_complexity(self, complexity: Complexity) -> ModelSpec:
-        """Select the best model for a given complexity tier."""
-        provider = self._config.primary_provider
-
-        # Build preference order based on complexity and provider
-        if provider == "openai":
-            # OpenAI: only GPT-5.2 for everything
-            if "gpt-5.2" in self._config.enabled_models:
-                spec = AVAILABLE_MODELS["gpt-5.2"]
-                if self._is_available(spec):
-                    return spec
-
-        # Anthropic model selection based on complexity
+        """Select the best available model for a given complexity tier."""
+        # Normal preference order
         preference_map = {
             Complexity.COMPLEX: ["claude-opus", "claude-sonnet", "gpt-5.2"],
             Complexity.MODERATE: ["claude-sonnet", "claude-haiku", "gpt-5.2"],
             Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.2"],
         }
 
-        # Cost-conscious mode: always prefer cheaper
+        # Cost-conscious: always prefer cheaper
         if self._config.cost_conscious:
             preference_map = {
                 Complexity.COMPLEX: ["claude-sonnet", "claude-haiku", "gpt-5.2"],
@@ -385,18 +367,12 @@ class ModelRouter:
                 if self._is_available(spec):
                     return spec
 
-        return self._get_default()
+        return self._get_fallback()
 
-    def _get_cheapest(self) -> ModelSpec:
-        """Get the cheapest available model."""
-        cheapest = None
-        cheapest_cost = float("inf")
+    def _get_fallback(self) -> ModelSpec:
+        """Get any available model as a last resort."""
         for key in self._config.enabled_models:
-            if key in AVAILABLE_MODELS:
-                spec = AVAILABLE_MODELS[key]
-                if self._is_available(spec):
-                    cost = spec.cost_per_1k_input + spec.cost_per_1k_output
-                    if cost < cheapest_cost:
-                        cheapest = spec
-                        cheapest_cost = cost
-        return cheapest or self._get_default()
+            if key in AVAILABLE_MODELS and self._is_available(AVAILABLE_MODELS[key]):
+                return AVAILABLE_MODELS[key]
+        # Absolute fallback
+        return AVAILABLE_MODELS["claude-sonnet"]

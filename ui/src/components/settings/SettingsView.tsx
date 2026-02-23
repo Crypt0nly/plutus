@@ -54,7 +54,7 @@ export function SettingsView() {
         <div>
           <h2 className="text-xl font-bold text-gray-100 mb-1">Settings</h2>
           <p className="text-sm text-gray-500">
-            Configure your LLM provider, API key, and system settings
+            Configure your Coordinator model, API keys, and system settings
           </p>
         </div>
         {saved && (

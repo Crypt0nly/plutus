@@ -103,8 +103,12 @@ export function ModelConfig({ config, onSave, saving, keyStatus, onKeyStatusChan
       <div className="card">
         <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
           <Brain className="w-4 h-4 text-plutus-400" />
-          LLM Model
+          Coordinator Model
         </h3>
+        <p className="text-[10px] text-gray-500 -mt-2 mb-4">
+          This is the main brain Plutus uses when talking to you. It never changes automatically.
+          Workers may use different models — configure those in Workers & Automation → Models.
+        </p>
 
         <div className="space-y-4">
           {/* Provider */}

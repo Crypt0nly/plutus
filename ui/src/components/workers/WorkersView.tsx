@@ -22,6 +22,9 @@ import {
   AlertTriangle,
   History,
   Layers,
+  Crown,
+  Shield,
+  Users,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -565,38 +568,83 @@ function ModelsTab() {
 
   return (
     <div className="space-y-5">
-      {/* Routing Config */}
+      {/* Architecture Explainer */}
+      <div className="card border-purple-500/20 bg-gradient-to-br from-purple-500/5 to-transparent">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
+            <Crown className="w-5 h-5 text-purple-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-200 mb-1">Coordinator Architecture</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              <strong className="text-purple-300">You choose the Coordinator model</strong> in Settings — that's the brain Plutus always uses when talking to you.
+              When the Coordinator spawns workers, <strong className="text-blue-300">it decides which model each worker gets</strong> based on the task.
+              Simple tasks get fast/cheap models, complex tasks get smarter ones.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Worker Model Defaults */}
       <div className="card">
         <div className="flex items-center gap-2 mb-4">
-          <Settings2 className="w-4 h-4 text-purple-400" />
-          <h3 className="text-sm font-semibold text-gray-200">Model Routing</h3>
+          <Users className="w-4 h-4 text-blue-400" />
+          <h3 className="text-sm font-semibold text-gray-200">Worker Model Defaults</h3>
           {saving && <RefreshCw className="w-3 h-3 text-gray-500 animate-spin" />}
         </div>
+        <p className="text-[10px] text-gray-500 mb-4">
+          These are fallback defaults. The Coordinator can override these per-worker when spawning tasks.
+        </p>
 
         <div className="space-y-4">
-          {/* Auto-route toggle */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-300">Auto-Route by Complexity</p>
-              <p className="text-[10px] text-gray-500">Automatically select the best model based on task difficulty</p>
-            </div>
-            <button
-              onClick={() => updateRouting("auto_route", !routing.auto_route)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${
-                routing.auto_route ? "bg-purple-500" : "bg-gray-700"
-              }`}
+          {/* Default worker model */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">Default Worker Model</label>
+            <select
+              value={routing.default_worker_model || "auto"}
+              onChange={(e) => updateRouting("default_worker_model", e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-blue-500/50 focus:outline-none"
             >
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                routing.auto_route ? "translate-x-5" : "translate-x-0.5"
-              }`} />
-            </button>
+              <option value="auto">Auto (system picks based on task complexity)</option>
+              {models.map((m: any) => (
+                <option key={m.key || m.id} value={m.key || m.id}>
+                  {m.display_name || m.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-gray-600 mt-1">
+              Used when the Coordinator sets model_key="auto" or doesn't specify a model.
+            </p>
+          </div>
+
+          {/* Default scheduler model */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">Default Scheduler Model</label>
+            <select
+              value={routing.default_scheduler_model || "auto"}
+              onChange={(e) => updateRouting("default_scheduler_model", e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-blue-500/50 focus:outline-none"
+            >
+              <option value="auto">Auto (system picks based on job complexity)</option>
+              {models.map((m: any) => (
+                <option key={m.key || m.id} value={m.key || m.id}>
+                  {m.display_name || m.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-gray-600 mt-1">
+              Used for cron jobs and scheduled tasks.
+            </p>
           </div>
 
           {/* Cost-conscious toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pt-2 border-t border-gray-800">
             <div>
-              <p className="text-sm text-gray-300">Cost-Conscious Mode</p>
-              <p className="text-[10px] text-gray-500">Prefer cheaper models when possible</p>
+              <p className="text-sm text-gray-300 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                Cost-Conscious Mode
+              </p>
+              <p className="text-[10px] text-gray-500">When auto-selecting, prefer cheaper models for workers</p>
             </div>
             <button
               onClick={() => updateRouting("cost_conscious", !routing.cost_conscious)}
@@ -609,60 +657,15 @@ function ModelsTab() {
               }`} />
             </button>
           </div>
-
-          {/* Default model select */}
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Default Model (when auto-route is off)</label>
-            <select
-              value={routing.default_model || "claude-sonnet"}
-              onChange={(e) => updateRouting("default_model", e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-purple-500/50 focus:outline-none"
-            >
-              {models.map((m: any) => (
-                <option key={m.id || m.name} value={m.id || m.name}>
-                  {m.display_name || m.name} — {m.tier || "standard"}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Worker model select */}
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Worker Model (for spawned workers)</label>
-            <select
-              value={routing.worker_model || "claude-haiku"}
-              onChange={(e) => updateRouting("worker_model", e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-purple-500/50 focus:outline-none"
-            >
-              {models.map((m: any) => (
-                <option key={m.id || m.name} value={m.id || m.name}>
-                  {m.display_name || m.name} — {m.tier || "standard"}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Scheduler model select */}
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Scheduler Model (for cron jobs)</label>
-            <select
-              value={routing.scheduler_model || "claude-haiku"}
-              onChange={(e) => updateRouting("scheduler_model", e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-purple-500/50 focus:outline-none"
-            >
-              {models.map((m: any) => (
-                <option key={m.id || m.name} value={m.id || m.name}>
-                  {m.display_name || m.name} — {m.tier || "standard"}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
       </div>
 
-      {/* Available Models */}
+      {/* Available Models Reference */}
       <div>
         <SectionHeader icon={Brain} title="Available Models" count={models.length} />
+        <p className="text-[10px] text-gray-500 mb-3 -mt-1">
+          The Coordinator can assign any of these to workers. Models require a valid API key for their provider.
+        </p>
         {Object.entries(byProvider).map(([provider, providerModels]) => (
           <div key={provider} className="mb-4">
             <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 pl-1">
@@ -670,29 +673,29 @@ function ModelsTab() {
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {(providerModels as any[]).map((m: any) => (
-                <ModelCard key={m.id || m.name} model={m} />
+                <ModelCard key={m.key || m.id || m.name} model={m} />
               ))}
             </div>
           </div>
         ))}
       </div>
 
-      {/* Usage Stats */}
+      {/* Worker Usage Stats */}
       {status.usage && (
         <div className="card">
-          <SectionHeader icon={BarChart3} title="Usage" />
+          <SectionHeader icon={BarChart3} title="Worker Usage" />
           <div className="grid grid-cols-3 gap-3 mt-3">
             <div className="text-center">
               <p className="text-lg font-bold text-gray-200">{status.usage.total_requests || 0}</p>
-              <p className="text-[10px] text-gray-500">Total Requests</p>
+              <p className="text-[10px] text-gray-500">Worker Calls</p>
             </div>
             <div className="text-center">
               <p className="text-lg font-bold text-gray-200">{status.usage.total_tokens || 0}</p>
-              <p className="text-[10px] text-gray-500">Total Tokens</p>
+              <p className="text-[10px] text-gray-500">Worker Tokens</p>
             </div>
             <div className="text-center">
               <p className="text-lg font-bold text-gray-200">${(status.usage.estimated_cost || 0).toFixed(4)}</p>
-              <p className="text-[10px] text-gray-500">Est. Cost</p>
+              <p className="text-[10px] text-gray-500">Est. Worker Cost</p>
             </div>
           </div>
         </div>
@@ -703,28 +706,43 @@ function ModelsTab() {
 
 function ModelCard({ model }: { model: any }) {
   const tierColors: Record<string, string> = {
+    complex: "text-purple-400 bg-purple-500/10",
     high: "text-purple-400 bg-purple-500/10",
+    moderate: "text-blue-400 bg-blue-500/10",
     medium: "text-blue-400 bg-blue-500/10",
+    simple: "text-emerald-400 bg-emerald-500/10",
     low: "text-emerald-400 bg-emerald-500/10",
     fast: "text-emerald-400 bg-emerald-500/10",
   };
-  const tier = model.tier || "medium";
-  const tierColor = tierColors[tier] || tierColors.medium;
+  const tier = model.complexity_tier || model.tier || "moderate";
+  const tierColor = tierColors[tier] || tierColors.moderate;
+  const tierLabel = tier === "complex" || tier === "high" ? "Complex" : tier === "simple" || tier === "low" || tier === "fast" ? "Fast" : "Balanced";
 
   return (
-    <div className="card py-3 flex items-center gap-3">
-      <Sparkles className={`w-4 h-4 shrink-0 ${tierColor.split(" ")[0]}`} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-200">{model.display_name || model.name}</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${tierColor}`}>
-            {tier === "high" ? "Complex" : tier === "medium" ? "Balanced" : "Fast"}
-          </span>
+    <div className={`card py-3 ${!model.available ? "opacity-50" : ""}`}>
+      <div className="flex items-center gap-3">
+        <Sparkles className={`w-4 h-4 shrink-0 ${tierColor.split(" ")[0]}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-200">{model.display_name || model.name}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${tierColor}`}>
+              {tierLabel}
+            </span>
+            {!model.available && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400">
+                No API Key
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            {model.description || model.id}
+          </p>
+          <p className="text-[10px] text-gray-600 mt-0.5">
+            {model.id}
+            {model.cost_per_1k_input ? ` · $${model.cost_per_1k_input} in / $${model.cost_per_1k_output} out per 1K` : ""}
+            {model.calls > 0 && ` · ${model.calls} calls`}
+          </p>
         </div>
-        <p className="text-[10px] text-gray-500 mt-0.5">
-          {model.model_id || model.id}
-          {model.cost_per_1k_tokens && ` · $${model.cost_per_1k_tokens}/1K tokens`}
-        </p>
       </div>
     </div>
   );
