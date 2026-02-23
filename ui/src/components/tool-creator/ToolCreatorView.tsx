@@ -312,7 +312,7 @@ export function ToolCreatorView() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="h-full overflow-y-auto space-y-6 max-w-4xl mx-auto">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-100">Tool Creator</h1>

@@ -29,7 +29,7 @@ export function ChatView({ send }: Props) {
   };
 
   return (
-    <div className="flex flex-col h-full -m-6">
+    <div className="flex flex-col flex-1 min-h-0 -m-6">
       {/* Messages area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 ? (
