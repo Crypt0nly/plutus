@@ -105,6 +105,7 @@ export default function App() {
           addMessage({
             role: "system",
             content: `Approval needed for **${msg.tool}**: ${msg.reason}`,
+            approval_id: msg.approval_id,
           });
           break;
 

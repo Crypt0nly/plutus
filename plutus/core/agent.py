@@ -951,18 +951,22 @@ class AgentRuntime:
                         continue
 
                 if tc.name not in _INTERNAL_TOOLS and decision.requires_approval:
+                    # Create the approval request first so we have an ID,
+                    # then emit the event with that ID, then block.
+                    approval_req = self._guardrails.create_approval(
+                        tc.name, operation, tc.arguments, decision.reason
+                    )
                     yield AgentEvent(
                         "tool_approval_needed",
                         {
+                            "approval_id": approval_req.id,
                             "tool": tc.name,
                             "arguments": tc.arguments,
                             "reason": decision.reason,
                         },
                     )
 
-                    approved = await self._guardrails.request_approval(
-                        tc.name, operation, tc.arguments, decision.reason
-                    )
+                    approved = await self._guardrails.await_approval(approval_req)
 
                     if not approved:
                         result_text = "[REJECTED] User declined the action."
