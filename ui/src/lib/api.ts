@@ -63,8 +63,39 @@ export const api = {
 
   // Workers
   getWorkers: () => request<Record<string, any>>("/workers"),
+  getWorkerStatus: (taskId: string) =>
+    request<Record<string, any>>(`/workers/${taskId}`),
   cancelWorker: (taskId: string) =>
     request<Record<string, any>>(`/workers/${taskId}/cancel`, { method: "POST" }),
+  updateWorkerConfig: (patch: Record<string, any>) =>
+    request<Record<string, any>>("/workers/config", {
+      method: "PATCH",
+      body: JSON.stringify({ patch }),
+    }),
+
+  // Scheduler
+  getScheduler: () => request<Record<string, any>>("/scheduler"),
+  getScheduledJobs: () => request<Record<string, any>>("/scheduler/jobs"),
+  getScheduledJob: (jobId: string) =>
+    request<Record<string, any>>(`/scheduler/jobs/${jobId}`),
+  pauseJob: (jobId: string) =>
+    request<Record<string, any>>(`/scheduler/jobs/${jobId}/pause`, { method: "POST" }),
+  resumeJob: (jobId: string) =>
+    request<Record<string, any>>(`/scheduler/jobs/${jobId}/resume`, { method: "POST" }),
+  deleteJob: (jobId: string) =>
+    request<Record<string, any>>(`/scheduler/jobs/${jobId}`, { method: "DELETE" }),
+  getSchedulerHistory: (limit = 50, jobId?: string) =>
+    request<Record<string, any>>(
+      `/scheduler/history?limit=${limit}${jobId ? `&job_id=${jobId}` : ""}`
+    ),
+
+  // Model Routing
+  getModelRouting: () => request<Record<string, any>>("/models"),
+  updateModelRouting: (patch: Record<string, any>) =>
+    request<Record<string, any>>("/models/config", {
+      method: "PATCH",
+      body: JSON.stringify({ patch }),
+    }),
 
   // Custom Tools
   getCustomTools: () => request<Record<string, any>>("/custom-tools"),

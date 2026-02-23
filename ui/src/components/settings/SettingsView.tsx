@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Save, Key, Brain, Server, Database, Bot } from "lucide-react";
+import { Save, Key, Brain, Server, Database, Bot, Cpu, Calendar } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
@@ -79,6 +79,63 @@ export function SettingsView() {
         onSave={handleSave}
         saving={saving}
       />
+
+      {/* Workers & Automation */}
+      <div className="card">
+        <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <Cpu className="w-4 h-4 text-plutus-400" />
+          Workers & Automation
+        </h3>
+        <div className="space-y-5">
+          <div>
+            <label className="text-xs text-gray-500 mb-1.5 block">
+              Max Concurrent Workers ({config.workers?.max_concurrent_workers || 3})
+            </label>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              step="1"
+              className="w-full accent-plutus-500"
+              defaultValue={config.workers?.max_concurrent_workers || 3}
+              onChange={(e) => {
+                handleSave({
+                  workers: { max_concurrent_workers: parseInt(e.target.value) || 3 },
+                });
+                api.updateWorkerConfig({ max_concurrent_workers: parseInt(e.target.value) || 3 }).catch(() => {});
+              }}
+            />
+            <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+              <span>1</span>
+              <span>3</span>
+              <span>5</span>
+              <span>7</span>
+              <span>10</span>
+            </div>
+            <p className="text-[10px] text-gray-600 mt-2">
+              Maximum number of AI workers that can run simultaneously. Higher values
+              allow more parallel tasks but increase API costs. Each worker uses its own
+              LLM context.
+            </p>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-300">Scheduler Enabled</p>
+              <p className="text-[10px] text-gray-500">Allow Plutus to create and run scheduled (cron) jobs</p>
+            </div>
+            <button
+              onClick={() => handleSave({ scheduler: { enabled: !(config.scheduler?.enabled ?? true) } })}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                config.scheduler?.enabled !== false ? "bg-plutus-500" : "bg-gray-700"
+              }`}
+            >
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                config.scheduler?.enabled !== false ? "translate-x-5" : "translate-x-0.5"
+              }`} />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Agent settings */}
       <div className="card">

@@ -69,6 +69,29 @@ class HeartbeatConfig(BaseModel):
     prompt: str = ""  # custom heartbeat prompt; empty = use default
 
 
+class WorkerConfig(BaseModel):
+    max_concurrent_workers: int = 3  # max simultaneous agent workers
+    default_timeout: int = 300  # default worker timeout in seconds
+    worker_model: str = "claude-haiku"  # default model for workers
+
+
+class ModelRoutingConfig(BaseModel):
+    primary_provider: str = "anthropic"
+    enabled_models: list[str] = Field(default_factory=lambda: [
+        "claude-opus", "claude-sonnet", "claude-haiku"
+    ])
+    default_model: str = "claude-sonnet"
+    auto_route: bool = True  # auto-select model based on task complexity
+    cost_conscious: bool = False  # prefer cheaper models when possible
+    worker_model: str = "claude-haiku"  # default model for workers
+    scheduler_model: str = "claude-haiku"  # default model for scheduled jobs
+
+
+class SchedulerConfig(BaseModel):
+    enabled: bool = True  # enable the scheduler on startup
+    max_concurrent_jobs: int = 3  # max jobs running simultaneously
+
+
 class AgentConfig(BaseModel):
     max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
 
@@ -87,6 +110,9 @@ class PlutusConfig(BaseSettings):
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    workers: WorkerConfig = Field(default_factory=WorkerConfig)
+    model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
 
     @classmethod

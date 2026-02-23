@@ -100,8 +100,12 @@ def create_router() -> APIRouter:
         agent = state.get("agent")
         heartbeat = state.get("heartbeat")
 
+        worker_pool = state.get("worker_pool")
+        scheduler = state.get("scheduler")
+        model_router = state.get("model_router")
+
         return {
-            "version": "0.1.0",
+            "version": "0.3.0",
             "status": "running",
             "key_configured": agent.key_configured if agent else False,
             "guardrails": guardrails.get_status() if guardrails else None,
@@ -110,6 +114,9 @@ def create_router() -> APIRouter:
             "planner_enabled": state.get("config", {}).planner.enabled
             if state.get("config")
             else False,
+            "worker_pool": worker_pool.stats() if worker_pool else None,
+            "scheduler": scheduler.stats() if scheduler else None,
+            "model_routing": model_router.get_status() if model_router else None,
         }
 
     # ── Guardrails ──────────────────────────────────────────
@@ -285,46 +292,38 @@ def create_router() -> APIRouter:
 
         return {"tools": tools, "categories": categories, "total": len(tools)}
 
-    # ── Workers / Subprocesses ──────────────────────────────
+    # ── Workers (Agent Worker Pool) ──────────────────────────
 
     @router.get("/workers")
     async def get_workers() -> dict[str, Any]:
-        """Get active workers and recent results from the subprocess manager."""
+        """Get all workers — active, queued, and recent."""
         from plutus.gateway.server import get_state
 
         state = get_state()
-        registry = state.get("tool_registry")
+        pool = state.get("worker_pool")
 
-        if not registry:
-            return {"active": [], "recent": [], "stats": {}}
-
-        # Get the subprocess manager from the subprocess tool
-        sub_tool = registry.get("subprocess")
-        if not sub_tool or not hasattr(sub_tool, "_manager"):
-            return {"active": [], "recent": [], "stats": {}}
-
-        mgr = sub_tool._manager
-        active = mgr.list_active()
-        recent = mgr.list_results(limit=50)
-
-        # Compute stats
-        total = len(recent)
-        completed = sum(1 for r in recent if r.get("status") == "completed")
-        failed = sum(1 for r in recent if r.get("status") == "failed")
-        avg_duration = sum(r.get("duration", 0) for r in recent) / max(total, 1)
+        if not pool:
+            return {"workers": [], "stats": {}}
 
         return {
-            "active": active,
-            "recent": recent,
-            "stats": {
-                "total_tasks": total,
-                "completed": completed,
-                "failed": failed,
-                "active_count": len(active),
-                "avg_duration": round(avg_duration, 3),
-                "max_workers": mgr.max_workers,
-            },
+            "workers": pool.list_all(),
+            "stats": pool.stats(),
         }
+
+    @router.get("/workers/{task_id}")
+    async def get_worker_status(task_id: str) -> dict[str, Any]:
+        """Get status of a specific worker."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        pool = state.get("worker_pool")
+        if not pool:
+            raise HTTPException(500, "Worker pool not initialized")
+
+        status = pool.get_status(task_id)
+        if not status:
+            raise HTTPException(404, f"Worker {task_id} not found")
+        return status.to_dict()
 
     @router.post("/workers/{task_id}/cancel")
     async def cancel_worker(task_id: str) -> dict[str, Any]:
@@ -332,20 +331,185 @@ def create_router() -> APIRouter:
         from plutus.gateway.server import get_state
 
         state = get_state()
-        registry = state.get("tool_registry")
+        pool = state.get("worker_pool")
+        if not pool:
+            raise HTTPException(500, "Worker pool not initialized")
 
-        if not registry:
-            raise HTTPException(500, "Registry not initialized")
-
-        sub_tool = registry.get("subprocess")
-        if not sub_tool or not hasattr(sub_tool, "_manager"):
-            raise HTTPException(500, "Subprocess manager not available")
-
-        cancelled = await sub_tool._manager.cancel(task_id)
+        cancelled = await pool.cancel(task_id)
         if not cancelled:
             raise HTTPException(404, f"Worker {task_id} not found or not running")
-
         return {"cancelled": True, "task_id": task_id}
+
+    @router.patch("/workers/config")
+    async def update_worker_config(body: ConfigUpdate) -> dict[str, Any]:
+        """Update worker pool configuration (e.g. max_concurrent_workers)."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        pool = state.get("worker_pool")
+
+        if not config or not pool:
+            raise HTTPException(500, "Not initialized")
+
+        if "max_concurrent_workers" in body.patch:
+            new_max = int(body.patch["max_concurrent_workers"])
+            config.workers.max_concurrent_workers = new_max
+            pool._semaphore = __import__("asyncio").Semaphore(new_max)
+            config.save()
+
+        return {"message": "Worker config updated", "stats": pool.stats()}
+
+    # ── Scheduler ──────────────────────────────────────────────
+
+    @router.get("/scheduler")
+    async def get_scheduler_status() -> dict[str, Any]:
+        """Get scheduler status and all jobs."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        scheduler = state.get("scheduler")
+        if not scheduler:
+            return {"running": False, "jobs": [], "stats": {}}
+
+        return {
+            "running": scheduler.running,
+            "jobs": scheduler.list_jobs(),
+            "stats": scheduler.stats(),
+        }
+
+    @router.get("/scheduler/jobs")
+    async def list_scheduled_jobs() -> dict[str, Any]:
+        """List all scheduled jobs."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        scheduler = state.get("scheduler")
+        if not scheduler:
+            return {"jobs": []}
+        return {"jobs": scheduler.list_jobs()}
+
+    @router.get("/scheduler/jobs/{job_id}")
+    async def get_scheduled_job(job_id: str) -> dict[str, Any]:
+        """Get details of a specific scheduled job."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        scheduler = state.get("scheduler")
+        if not scheduler:
+            raise HTTPException(500, "Scheduler not initialized")
+
+        job = scheduler.get_job(job_id)
+        if not job:
+            raise HTTPException(404, f"Job {job_id} not found")
+        return job.to_dict()
+
+    @router.post("/scheduler/jobs/{job_id}/pause")
+    async def pause_scheduled_job(job_id: str) -> dict[str, Any]:
+        """Pause a scheduled job."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        scheduler = state.get("scheduler")
+        if not scheduler:
+            raise HTTPException(500, "Scheduler not initialized")
+
+        if not scheduler.pause_job(job_id):
+            raise HTTPException(404, f"Job {job_id} not found")
+        return {"message": f"Job {job_id} paused"}
+
+    @router.post("/scheduler/jobs/{job_id}/resume")
+    async def resume_scheduled_job(job_id: str) -> dict[str, Any]:
+        """Resume a paused scheduled job."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        scheduler = state.get("scheduler")
+        if not scheduler:
+            raise HTTPException(500, "Scheduler not initialized")
+
+        if not scheduler.resume_job(job_id):
+            raise HTTPException(404, f"Job {job_id} not found")
+        return {"message": f"Job {job_id} resumed"}
+
+    @router.delete("/scheduler/jobs/{job_id}")
+    async def delete_scheduled_job(job_id: str) -> dict[str, Any]:
+        """Delete a scheduled job."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        scheduler = state.get("scheduler")
+        if not scheduler:
+            raise HTTPException(500, "Scheduler not initialized")
+
+        if not scheduler.remove_job(job_id):
+            raise HTTPException(404, f"Job {job_id} not found")
+        return {"message": f"Job {job_id} deleted"}
+
+    @router.get("/scheduler/history")
+    async def get_scheduler_history(limit: int = 50, job_id: str | None = None) -> dict[str, Any]:
+        """Get recent job execution history."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        scheduler = state.get("scheduler")
+        if not scheduler:
+            return {"executions": []}
+        return {"executions": scheduler.list_executions(limit=limit, job_id=job_id)}
+
+    # ── Model Routing ──────────────────────────────────────────
+
+    @router.get("/models")
+    async def get_model_routing() -> dict[str, Any]:
+        """Get available models and routing configuration."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        model_router = state.get("model_router")
+        config = state.get("config")
+
+        if not model_router:
+            return {"models": [], "routing": {}}
+
+        return {
+            "models": model_router.list_models(),
+            "routing": {
+                "auto_route": config.model_routing.auto_route if config else True,
+                "default_model": config.model_routing.default_model if config else "claude-sonnet",
+                "cost_conscious": config.model_routing.cost_conscious if config else False,
+                "worker_model": config.model_routing.worker_model if config else "claude-haiku",
+                "scheduler_model": config.model_routing.scheduler_model if config else "claude-haiku",
+            },
+            "status": model_router.get_status(),
+        }
+
+    @router.patch("/models/config")
+    async def update_model_routing(body: ConfigUpdate) -> dict[str, Any]:
+        """Update model routing configuration."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        model_router = state.get("model_router")
+
+        if not config:
+            raise HTTPException(500, "Config not loaded")
+
+        # Update config
+        for key, value in body.patch.items():
+            if hasattr(config.model_routing, key):
+                setattr(config.model_routing, key, value)
+        config.save()
+
+        # Update router
+        if model_router:
+            model_router.config.auto_route = config.model_routing.auto_route
+            model_router.config.default_model = config.model_routing.default_model
+            model_router.config.cost_conscious = config.model_routing.cost_conscious
+            model_router.config.worker_model = config.model_routing.worker_model
+            model_router.config.scheduler_model = config.model_routing.scheduler_model
+
+        return {"message": "Model routing updated"}
 
     # ── Custom Tools Management ─────────────────────────────
 

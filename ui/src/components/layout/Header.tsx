@@ -7,7 +7,7 @@ const viewTitles: Record<string, { title: string; subtitle: string }> = {
   guardrails: { title: "Guardrails", subtitle: "Safety & permissions" },
   settings: { title: "Settings", subtitle: "Configuration" },
   tools: { title: "Tools", subtitle: "Agent capabilities" },
-  workers: { title: "Workers", subtitle: "Subprocess monitor" },
+  workers: { title: "Workers & Automation", subtitle: "Workers, schedules & model routing" },
   "tool-creator": { title: "Tool Creator", subtitle: "Build custom tools" },
   skills: { title: "Skills", subtitle: "Browse, import, and share skills" },
   memory: { title: "Memory & Plans", subtitle: "What Plutus remembers" },
