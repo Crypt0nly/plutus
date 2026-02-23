@@ -118,6 +118,42 @@ class GuardrailEngine:
 
         return decision
 
+    def create_approval(
+        self,
+        tool_name: str,
+        operation: str | None,
+        params: dict[str, Any],
+        reason: str,
+    ) -> ApprovalRequest:
+        """Create and register an approval request (non-blocking).
+
+        Call :meth:`await_approval` afterwards to block until the user responds.
+        This two-step flow lets the caller emit a UI event that includes the
+        ``approval_id`` before the agent blocks waiting for the response.
+        """
+        request = ApprovalRequest(tool_name, operation, params, reason)
+        self._pending_approvals[request.id] = request
+        return request
+
+    async def await_approval(self, request: ApprovalRequest) -> bool:
+        """Block until the user resolves *request*, then return the result."""
+        approved = await request.wait()
+
+        self._audit.log(
+            AuditEntry(
+                timestamp=time.time(),
+                tool_name=request.tool_name,
+                operation=request.operation,
+                params=request.params,
+                decision="approved" if approved else "rejected",
+                tier=self._tier.value,
+                reason=f"User {'approved' if approved else 'rejected'} the action",
+            )
+        )
+
+        del self._pending_approvals[request.id]
+        return approved
+
     async def request_approval(
         self,
         tool_name: str,
@@ -126,8 +162,7 @@ class GuardrailEngine:
         reason: str,
     ) -> bool:
         """Create an approval request and wait for the user to respond via the UI."""
-        request = ApprovalRequest(tool_name, operation, params, reason)
-        self._pending_approvals[request.id] = request
+        request = self.create_approval(tool_name, operation, params, reason)
 
         approved = await request.wait()
 

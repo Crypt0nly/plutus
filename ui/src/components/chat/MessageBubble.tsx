@@ -697,7 +697,7 @@ export function MessageBubble({ message, send }: Props) {
   if (role === "system") {
     // Check if it's an approval request
     if (content?.startsWith("Approval needed")) {
-      return <ToolApproval message={content} send={send} />;
+      return <ToolApproval message={content} send={send} approvalId={message.approval_id ?? undefined} />;
     }
 
     // Mode indicator

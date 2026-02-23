@@ -28,6 +28,7 @@ export interface Message {
   content: string | null;
   tool_calls?: ToolCallData[] | null;
   tool_call_id?: string | null;
+  approval_id?: string | null;
   created_at?: number;
 }
 
@@ -108,7 +109,7 @@ export type WSMessage =
   | { type: "thinking"; message: string }
   | { type: "text"; content: string }
   | { type: "tool_call"; id: string; tool: string; arguments: Record<string, unknown> }
-  | { type: "tool_approval_needed"; tool: string; arguments: Record<string, unknown>; reason: string }
+  | { type: "tool_approval_needed"; approval_id: string; tool: string; arguments: Record<string, unknown>; reason: string }
   | { type: "tool_result"; id: string; tool: string; result: string; denied?: boolean; rejected?: boolean; screenshot?: boolean; image_base64?: string; error?: boolean }
   | { type: "error"; message: string }
   | { type: "done"; iterations?: number }
