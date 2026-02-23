@@ -31,6 +31,7 @@ import {
   Timer,
   Maximize2,
   Minimize2,
+  Send,
 } from "lucide-react";
 import type { Message } from "../../lib/types";
 import { ToolApproval } from "./ToolApproval";
