@@ -1,12 +1,18 @@
-"""Worker Tool — allows the agent to spawn and manage agent workers.
+"""Worker Tool — allows the Coordinator to spawn and manage agent workers.
 
-This replaces the old SubprocessTool for most use cases. Workers are
-lightweight agents that can call the LLM and use tools, running in
-parallel with the main agent.
+The Coordinator (you) is the team lead. When you need to delegate tasks,
+use this tool to spawn workers. YOU decide which model each worker uses
+based on what the task requires:
+
+  - "claude-haiku":  Fast & cheap. Use for simple lookups, fetching data, summaries.
+  - "claude-sonnet": Balanced. Use for standard tasks that need some reasoning.
+  - "claude-opus":   Smartest. Use for complex analysis, writing, architecture.
+  - "gpt-5.2":      OpenAI alternative for complex tasks.
+  - "auto":          Let the system auto-select based on task complexity.
 
 Operations:
-  - spawn:       Spawn a new worker with a task
-  - spawn_many:  Spawn multiple workers at once
+  - spawn:       Spawn a new worker with a task and model choice
+  - spawn_many:  Spawn multiple workers at once for parallel execution
   - list:        List all active and recent workers
   - status:      Get status of a specific worker
   - cancel:      Cancel a running worker
@@ -37,22 +43,26 @@ class WorkerTool(Tool):
     def description(self) -> str:
         return (
             "Spawn and manage agent workers for parallel task execution. "
-            "Workers are lightweight agents that can think, plan, and use tools independently. "
-            "Use this to delegate tasks, run things in parallel, or offload simple work.\n\n"
+            "You are the Coordinator — the team lead. Use this to delegate tasks to workers.\n\n"
+            "YOU choose which model each worker uses based on the task:\n"
+            "- 'claude-haiku': Fast & cheap — fetching data, summaries, simple lookups\n"
+            "- 'claude-sonnet': Balanced — standard tasks needing some reasoning\n"
+            "- 'claude-opus': Smartest — complex analysis, writing, deep research\n"
+            "- 'gpt-5.2': OpenAI alternative for complex tasks\n"
+            "- 'auto': Let the system pick based on task complexity\n\n"
             "Operations:\n"
-            "- spawn: Create a new worker with a task prompt\n"
+            "- spawn: Create a new worker. Set model_key to choose its brain.\n"
             "- spawn_many: Create multiple workers at once for parallel execution\n"
             "- list: List all active and recent workers\n"
             "- status: Get detailed status of a specific worker\n"
             "- cancel: Cancel a running worker\n"
             "- wait: Wait for a worker to complete and get its result\n"
             "- stats: Get worker pool statistics\n\n"
-            "Model selection: Set model_key to choose which model the worker uses:\n"
-            "- 'claude-haiku': Fast and cheap — summaries, simple lookups, classification\n"
-            "- 'claude-sonnet': Balanced — most tasks (default)\n"
-            "- 'claude-opus': Complex reasoning, architecture, deep analysis\n"
-            "- 'gpt-5.2': OpenAI alternative\n"
-            "- null: Auto-select based on task complexity"
+            "Example: To research news while writing a blog post:\n"
+            "  1. worker(operation='spawn', name='News Research', prompt='Research latest AI news', model_key='claude-haiku')\n"
+            "  2. You (the Coordinator) start writing the blog post using your own model\n"
+            "  3. worker(operation='wait', task_id='...') to get the research results\n"
+            "  4. Incorporate the results into the blog post"
         )
 
     @property
@@ -67,16 +77,23 @@ class WorkerTool(Tool):
                 },
                 "name": {
                     "type": "string",
-                    "description": "Human-readable name for the worker (for 'spawn').",
+                    "description": "Human-readable name for the worker (for 'spawn'). E.g. 'News Researcher', 'Data Analyzer'.",
                 },
                 "prompt": {
                     "type": "string",
-                    "description": "The task instruction for the worker (for 'spawn').",
+                    "description": "The task instruction for the worker (for 'spawn'). Be specific about what you want.",
                 },
                 "model_key": {
                     "type": "string",
-                    "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2"],
-                    "description": "Which model the worker should use. Omit for auto-selection.",
+                    "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "auto"],
+                    "description": (
+                        "Which model the worker should use. YOU decide based on the task:\n"
+                        "- 'claude-haiku': Simple tasks (fetching, summarizing, lookups)\n"
+                        "- 'claude-sonnet': Medium tasks (browsing, standard work)\n"
+                        "- 'claude-opus': Hard tasks (analysis, writing, research)\n"
+                        "- 'gpt-5.2': OpenAI alternative\n"
+                        "- 'auto': System picks based on task complexity"
+                    ),
                 },
                 "timeout": {
                     "type": "number",
@@ -87,14 +104,18 @@ class WorkerTool(Tool):
                     "items": {
                         "type": "object",
                         "properties": {
-                            "name": {"type": "string"},
-                            "prompt": {"type": "string"},
-                            "model_key": {"type": "string"},
+                            "name": {"type": "string", "description": "Worker name"},
+                            "prompt": {"type": "string", "description": "Task instruction"},
+                            "model_key": {
+                                "type": "string",
+                                "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "auto"],
+                                "description": "Model for this worker",
+                            },
                             "timeout": {"type": "number"},
                         },
                         "required": ["prompt"],
                     },
-                    "description": "List of tasks for 'spawn_many' operation.",
+                    "description": "List of tasks for 'spawn_many' operation. Each task gets its own worker.",
                 },
                 "task_id": {
                     "type": "string",
@@ -132,19 +153,22 @@ class WorkerTool(Tool):
         if not prompt:
             return "[ERROR] 'prompt' is required for spawn operation."
 
+        model_key = kwargs.get("model_key", "auto")
+
         task = WorkerTask(
             name=kwargs.get("name", ""),
             prompt=prompt,
-            model_key=kwargs.get("model_key"),
+            model_key=model_key,
             timeout=kwargs.get("timeout", 300.0),
         )
 
         status = await self._pool.submit(task)
         return json.dumps({
             "success": True,
-            "message": f"Worker '{status.name}' spawned successfully.",
+            "message": f"Worker '{status.name}' spawned with model '{model_key}'.",
             "task_id": status.task_id,
             "state": status.state.value,
+            "model": model_key,
             "tip": "Use worker(operation='wait', task_id='...') to get the result when done.",
         }, indent=2)
 
@@ -158,7 +182,7 @@ class WorkerTool(Tool):
             tasks.append(WorkerTask(
                 name=td.get("name", ""),
                 prompt=td.get("prompt", ""),
-                model_key=td.get("model_key"),
+                model_key=td.get("model_key", "auto"),
                 timeout=td.get("timeout", 300.0),
             ))
 
@@ -167,8 +191,13 @@ class WorkerTool(Tool):
             "success": True,
             "message": f"Spawned {len(statuses)} workers.",
             "workers": [
-                {"task_id": s.task_id, "name": s.name, "state": s.state.value}
-                for s in statuses
+                {
+                    "task_id": s.task_id,
+                    "name": s.name,
+                    "state": s.state.value,
+                    "model": tasks[i].model_key if i < len(tasks) else "auto",
+                }
+                for i, s in enumerate(statuses)
             ],
         }, indent=2)
 

@@ -352,7 +352,7 @@ def create_app(config: PlutusConfig | None = None) -> FastAPI:
     app = FastAPI(
         title="Plutus",
         description="Autonomous AI agent with multi-model routing, workers, and scheduling",
-        version="0.3.0",
+        version="0.3.1",
         lifespan=lifespan,
     )
 
