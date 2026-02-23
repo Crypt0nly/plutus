@@ -127,6 +127,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.subprocess_tool import SubprocessTool
     from plutus.tools.system_info import SystemInfoTool
     from plutus.tools.tool_creator import ToolCreatorTool
+    from plutus.tools.wsl import WSLTool
 
     # Shared subprocess manager for all subprocess-based tools
     subprocess_mgr = SubprocessManager(max_workers=8, default_timeout=60.0)
@@ -142,6 +143,7 @@ def create_default_registry() -> ToolRegistry:
     # CORE TOOLS — shell, files, processes
     # ═══════════════════════════════════════════════════════════
     registry.register(ShellTool())
+    registry.register(WSLTool())
     registry.register(FilesystemTool())
     registry.register(ProcessTool())
     registry.register(SystemInfoTool())

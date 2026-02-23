@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from plutus.tools.base import Tool
-from plutus.tools.registry import ToolRegistry
-from plutus.tools.shell import ShellTool, BLOCKED_COMMANDS
+from plutus.tools.base import Tool  # noqa: F401
 from plutus.tools.filesystem import FilesystemTool
+from plutus.tools.registry import ToolRegistry
+from plutus.tools.shell import BLOCKED_COMMANDS, ShellTool  # noqa: F401
 from plutus.tools.system_info import SystemInfoTool
-
+from plutus.tools.wsl import BLOCKED_PATTERNS as WSL_BLOCKED_PATTERNS
+from plutus.tools.wsl import WSLTool
 
 # ── Tool Registry tests ─────────────────────────────────────
 
@@ -197,3 +198,102 @@ class TestSystemInfoTool:
         result = await tool.execute(operation="os")
         assert "System:" in result
         assert "Python:" in result
+
+
+# ── WSL Tool tests ─────────────────────────────────────────
+
+
+class TestWSLTool:
+    @pytest.fixture
+    def tool(self):
+        return WSLTool()
+
+    def test_properties(self, tool):
+        assert tool.name == "wsl"
+        assert len(tool.description) > 0
+        assert tool.parameters["type"] == "object"
+        assert "operation" in tool.parameters["properties"]
+        assert "command" in tool.parameters["properties"]
+
+    def test_get_definition(self, tool):
+        defn = tool.get_definition()
+        assert defn.name == "wsl"
+        assert "operation" in defn.parameters["properties"]
+
+    @pytest.mark.asyncio
+    async def test_run_simple_command(self, tool):
+        """On Linux (CI), the WSL tool falls back to native shell."""
+        result = await tool.execute(operation="run", command="echo wsl_test")
+        assert "wsl_test" in result
+        assert "exit_code: 0" in result
+
+    @pytest.mark.asyncio
+    async def test_run_requires_command(self, tool):
+        result = await tool.execute(operation="run")
+        assert "[ERROR]" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_dangerous_commands(self, tool):
+        result = await tool.execute(operation="run", command="rm -rf /")
+        assert "[BLOCKED]" in result
+
+    @pytest.mark.asyncio
+    async def test_blocks_fork_bomb(self, tool):
+        result = await tool.execute(operation="run", command=":(){ :|:& };:")
+        assert "[BLOCKED]" in result
+
+    @pytest.mark.asyncio
+    async def test_timeout(self, tool):
+        result = await tool.execute(operation="run", command="sleep 5", timeout=1)
+        assert "[TIMEOUT]" in result
+
+    @pytest.mark.asyncio
+    async def test_unknown_operation(self, tool):
+        result = await tool.execute(operation="bogus")
+        assert "[ERROR]" in result
+
+    @pytest.mark.asyncio
+    async def test_info(self, tool):
+        result = await tool.execute(operation="info")
+        assert "host_os:" in result
+
+    @pytest.mark.asyncio
+    async def test_list_distros_non_windows(self, tool):
+        """On Linux/macOS, list_distros returns a helpful non-applicable message."""
+        import platform
+        if platform.system() == "Windows":
+            pytest.skip("Test only for non-Windows")
+        result = await tool.execute(operation="list_distros")
+        assert "native" in result.lower() or "not applicable" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_path_to_linux_non_windows(self, tool):
+        import platform
+        if platform.system() == "Windows":
+            pytest.skip("Test only for non-Windows")
+        result = await tool.execute(operation="path_to_linux", path="/tmp/test.txt")
+        assert "/tmp/test.txt" in result
+
+    @pytest.mark.asyncio
+    async def test_path_requires_path(self, tool):
+        result = await tool.execute(operation="path_to_linux")
+        assert "[ERROR]" in result
+
+    @pytest.mark.asyncio
+    async def test_set_default_non_windows(self, tool):
+        import platform
+        if platform.system() == "Windows":
+            pytest.skip("Test only for non-Windows")
+        result = await tool.execute(operation="set_default", distro="Ubuntu")
+        assert "[ERROR]" in result
+
+    @pytest.mark.asyncio
+    async def test_working_directory(self, tool):
+        result = await tool.execute(
+            operation="run", command="pwd", working_directory="/tmp"
+        )
+        assert "/tmp" in result
+
+    def test_blocked_patterns_exist(self):
+        assert len(WSL_BLOCKED_PATTERNS) > 0
+        assert "rm -rf /" in WSL_BLOCKED_PATTERNS

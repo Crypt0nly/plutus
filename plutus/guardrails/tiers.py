@@ -63,6 +63,11 @@ class ToolPolicy(BaseModel):
 TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
     Tier.OBSERVER: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.DENIED),
+        "wsl": ToolPolicy(
+            tool_name="wsl",
+            permission=ToolPermission.ALLOWED,
+            allowed_operations=["info", "list_distros"],
+        ),
         "filesystem": ToolPolicy(
             tool_name="filesystem",
             permission=ToolPermission.ALLOWED,
@@ -97,6 +102,7 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
     },
     Tier.ASSISTANT: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.REQUIRES_APPROVAL),
+        "wsl": ToolPolicy(tool_name="wsl", permission=ToolPermission.REQUIRES_APPROVAL),
         "filesystem": ToolPolicy(
             tool_name="filesystem", permission=ToolPermission.REQUIRES_APPROVAL
         ),
@@ -112,6 +118,11 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
     Tier.OPERATOR: {
         "shell": ToolPolicy(
             tool_name="shell",
+            permission=ToolPermission.ALLOWED,
+            denied_patterns=["rm -rf /", "mkfs", "dd if=", "> /dev/"],
+        ),
+        "wsl": ToolPolicy(
+            tool_name="wsl",
             permission=ToolPermission.ALLOWED,
             denied_patterns=["rm -rf /", "mkfs", "dd if=", "> /dev/"],
         ),
@@ -133,6 +144,7 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
     },
     Tier.AUTONOMOUS: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.ALLOWED),
+        "wsl": ToolPolicy(tool_name="wsl", permission=ToolPermission.ALLOWED),
         "filesystem": ToolPolicy(tool_name="filesystem", permission=ToolPermission.ALLOWED),
         "browser": ToolPolicy(tool_name="browser", permission=ToolPermission.ALLOWED),
         "process": ToolPolicy(tool_name="process", permission=ToolPermission.ALLOWED),

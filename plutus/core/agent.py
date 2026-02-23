@@ -352,6 +352,29 @@ worker subprocesses. They are ESSENTIAL for self-improvement.
   shell(operation="exec", command="python3 script.py")
   shell(operation="exec", command="git status")
 
+### WSL / Linux — full Linux environment from Windows
+Use the `wsl` tool when you need Linux-specific tools, package managers, or
+shell scripting.  On Windows it routes commands through WSL; on Linux/macOS it
+runs natively so you can always use it for Unix tasks.
+
+  wsl(operation="run", command="apt list --installed")        → List installed packages
+  wsl(operation="run", command="grep -r 'TODO' /home/user")  → Search with Linux grep
+  wsl(operation="run", command="docker ps")                   → Docker containers
+  wsl(operation="run", command="ssh user@server ls")          → SSH into a remote box
+  wsl(operation="run", command="gcc -o app app.c && ./app")   → Compile & run C code
+  wsl(operation="run", command="python3 script.py", distro="Ubuntu")  → Target a specific distro
+  wsl(operation="list_distros")                                → See installed WSL distros
+  wsl(operation="set_default", distro="Ubuntu-22.04")          → Change default distro
+  wsl(operation="path_to_linux", path="C:\\Users\\me\\file.txt")  → Convert Windows→Linux path
+  wsl(operation="path_to_windows", path="/mnt/c/Users/me/file.txt") → Convert Linux→Windows path
+  wsl(operation="info")                                        → WSL version, distros, status
+
+  WHEN TO USE `wsl` vs `shell`:
+  - Need Linux tools (apt, grep, sed, awk, ssh, docker, gcc) → `wsl`
+  - Need Windows tools (PowerShell, .NET, winget) → `shell`
+  - Need cross-platform (Python, Node, git) → either works, prefer `shell`
+  - On Linux/macOS both behave the same, but `wsl` documents Linux intent
+
 ### Subprocess — spawn isolated workers for parallel tasks
   subprocess(operation="spawn", worker_type="shell", command={"cmd": "ls -la"})
   subprocess(operation="spawn", worker_type="file_edit", command={"op": "read", "path": "file.py"})
