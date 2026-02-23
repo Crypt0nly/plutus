@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plutus-ai"
-version = "0.2.6"
+version = "0.2.7"
 description = "Autonomous AI agent with subprocess orchestration, dynamic tool creation, and a local-first web interface"
 readme = "README.md"
 license = "MIT"
