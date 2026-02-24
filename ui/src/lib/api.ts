@@ -50,12 +50,19 @@ export const api = {
     ),
 
   // Conversations
-  getConversations: (limit = 20) =>
+  getConversations: (limit = 50) =>
     request<Record<string, unknown>[]>(`/conversations?limit=${limit}`),
   deleteConversation: (id: string) =>
     request<Record<string, string>>(`/conversations/${id}`, { method: "DELETE" }),
+  renameConversation: (id: string, title: string) =>
+    request<Record<string, string>>(`/conversations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
   getMessages: (convId: string) =>
     request<Record<string, unknown>[]>(`/conversations/${convId}/messages`),
+  cleanupConversations: () =>
+    request<Record<string, any>>("/conversations/cleanup", { method: "POST" }),
 
   // Tools
   getTools: () => request<Record<string, unknown>[]>("/tools"),

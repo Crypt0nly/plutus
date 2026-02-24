@@ -58,6 +58,7 @@ class MemoryConfig(BaseModel):
     db_path: str = ""  # empty = ~/.plutus/memory.db
     max_conversation_history: int = 100
     context_window_messages: int = 20
+    conversation_auto_delete_days: int = 30  # 0 = disabled; delete conversations with no activity for N days
 
 
 class HeartbeatConfig(BaseModel):

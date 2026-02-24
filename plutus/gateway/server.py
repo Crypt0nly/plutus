@@ -601,6 +601,37 @@ async def _auto_start_connectors(connector_manager) -> None:
             logger.error(f"Failed to auto-start connector {connector.name}: {e}")
 
 
+# ── Conversation auto-cleanup ───────────────────────────────────────────────
+
+async def _conversation_cleanup_loop(
+    memory: MemoryStore, config: "PlutusConfig"
+) -> None:
+    """Background task that periodically cleans up stale conversations.
+
+    Runs once per hour. Deletes conversations with no activity for more than
+    the configured number of days (default 30).
+    """
+    CLEANUP_INTERVAL = 3600  # Check every hour
+
+    while True:
+        try:
+            await asyncio.sleep(CLEANUP_INTERVAL)
+            days = config.memory.conversation_auto_delete_days
+            if days <= 0:
+                continue  # Disabled
+            deleted = await memory.cleanup_stale_conversations(days)
+            if deleted > 0:
+                logger.info(
+                    f"Auto-cleanup: deleted {deleted} conversations "
+                    f"(inactive for >{days} days)"
+                )
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Conversation cleanup error: {e}")
+            await asyncio.sleep(60)  # Wait a bit before retrying
+
+
 # ── App lifecycle ────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -692,6 +723,16 @@ async def lifespan(app: FastAPI):
     connector_tool = ConnectorTool(connector_manager)
     tool_registry.register(connector_tool)
 
+    # Start conversation auto-cleanup background task
+    cleanup_task = None
+    if config.memory.conversation_auto_delete_days > 0:
+        cleanup_task = asyncio.create_task(
+            _conversation_cleanup_loop(memory, config)
+        )
+        logger.info(
+            f"Conversation auto-cleanup enabled: {config.memory.conversation_auto_delete_days} days"
+        )
+
     # Store all state
     _state["config"] = config
     _state["secrets"] = secrets
@@ -726,6 +767,12 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    if cleanup_task and not cleanup_task.done():
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
     heartbeat.stop()
     await scheduler.stop()
     await worker_pool.cleanup()

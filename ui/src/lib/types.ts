@@ -64,6 +64,8 @@ export interface Conversation {
   created_at: number;
   title: string | null;
   metadata: Record<string, unknown>;
+  last_activity: number;
+  message_count: number;
 }
 
 export interface AgentStatus {
