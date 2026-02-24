@@ -917,6 +917,28 @@ class AgentRuntime:
                 yield AgentEvent("error", {"message": f"LLM error: {e}"})
                 return
 
+            # Handle truncated responses (finish_reason=length)
+            if response.finish_reason == "length":
+                logger.warning(f"Response truncated (finish_reason=length) at round {round_num + 1}")
+                # If there are tool calls with parse errors, don't execute them.
+                # Instead, tell the LLM to retry with smaller content.
+                has_parse_errors = any(
+                    "__parse_error" in tc.arguments for tc in response.tool_calls
+                ) if response.tool_calls else False
+
+                if has_parse_errors or response.tool_calls:
+                    # Add a user message telling the LLM its response was truncated
+                    truncation_msg = (
+                        "[SYSTEM] Your previous response was truncated (hit max_tokens limit). "
+                        "Your tool call arguments were cut off and could not be parsed. "
+                        "Please retry with SHORTER content. For large files, break them into "
+                        "multiple smaller write operations, or use the shell tool to write "
+                        "content via a script file."
+                    )
+                    await self._conversation.add_user_message(truncation_msg)
+                    yield AgentEvent("info", {"message": "Response was truncated, asking to retry with shorter content..."})
+                    continue  # Retry the round
+
             # If there's text content, emit it
             if response.content:
                 yield AgentEvent("text", {"content": response.content})
@@ -926,6 +948,16 @@ class AgentRuntime:
                 await self._conversation.add_assistant_message(content=response.content)
                 yield AgentEvent("done", {})
                 return
+
+            # Check for tool calls with parse errors and skip them
+            valid_tool_calls = []
+            for tc in response.tool_calls:
+                if "__parse_error" in tc.arguments:
+                    logger.warning(f"Skipping tool call {tc.name} with parse error: {tc.arguments.get('__parse_error')}")
+                    # We still need to add a tool_result for Anthropic pairing
+                    # This will be handled after we add the assistant message
+                else:
+                    valid_tool_calls.append(tc)
 
             # Track whether this round has any external (non-plan, non-memory) tool calls
             has_external_call = any(

@@ -33,7 +33,7 @@ class ModelConfig(BaseModel):
     api_key_env: str = "ANTHROPIC_API_KEY"
     base_url: str | None = None
     temperature: float = 0.7
-    max_tokens: int = 4096
+    max_tokens: int = 16384
 
 
 class ToolOverride(BaseModel):

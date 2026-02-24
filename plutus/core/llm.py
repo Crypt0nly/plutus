@@ -264,12 +264,24 @@ class LLMClient:
 
         tool_calls = []
         if message.tool_calls:
-            for tc in message.tool_calls:
-                import json
+            import json
 
+            for tc in message.tool_calls:
                 args = tc.function.arguments
                 if isinstance(args, str):
-                    args = json.loads(args)
+                    try:
+                        args = json.loads(args)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        # Tool call arguments were truncated (likely finish_reason=length)
+                        # or malformed. Log and pass empty args — the tool will report
+                        # a clear error about missing parameters.
+                        logger.warning(
+                            f"Failed to parse tool call args for {tc.function.name}: {e}. "
+                            f"Raw args (first 300 chars): {repr(args[:300])}"
+                        )
+                        args = {"__parse_error": str(e), "__raw_preview": args[:500]}
+                elif args is None:
+                    args = {}
                 tool_calls.append(
                     ToolCall(id=tc.id, name=tc.function.name, arguments=args)
                 )
