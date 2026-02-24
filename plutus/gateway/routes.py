@@ -306,7 +306,10 @@ def create_router() -> APIRouter:
             return {"workers": [], "stats": {}}
 
         return {
-            "workers": pool.list_all(),
+            "running": pool.list_running(),
+            "queued": pool.list_queued(),
+            "completed": pool.list_completed(30),
+            "workers": pool.list_all(),  # backward compat
             "stats": pool.stats(),
         }
 
@@ -353,9 +356,9 @@ def create_router() -> APIRouter:
             raise HTTPException(500, "Not initialized")
 
         if "max_concurrent_workers" in body.patch:
-            new_max = int(body.patch["max_concurrent_workers"])
+            new_max = max(1, min(int(body.patch["max_concurrent_workers"]), 20))
             config.workers.max_concurrent_workers = new_max
-            pool._semaphore = __import__("asyncio").Semaphore(new_max)
+            pool.max_workers = new_max
             config.save()
 
         return {"message": "Worker config updated", "stats": pool.stats()}

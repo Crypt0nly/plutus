@@ -70,7 +70,7 @@ class HeartbeatConfig(BaseModel):
 
 
 class WorkerConfig(BaseModel):
-    max_concurrent_workers: int = 3  # max simultaneous agent workers
+    max_concurrent_workers: int = 5  # max simultaneous agent workers (user-configurable, 1-20)
     default_timeout: int = 300  # default worker timeout in seconds
     worker_model: str = "claude-haiku"  # default model for workers
 
