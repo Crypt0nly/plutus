@@ -103,10 +103,6 @@ class WorkerTool(Tool):
                         "- 'auto': System picks based on task complexity"
                     ),
                 },
-                "timeout": {
-                    "type": "number",
-                    "description": "Timeout in seconds (default: 300).",
-                },
                 "tasks": {
                     "type": "array",
                     "items": {
@@ -119,7 +115,6 @@ class WorkerTool(Tool):
                                 "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "auto"],
                                 "description": "Model for this worker",
                             },
-                            "timeout": {"type": "number"},
                         },
                         "required": ["prompt"],
                     },
@@ -161,11 +156,17 @@ class WorkerTool(Tool):
 
         model_key = kwargs.get("model_key", "auto")
 
+        # Timeout is managed by the system — not exposed to the coordinator.
+        # Minimum 300s, default 600s. If the coordinator somehow passes a value,
+        # we enforce the floor.
+        raw_timeout = kwargs.get("timeout", 600.0)
+        timeout = max(300.0, float(raw_timeout) if raw_timeout else 600.0)
+
         task = WorkerTask(
             name=kwargs.get("name", ""),
             prompt=prompt,
             model_key=model_key,
-            timeout=kwargs.get("timeout", 600.0),
+            timeout=timeout,
         )
 
         status = await self._pool.submit(task)
@@ -185,11 +186,13 @@ class WorkerTool(Tool):
 
         tasks = []
         for td in tasks_data:
+            raw_t = td.get("timeout", 600.0)
+            t_timeout = max(300.0, float(raw_t) if raw_t else 600.0)
             tasks.append(WorkerTask(
                 name=td.get("name", ""),
                 prompt=td.get("prompt", ""),
                 model_key=td.get("model_key", "auto"),
-                timeout=td.get("timeout", 600.0),
+                timeout=t_timeout,
             ))
 
         statuses = await self._pool.submit_many(tasks)
