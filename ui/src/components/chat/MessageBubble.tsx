@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import type { Message } from "../../lib/types";
 import { ToolApproval } from "./ToolApproval";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface Props {
   message: Message;
@@ -797,63 +798,8 @@ export function MessageBubble({ message, send }: Props) {
   return null;
 }
 
-// ── Formatted Content ───────────────────────────────────────
+// ── Formatted Content (Markdown) ───────────────────────────
 
 function FormattedContent({ text }: { text: string }) {
-  // Handle code blocks first
-  const blocks = text.split(/(```[\s\S]*?```)/g);
-
-  return (
-    <>
-      {blocks.map((block, i) => {
-        // Code block
-        if (block.startsWith("```") && block.endsWith("```")) {
-          const lines = block.slice(3, -3).split("\n");
-          const lang = lines[0]?.trim() || "";
-          const code = lang ? lines.slice(1).join("\n") : lines.join("\n");
-
-          return (
-            <div key={i} className="my-2 bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
-              {lang && (
-                <div className="px-3 py-1 bg-gray-800/50 border-b border-gray-800 text-[10px] text-gray-500">
-                  {lang}
-                </div>
-              )}
-              <pre className="px-3 py-2 text-xs font-mono text-gray-300 overflow-x-auto">
-                {code}
-              </pre>
-            </div>
-          );
-        }
-
-        // Inline formatting
-        const parts = block.split(/(\*\*.*?\*\*|`.*?`|\n)/g);
-        return (
-          <span key={i}>
-            {parts.map((part, j) => {
-              if (part === "\n") return <br key={j} />;
-              if (part.startsWith("**") && part.endsWith("**")) {
-                return (
-                  <strong key={j} className="font-semibold text-gray-100">
-                    {part.slice(2, -2)}
-                  </strong>
-                );
-              }
-              if (part.startsWith("`") && part.endsWith("`")) {
-                return (
-                  <code
-                    key={j}
-                    className="px-1.5 py-0.5 bg-gray-700 rounded text-plutus-300 text-xs font-mono"
-                  >
-                    {part.slice(1, -1)}
-                  </code>
-                );
-              }
-              return <span key={j}>{part}</span>;
-            })}
-          </span>
-        );
-      })}
-    </>
-  );
+  return <MarkdownRenderer content={text} />;
 }
