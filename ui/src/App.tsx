@@ -187,14 +187,13 @@ export default function App() {
 
         // ── Worker events ─────────────────────────────────────────────
         case "worker_result": {
-          // A background worker finished — show its result in chat
+          // A background worker finished — show its result in chat with special prefix
           const workerName = msg.name || "Worker";
           const workerModel = msg.model || "";
           const workerResult = msg.result || "(no output)";
-          const modelTag = workerModel ? ` (${workerModel})` : "";
           addMessage({
             role: "assistant",
-            content: `**Worker Result — ${workerName}**${modelTag}\n\n${workerResult}`,
+            content: `__WORKER_RESULT__:${workerName}:${workerModel}:${workerResult}`,
           });
           break;
         }
@@ -204,7 +203,7 @@ export default function App() {
           const w = msg.worker || {};
           addMessage({
             role: "system",
-            content: `Worker **${w.name || w.task_id}** started (${w.model || "auto"})`,
+            content: `__WORKER_STARTED__:${w.name || w.task_id}:${w.model || "auto"}`,
           });
           break;
         }

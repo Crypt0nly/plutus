@@ -31,6 +31,8 @@ import {
   Maximize2,
   Minimize2,
   Send,
+  Users,
+  Cpu,
 } from "lucide-react";
 import type { Message } from "../../lib/types";
 import { ToolApproval } from "./ToolApproval";
@@ -656,6 +658,41 @@ export function MessageBubble({ message, send }: Props) {
   }
 
   if (role === "assistant") {
+    // Check if this is a worker result
+    if (content?.startsWith("__WORKER_RESULT__:")) {
+      const rest = content.replace("__WORKER_RESULT__:", "");
+      const firstColon = rest.indexOf(":");
+      const workerName = rest.slice(0, firstColon);
+      const afterName = rest.slice(firstColon + 1);
+      const secondColon = afterName.indexOf(":");
+      const workerModel = afterName.slice(0, secondColon);
+      const workerResult = afterName.slice(secondColon + 1);
+
+      return (
+        <div className="flex gap-3 animate-fade-in">
+          <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 ring-1 ring-amber-500/30">
+            <Cpu className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="max-w-2xl w-full">
+            <div className="bg-gradient-to-br from-amber-500/[0.08] to-orange-500/[0.05] border border-amber-500/20 px-4 py-3 rounded-2xl rounded-tl-md">
+              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-amber-500/10">
+                <Users className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-amber-300">{workerName}</span>
+                {workerModel && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400/70 font-mono">
+                    {workerModel}
+                  </span>
+                )}
+              </div>
+              <div className="text-sm leading-relaxed text-gray-200">
+                <FormattedContent text={workerResult} />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex gap-3 animate-fade-in">
         <div className="w-8 h-8 rounded-full bg-plutus-600/20 flex items-center justify-center flex-shrink-0">
@@ -717,6 +754,23 @@ export function MessageBubble({ message, send }: Props) {
               <Terminal className="w-3 h-3" />
             )}
             {content}
+          </div>
+        </div>
+      );
+    }
+
+    // Worker started indicator
+    if (content?.startsWith("__WORKER_STARTED__:")) {
+      const rest = content.replace("__WORKER_STARTED__:", "");
+      const colonIdx = rest.indexOf(":");
+      const wName = rest.slice(0, colonIdx);
+      const wModel = rest.slice(colonIdx + 1);
+      return (
+        <div className="flex items-center justify-center gap-2 py-2 animate-fade-in">
+          <div className="px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 bg-amber-500/10 text-amber-400/80 border border-amber-500/15">
+            <Cpu className="w-3 h-3" />
+            <span>Worker <strong>{wName}</strong> dispatched</span>
+            <span className="text-[10px] font-mono text-amber-400/50">{wModel}</span>
           </div>
         </div>
       );

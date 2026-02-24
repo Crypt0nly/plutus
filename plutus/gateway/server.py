@@ -62,19 +62,20 @@ async def _heartbeat_on_event(event_data: dict[str, Any]) -> None:
 # ── Worker executor ──────────────────────────────────────────────────────────
 
 async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
-    """Execute a worker task using an INDEPENDENT LLM call.
+    """Execute a worker task with an independent multi-turn agent loop.
 
-    Workers do NOT route through the coordinator agent. They make their own
-    standalone API call using litellm, with the model selected by the router.
-    This prevents:
-      - Self-await deadlocks (coordinator waiting on its own task)
-      - Conversation context pollution between coordinator and workers
-      - Recursion depth issues from circular dependencies
+    Workers have access to ALL tools from the registry and can make multiple
+    LLM calls in a loop (just like the coordinator), but they:
+      - Have their OWN conversation context (no pollution)
+      - Run independently (no self-await deadlocks)
+      - Bypass guardrails (the coordinator already approved the spawn)
+      - Have a max of 15 tool rounds to prevent runaway workers
     """
+    import json as _json
     import litellm
 
     model_router: ModelRouter | None = _state.get("model_router")
-    secrets: SecretsStore | None = _state.get("secrets")
+    tool_registry = _state.get("tool_registry")
 
     # Select model for this worker
     model_string = "anthropic/claude-sonnet-4-6"  # fallback
@@ -85,10 +86,14 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         model_string = model_router.get_litellm_model_string(spec)
         model_display = spec.display_name
         # Record usage
-        for key, s in __import__("plutus.core.model_router", fromlist=["AVAILABLE_MODELS"]).AVAILABLE_MODELS.items():
-            if s.id == spec.id:
-                model_router.record_usage(key)
-                break
+        try:
+            from plutus.core.model_router import AVAILABLE_MODELS
+            for key, s in AVAILABLE_MODELS.items():
+                if s.id == spec.id:
+                    model_router.record_usage(key)
+                    break
+        except Exception:
+            pass
 
     # Update status
     status = WorkerStatus(
@@ -106,31 +111,117 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         "worker": {"task_id": task.id, "name": task.name, "model": model_display},
     })
 
-    # Make an independent LLM call — NOT through the coordinator agent
+    # Build tool definitions from the registry (exclude 'worker' to prevent recursion)
+    tools_for_llm = []
+    if tool_registry:
+        for tool in tool_registry._tools.values():
+            if tool.name == "worker":  # prevent workers from spawning workers
+                continue
+            try:
+                defn = tool.get_definition()
+                tools_for_llm.append({
+                    "type": "function",
+                    "function": {
+                        "name": defn.name,
+                        "description": defn.description,
+                        "parameters": defn.parameters,
+                    },
+                })
+            except Exception:
+                pass
+
+    # Worker system prompt
     worker_system_prompt = (
         "You are a Plutus worker agent. You have been assigned a specific task by the "
-        "coordinator. Complete the task thoroughly and return your result. "
-        "Be concise but comprehensive. Do not ask follow-up questions — just do the work."
+        "coordinator. You have access to tools (shell, filesystem, browser, pc control, etc.) "
+        "to complete your task. Complete the task thoroughly and return your result. "
+        "Be concise but comprehensive. Do not ask follow-up questions — just do the work.\n\n"
+        "When you are done, respond with your final result as plain text (no tool calls)."
     )
 
-    messages = [
+    messages: list[dict[str, Any]] = [
         {"role": "system", "content": worker_system_prompt},
         {"role": "user", "content": task.prompt},
     ]
 
+    MAX_WORKER_ROUNDS = 15
+    result = "Task completed (no output)."
+    final_texts: list[str] = []
+
     try:
-        # Update status
-        status.current_step = f"Calling {model_display}..."
-        await on_status(status)
+        for round_num in range(MAX_WORKER_ROUNDS):
+            status.current_step = f"Round {round_num + 1}/{MAX_WORKER_ROUNDS} — {model_display}"
+            status.progress_pct = min(95.0, (round_num / MAX_WORKER_ROUNDS) * 100)
+            await on_status(status)
 
-        response = await litellm.acompletion(
-            model=model_string,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=4096,
-        )
+            call_kwargs: dict[str, Any] = {
+                "model": model_string,
+                "messages": messages,
+                "temperature": 0.7,
+                "max_tokens": 4096,
+            }
+            if tools_for_llm:
+                call_kwargs["tools"] = tools_for_llm
 
-        result = response.choices[0].message.content or "Task completed (no output)."
+            response = await litellm.acompletion(**call_kwargs)
+            choice = response.choices[0]
+            msg = choice.message
+
+            # Collect any text content
+            if msg.content:
+                final_texts.append(msg.content)
+
+            # If no tool calls, we're done
+            if not msg.tool_calls:
+                break
+
+            # Append the assistant message with tool calls
+            assistant_msg: dict[str, Any] = {"role": "assistant"}
+            if msg.content:
+                assistant_msg["content"] = msg.content
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments if isinstance(tc.function.arguments, str) else _json.dumps(tc.function.arguments),
+                    },
+                }
+                for tc in msg.tool_calls
+            ]
+            messages.append(assistant_msg)
+
+            # Execute each tool call
+            for tc in msg.tool_calls:
+                tool_name = tc.function.name
+                try:
+                    args_raw = tc.function.arguments
+                    args = _json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                except Exception:
+                    args = {}
+
+                status.current_step = f"Using tool: {tool_name}"
+                await on_status(status)
+
+                tool_result = "[ERROR] Tool not found"
+                if tool_registry:
+                    tool_obj = tool_registry.get(tool_name)
+                    if tool_obj and tool_name != "worker":
+                        try:
+                            tool_result = str(await tool_obj.execute(**args))
+                        except Exception as e:
+                            tool_result = f"[ERROR] {e}"
+
+                # Append tool result
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": tool_result[:8000],  # cap to avoid context overflow
+                })
+
+        # Assemble final result from all text outputs
+        result = "\n".join(final_texts) if final_texts else "Task completed (no output)."
 
         # Update status
         status.current_step = "Done"
@@ -140,7 +231,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
 
     except Exception as e:
         result = f"[Worker Error] {e}"
-        logger.exception(f"Worker {task.id} LLM call failed: {e}")
+        logger.exception(f"Worker {task.id} failed: {e}")
 
     # Broadcast completion status to workers panel
     await ws_manager.broadcast({
@@ -155,8 +246,18 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         "name": task.name,
         "model": model_display,
         "result": result,
-        "duration": 0.0,  # will be set by worker_pool via status
+        "duration": 0.0,
     })
+
+    # Inject the result into the coordinator's conversation context
+    # so Plutus can see what the workers produced
+    agent: AgentRuntime | None = _state.get("agent")
+    if agent and agent.conversation.conversation_id:
+        worker_context_msg = (
+            f"[Worker Result — {task.name} ({model_display})]\n"
+            f"{result}"
+        )
+        await agent.conversation.add_assistant_message(content=worker_context_msg)
 
     return result
 
