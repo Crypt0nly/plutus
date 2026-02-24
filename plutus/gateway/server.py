@@ -140,7 +140,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
     )
 
     config: PlutusConfig | None = _state.get("config")
-    _is_anthropic = model_key.startswith("anthropic") or (
+    _is_anthropic = model_string.startswith("anthropic") or (
         config and config.model.provider == "anthropic"
     )
     if _is_anthropic and (not config or config.model.web_search):
