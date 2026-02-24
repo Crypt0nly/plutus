@@ -195,15 +195,19 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
             }
 
             if force_summary:
-                # Don't send tools — force the LLM to respond with text only.
-                # Add a nudge message so the LLM knows to summarize.
+                # Force the LLM to respond with text only.
+                # We MUST still include tools= param if the conversation history
+                # contains tool_calls — Anthropic's API requires it.
+                # But we add a strong nudge to NOT use them.
+                if tools_for_llm:
+                    call_kwargs["tools"] = tools_for_llm
                 messages.append({
                     "role": "user",
                     "content": (
-                        "[SYSTEM] You are running out of rounds. Please provide your "
-                        "FINAL summary now. Describe what you accomplished and include "
-                        "any relevant results, output, or file paths. Do NOT call any "
-                        "more tools — just respond with your final text."
+                        "[SYSTEM] This is your FINAL round. You MUST respond with text only. "
+                        "Do NOT call any tools. Provide a clear summary of what you accomplished "
+                        "and include any relevant results, output, data, or file paths. "
+                        "If you call a tool, the task will be terminated."
                     ),
                 })
                 logger.info(f"Worker {task.id} forced summary at round {round_num + 1}")
