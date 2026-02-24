@@ -119,6 +119,90 @@ class LLMClient:
         kwargs.update(overrides)
         return kwargs
 
+    @staticmethod
+    def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Ensure every tool_use has a matching tool_result immediately after.
+
+        Anthropic requires strict pairing: each assistant message with tool_calls
+        must be followed by tool result messages for every tool_call_id.
+        If any are missing, we inject synthetic tool_result messages to prevent
+        API errors.
+        """
+        sanitized: list[dict[str, Any]] = []
+        for i, msg in enumerate(messages):
+            sanitized.append(msg)
+
+            # Check if this is an assistant message with tool_calls
+            tool_calls = msg.get("tool_calls", [])
+            if msg.get("role") == "assistant" and tool_calls:
+                # Collect the tool_call IDs that need results
+                expected_ids = set()
+                for tc in tool_calls:
+                    tc_id = tc.get("id")
+                    if tc_id:
+                        expected_ids.add(tc_id)
+
+                # Look ahead for tool_result messages that follow
+                found_ids = set()
+                for j in range(i + 1, len(messages)):
+                    next_msg = messages[j]
+                    if next_msg.get("role") == "tool":
+                        tcid = next_msg.get("tool_call_id")
+                        if tcid in expected_ids:
+                            found_ids.add(tcid)
+                    else:
+                        break  # Stop at first non-tool message
+
+                # Inject synthetic results for any missing tool_call_ids
+                missing = expected_ids - found_ids
+                for tc_id in missing:
+                    logger.warning(f"Injecting synthetic tool_result for orphaned tool_use {tc_id}")
+                    # We need to insert AFTER the current message but BEFORE
+                    # the next non-tool message. Since we're building a new list,
+                    # we can't insert into `sanitized` mid-iteration easily.
+                    # Instead, we'll do a second pass below.
+
+        # Second pass: ensure pairing
+        result: list[dict[str, Any]] = []
+        i = 0
+        while i < len(sanitized):
+            msg = sanitized[i]
+            result.append(msg)
+
+            tool_calls = msg.get("tool_calls", [])
+            if msg.get("role") == "assistant" and tool_calls:
+                expected_ids = set()
+                for tc in tool_calls:
+                    tc_id = tc.get("id")
+                    if tc_id:
+                        expected_ids.add(tc_id)
+
+                # Consume following tool messages
+                j = i + 1
+                while j < len(sanitized) and sanitized[j].get("role") == "tool":
+                    tool_msg = sanitized[j]
+                    result.append(tool_msg)
+                    tcid = tool_msg.get("tool_call_id")
+                    if tcid in expected_ids:
+                        expected_ids.discard(tcid)
+                    j += 1
+
+                # Inject synthetic results for any still-missing IDs
+                for tc_id in expected_ids:
+                    logger.warning(f"Sanitizer: injecting tool_result for orphaned tool_use {tc_id}")
+                    result.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": "[No result available — tool execution was interrupted]",
+                    })
+
+                i = j
+                continue
+
+            i += 1
+
+        return result
+
     async def complete(
         self,
         messages: list[dict[str, Any]],
@@ -127,7 +211,7 @@ class LLMClient:
     ) -> LLMResponse:
         """Send a completion request to the LLM."""
         call_kwargs = self._build_kwargs(**kwargs)
-        call_kwargs["messages"] = messages
+        call_kwargs["messages"] = self._sanitize_messages(messages)
 
         if tools:
             call_kwargs["tools"] = [

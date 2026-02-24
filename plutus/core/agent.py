@@ -882,6 +882,17 @@ class AgentRuntime:
 
         await self._conversation.add_user_message(user_message)
 
+        # Drain any pending worker results into the conversation.
+        # These are queued by background workers to avoid injecting
+        # messages mid-tool-loop (which breaks Anthropic's tool_use/tool_result pairing).
+        if hasattr(self, '_pending_worker_results') and self._pending_worker_results:
+            for wr_msg in self._pending_worker_results:
+                await self._conversation.add_user_message(
+                    f"[SYSTEM NOTIFICATION]\n{wr_msg}"
+                )
+            logger.info(f"Drained {len(self._pending_worker_results)} pending worker results into conversation")
+            self._pending_worker_results.clear()
+
         yield AgentEvent("thinking", {"message": "Processing your request..."})
 
         tool_defs = self._get_tool_definitions()
