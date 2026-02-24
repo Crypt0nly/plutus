@@ -154,7 +154,10 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         for round_num in range(MAX_WORKER_ROUNDS):
             status.current_step = f"Round {round_num + 1}/{MAX_WORKER_ROUNDS} — {model_display}"
             status.progress_pct = min(95.0, (round_num / MAX_WORKER_ROUNDS) * 100)
-            await on_status(status)
+            try:
+                await on_status(status)
+            except Exception:
+                pass
 
             call_kwargs: dict[str, Any] = {
                 "model": model_string,
@@ -165,12 +168,45 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
             if tools_for_llm:
                 call_kwargs["tools"] = tools_for_llm
 
-            try:
-                response = await litellm.acompletion(**call_kwargs)
-            except Exception as llm_err:
-                logger.error(f"Worker {task.id} LLM call failed on round {round_num + 1}: {llm_err}")
-                result = f"[Worker Error] LLM call failed: {llm_err}"
-                errored = True
+            # LLM call with retry logic — litellm/httpx can raise CancelledError
+            # on transient connection issues, so we retry up to 2 times
+            response = None
+            for attempt in range(3):
+                try:
+                    response = await litellm.acompletion(**call_kwargs)
+                    break  # success
+                except asyncio.CancelledError:
+                    # Check if this is a real cancellation (from pool.cancel)
+                    # or a transient error from httpx/aiohttp
+                    current_task = asyncio.current_task()
+                    if current_task and current_task.cancelled():
+                        # Real cancellation — propagate
+                        logger.info(f"Worker {task.id} truly cancelled on round {round_num + 1}")
+                        raise
+                    # Transient CancelledError from HTTP client — retry
+                    logger.warning(f"Worker {task.id} got transient CancelledError on round {round_num + 1}, attempt {attempt + 1}/3")
+                    if attempt < 2:
+                        await asyncio.sleep(1.0 * (attempt + 1))  # backoff
+                        continue
+                    else:
+                        logger.error(f"Worker {task.id} CancelledError persisted after 3 attempts")
+                        result = f"[Worker Error] LLM call cancelled after 3 retries"
+                        errored = True
+                        break
+                except Exception as llm_err:
+                    logger.error(f"Worker {task.id} LLM call failed on round {round_num + 1}, attempt {attempt + 1}: {llm_err}")
+                    if attempt < 2:
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                        continue
+                    else:
+                        result = f"[Worker Error] LLM call failed after 3 retries: {llm_err}"
+                        errored = True
+                        break
+
+            if errored or response is None:
+                if not errored:
+                    result = "[Worker Error] LLM call returned no response"
+                    errored = True
                 break
 
             choice = response.choices[0]
@@ -211,7 +247,10 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
                     args = {}
 
                 status.current_step = f"Using tool: {tool_name}"
-                await on_status(status)
+                try:
+                    await on_status(status)
+                except Exception:
+                    pass
 
                 tool_result = "[ERROR] Tool not found"
                 if tool_registry:
@@ -219,6 +258,13 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
                     if tool_obj and tool_name != "worker":
                         try:
                             tool_result = str(await tool_obj.execute(**args))
+                        except asyncio.CancelledError:
+                            # Check if real cancellation
+                            current_task = asyncio.current_task()
+                            if current_task and current_task.cancelled():
+                                raise
+                            tool_result = "[ERROR] Tool execution was interrupted, please retry"
+                            logger.warning(f"Worker {task.id} tool {tool_name} got transient CancelledError")
                         except Exception as e:
                             tool_result = f"[ERROR] {e}"
 
@@ -237,17 +283,20 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         status.current_step = "Done"
         status.steps_completed = 1
         status.progress_pct = 100.0
-        await on_status(status)
+        try:
+            await on_status(status)
+        except Exception:
+            pass
 
-    except asyncio.CancelledError:
-        result = "[Worker Cancelled]"
-        logger.info(f"Worker {task.id} was cancelled")
     except Exception as e:
+        # Catch all non-cancellation errors. CancelledError is NOT caught here
+        # (it's a BaseException in Python 3.9+) so it propagates to _run_worker.
         result = f"[Worker Error] {e}"
         logger.exception(f"Worker {task.id} failed: {e}")
-    finally:
-        # ALWAYS broadcast results, even on error/cancellation.
-        # This guarantees the UI gets the result and the coordinator sees it.
+
+    # Broadcast results to UI and coordinator.
+    # Use asyncio.shield to protect broadcasts from cancellation.
+    async def _broadcast_results() -> None:
         try:
             # Broadcast completion status to workers panel
             await ws_manager.broadcast({
@@ -256,7 +305,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
                     "task_id": task.id,
                     "name": task.name,
                     "result": result[:500],
-                    "state": "failed" if result.startswith("[Worker Error]") or result.startswith("[Worker Cancelled]") else "completed",
+                    "state": "failed" if result.startswith("[Worker Error]") else "completed",
                 },
             })
 
@@ -273,7 +322,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
             # Inject the result into the coordinator's conversation context
             # so Plutus can see what the workers produced
             agent: AgentRuntime | None = _state.get("agent")
-            if agent and agent.conversation.conversation_id:
+            if agent and hasattr(agent, 'conversation') and agent.conversation.conversation_id:
                 worker_context_msg = (
                     f"[Worker Result — {task.name} ({model_display})]\n"
                     f"{result}"
@@ -281,6 +330,16 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
                 await agent.conversation.add_assistant_message(content=worker_context_msg)
         except Exception as broadcast_err:
             logger.error(f"Worker {task.id} failed to broadcast results: {broadcast_err}")
+
+    try:
+        await asyncio.shield(_broadcast_results())
+    except asyncio.CancelledError:
+        # Shield was cancelled but the inner task continues
+        # Try one more time synchronously-ish
+        try:
+            await _broadcast_results()
+        except Exception:
+            logger.error(f"Worker {task.id}: final broadcast attempt failed")
 
     return result
 
