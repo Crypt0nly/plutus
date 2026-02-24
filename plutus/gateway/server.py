@@ -225,13 +225,10 @@ async def lifespan(app: FastAPI):
 
     # Initialize model router
     routing_config = ModelRoutingConfig(
-        primary_provider=config.model_routing.primary_provider,
         enabled_models=config.model_routing.enabled_models,
-        default_model=config.model_routing.default_model,
-        auto_route=config.model_routing.auto_route,
         cost_conscious=config.model_routing.cost_conscious,
-        worker_model=config.model_routing.worker_model,
-        scheduler_model=config.model_routing.scheduler_model,
+        default_worker_model=config.model_routing.default_worker_model,
+        default_scheduler_model=config.model_routing.default_scheduler_model,
     )
     model_router = ModelRouter(config=routing_config, secrets=secrets)
 

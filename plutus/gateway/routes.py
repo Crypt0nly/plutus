@@ -42,7 +42,7 @@ class CreateCustomToolRequest(BaseModel):
     tool_name: str
     description: str = ""
     code: str
-    register: bool = True
+    auto_register: bool = True  # renamed from 'register' to avoid shadowing BaseModel.register
 
 
 class HeartbeatUpdate(BaseModel):
@@ -474,11 +474,10 @@ def create_router() -> APIRouter:
         return {
             "models": model_router.list_models(),
             "routing": {
-                "auto_route": config.model_routing.auto_route if config else True,
-                "default_model": config.model_routing.default_model if config else "claude-sonnet",
                 "cost_conscious": config.model_routing.cost_conscious if config else False,
-                "worker_model": config.model_routing.worker_model if config else "claude-haiku",
-                "scheduler_model": config.model_routing.scheduler_model if config else "claude-haiku",
+                "default_worker_model": config.model_routing.default_worker_model if config else "auto",
+                "default_scheduler_model": config.model_routing.default_scheduler_model if config else "auto",
+                "enabled_models": config.model_routing.enabled_models if config else [],
             },
             "status": model_router.get_status(),
         }
@@ -503,11 +502,10 @@ def create_router() -> APIRouter:
 
         # Update router
         if model_router:
-            model_router.config.auto_route = config.model_routing.auto_route
-            model_router.config.default_model = config.model_routing.default_model
             model_router.config.cost_conscious = config.model_routing.cost_conscious
-            model_router.config.worker_model = config.model_routing.worker_model
-            model_router.config.scheduler_model = config.model_routing.scheduler_model
+            model_router.config.default_worker_model = config.model_routing.default_worker_model
+            model_router.config.default_scheduler_model = config.model_routing.default_scheduler_model
+            model_router.config.enabled_models = config.model_routing.enabled_models
 
         return {"message": "Model routing updated"}
 
@@ -599,7 +597,7 @@ def create_router() -> APIRouter:
 
         # Register the tool in the live registry
         registered = False
-        if body.register:
+        if body.auto_register:
             state = get_state()
             registry = state.get("tool_registry")
             if registry:

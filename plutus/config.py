@@ -76,15 +76,12 @@ class WorkerConfig(BaseModel):
 
 
 class ModelRoutingConfig(BaseModel):
-    primary_provider: str = "anthropic"
     enabled_models: list[str] = Field(default_factory=lambda: [
-        "claude-opus", "claude-sonnet", "claude-haiku"
+        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2"
     ])
-    default_model: str = "claude-sonnet"
-    auto_route: bool = True  # auto-select model based on task complexity
-    cost_conscious: bool = False  # prefer cheaper models when possible
-    worker_model: str = "claude-haiku"  # default model for workers
-    scheduler_model: str = "claude-haiku"  # default model for scheduled jobs
+    cost_conscious: bool = False  # prefer cheaper worker models
+    default_worker_model: str = "auto"  # "auto" or a specific model key
+    default_scheduler_model: str = "auto"  # "auto" or a specific model key
 
 
 class SchedulerConfig(BaseModel):
