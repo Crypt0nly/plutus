@@ -161,6 +161,7 @@ class WorkerPool:
     @max_workers.setter
     def max_workers(self, value: int) -> None:
         self._max_workers = max(1, min(value, 20))
+        logger.info(f"Max workers updated to {self._max_workers}")
         # Recreate semaphore (active tasks will finish, new ones use new limit)
         self._semaphore = asyncio.Semaphore(self._max_workers)
 
@@ -235,6 +236,14 @@ class WorkerPool:
     def list_active(self) -> list[dict[str, Any]]:
         """List all active (queued + running) workers."""
         return [s.to_dict() for s in self._active.values()]
+
+    def list_running(self) -> list[dict[str, Any]]:
+        """List only running workers."""
+        return [s.to_dict() for s in self._active.values() if s.state == WorkerState.RUNNING]
+
+    def list_queued(self) -> list[dict[str, Any]]:
+        """List only queued workers."""
+        return [s.to_dict() for s in self._active.values() if s.state == WorkerState.QUEUED]
 
     def list_completed(self, limit: int = 50) -> list[dict[str, Any]]:
         """List recently completed workers."""
