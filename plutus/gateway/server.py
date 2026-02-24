@@ -163,6 +163,8 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
     errored = False
     timed_out = False
 
+    logger.info(f"Worker {task.id} ({task.name}) starting executor — model={model_string}, tools={len(tools_for_llm)}, deadline={deadline}")
+
     try:
         for round_num in range(MAX_WORKER_ROUNDS):
             # Check deadline BEFORE each round — with 60s buffer for final summary
@@ -251,11 +253,18 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
 
             choice = response.choices[0]
             msg = choice.message
+            finish_reason = getattr(choice, 'finish_reason', 'unknown')
+            has_content = bool(msg.content)
+            has_tools = bool(msg.tool_calls)
+            logger.info(f"Worker {task.id} round {round_num + 1}: finish_reason={finish_reason}, has_content={has_content}, has_tools={has_tools}, content_preview={repr(msg.content[:100]) if msg.content else 'None'}")
 
             # If no tool calls, this is the FINAL response — the worker is done
             if not msg.tool_calls:
                 if msg.content:
                     final_texts.append(msg.content)
+                    logger.info(f"Worker {task.id} completed with final text ({len(msg.content)} chars)")
+                else:
+                    logger.warning(f"Worker {task.id} sent stop response with NO content (finish_reason={finish_reason})")
                 break
 
             # Has tool calls — text here is "thinking out loud". Keep as fallback.
@@ -295,6 +304,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                     pass
 
                 tool_result = "[ERROR] Tool not found"
+                logger.info(f"Worker {task.id} calling tool: {tool_name}({list(args.keys())})")
                 if tool_registry:
                     tool_obj = tool_registry.get(tool_name)
                     if tool_obj and tool_name != "worker":
@@ -310,6 +320,8 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                         except Exception as e:
                             tool_result = f"[ERROR] {e}"
 
+                logger.info(f"Worker {task.id} tool {tool_name} result: {repr(tool_result[:200])}")
+
                 # Track tool output for fallback
                 if tool_result and not tool_result.startswith("[ERROR]"):
                     tool_outputs.append(f"[{tool_name}]: {tool_result[:2000]}")
@@ -324,6 +336,8 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
         # Assemble the final result with fallback logic:
         # 1. Best case: the LLM gave a proper final text-only response
         # 2. Fallback: use thinking text + tool outputs if final response was empty
+        logger.info(f"Worker {task.id} loop ended — final_texts={len(final_texts)}, thinking_texts={len(thinking_texts)}, tool_outputs={len(tool_outputs)}, errored={errored}, timed_out={timed_out}")
+
         if not errored:
             if final_texts:
                 # Got a proper final summary from the LLM
