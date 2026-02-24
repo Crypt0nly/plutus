@@ -34,7 +34,10 @@ export function DashboardView() {
 
   const fetchAll = useCallback(() => {
     api.getStatus().then(setStatus).catch(() => {});
-    api.getAudit(20).then(setAudit).catch(() => {});
+    api.getAudit(20).then((d) => {
+      if (d && !Array.isArray(d.entries)) d.entries = [];
+      setAudit(d);
+    }).catch(() => {});
     api.getConversations(5).then(setConversations).catch(() => {});
     api.getConnectors().then(setConnectors).catch(() => {});
     api.getSkills().then(setSkills).catch(() => {});

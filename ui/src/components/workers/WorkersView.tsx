@@ -237,9 +237,9 @@ function WorkersTab() {
   if (loading) return <LoadingSpinner text="Loading workers..." />;
 
   const stats = data?.stats || {};
-  const running = data?.running || [];
-  const queued = data?.queued || [];
-  const completed = data?.completed || [];
+  const running = Array.isArray(data?.running) ? data.running : [];
+  const queued = Array.isArray(data?.queued) ? data.queued : [];
+  const completed = Array.isArray(data?.completed) ? data.completed : [];
   const routing = modelData?.routing || {};
   const activeCount = stats.active_count || running.length;
   const queuedCount = stats.queued_count || queued.length;
