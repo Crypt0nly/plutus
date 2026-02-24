@@ -215,7 +215,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 "model": model_string,
                 "messages": messages,
                 "temperature": 0.7,
-                "max_tokens": 4096,
+                "max_tokens": 16384,  # Must be high — tool calls with file content can be 5000+ tokens
             }
 
             if force_summary:
@@ -286,6 +286,25 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
             has_tools = bool(msg.tool_calls)
             logger.info(f"Worker {task.id} round {round_num + 1}: finish_reason={finish_reason}, has_content={has_content}, has_tools={has_tools}, content_preview={repr(msg.content[:100]) if msg.content else 'None'}")
 
+            # Handle finish_reason=length — response was truncated
+            if finish_reason == 'length':
+                logger.warning(f"Worker {task.id} response truncated (finish_reason=length) at round {round_num + 1}")
+                # Save any partial content as thinking text
+                if msg.content:
+                    thinking_texts.append(msg.content)
+                # Tell the LLM to retry with shorter content
+                messages.append({"role": "assistant", "content": msg.content or ""})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "[SYSTEM] Your previous response was truncated because it was too long. "
+                        "Break your work into SMALLER steps. If you were writing a large file, "
+                        "write it in multiple smaller append operations instead of one big write. "
+                        "Continue from where you left off."
+                    ),
+                })
+                continue
+
             # If no tool calls, this is the FINAL response — the worker is done
             if not msg.tool_calls:
                 if msg.content:
@@ -322,8 +341,21 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 try:
                     args_raw = tc.function.arguments
                     args = _json.loads(args_raw) if isinstance(args_raw, str) else args_raw
-                except Exception:
-                    args = {}
+                except Exception as parse_err:
+                    logger.error(f"Worker {task.id} failed to parse tool args for {tool_name}: {parse_err}")
+                    logger.error(f"Worker {task.id} raw args (first 500 chars): {repr(str(args_raw)[:500])}")
+                    # If JSON is truncated (finish_reason=length), tell the LLM
+                    tool_result = (
+                        f"[ERROR] Tool call arguments were malformed or truncated. "
+                        f"This usually means your response was too long and got cut off. "
+                        f"Try breaking the task into smaller steps — write smaller chunks of content."
+                    )
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": tool_result,
+                    })
+                    continue
 
                 status.current_step = f"Using tool: {tool_name}"
                 try:
@@ -332,7 +364,14 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                     pass
 
                 tool_result = "[ERROR] Tool not found"
-                logger.info(f"Worker {task.id} calling tool: {tool_name}({list(args.keys())})")
+                # Log tool args with content length for debugging file write issues
+                args_summary = {}
+                for k, v in args.items():
+                    if isinstance(v, str) and len(v) > 100:
+                        args_summary[k] = f"<string, {len(v)} chars>"
+                    else:
+                        args_summary[k] = repr(v)[:100]
+                logger.info(f"Worker {task.id} calling tool: {tool_name}({args_summary})")
                 if tool_registry:
                     tool_obj = tool_registry.get(tool_name)
                     if tool_obj and tool_name != "worker":
