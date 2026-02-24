@@ -264,6 +264,10 @@ class ConversationManager:
                 elif msg["role"] == "tool":
                     # Anthropic requires tool messages to always have non-empty content
                     entry["content"] = "(no output)"
+                elif msg["role"] == "assistant":
+                    # Assistant messages need a content field even when they only
+                    # carry tool_calls; some providers reject messages without it.
+                    entry["content"] = ""
                 if msg["tool_calls"]:
                     # Convert stored format to OpenAI-compatible format for LiteLLM
                     entry["tool_calls"] = [

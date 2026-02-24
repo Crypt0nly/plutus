@@ -393,7 +393,10 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 if tool_result and not tool_result.startswith("[ERROR]"):
                     tool_outputs.append(f"[{tool_name}]: {tool_result[:2000]}")
 
-                # Append tool result
+                # Append tool result — ensure content is never empty
+                # (Anthropic rejects tool messages without content)
+                if not tool_result or not tool_result.strip():
+                    tool_result = "(no output)"
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
