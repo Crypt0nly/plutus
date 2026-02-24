@@ -155,23 +155,28 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
     ]
 
     MAX_WORKER_ROUNDS = 15
+    FORCE_SUMMARY_AT = MAX_WORKER_ROUNDS - 1  # Last round: no tools, force text
     result = "Task completed (no output)."
-    final_texts: list[str] = []
+    final_texts: list[str] = []       # Only the FINAL text-only response
+    thinking_texts: list[str] = []    # "Thinking" text from rounds with tool calls
+    tool_outputs: list[str] = []      # Collected tool outputs as fallback context
     errored = False
     timed_out = False
 
     try:
         for round_num in range(MAX_WORKER_ROUNDS):
-            # Check deadline BEFORE each round
-            if deadline and time.time() >= deadline:
-                remaining_text = "\n".join(final_texts) if final_texts else ""
-                if remaining_text:
-                    result = remaining_text + "\n\n[Worker timed out — partial result above]"
-                else:
-                    result = f"[Worker timed out after {task.timeout}s]"
+            # Check deadline BEFORE each round — with 60s buffer for final summary
+            approaching_deadline = deadline and (time.time() >= deadline - 60)
+            past_deadline = deadline and (time.time() >= deadline)
+
+            if past_deadline:
+                # Hard deadline hit — assemble whatever we have
                 timed_out = True
                 logger.warning(f"Worker {task.id} hit deadline at round {round_num + 1}")
                 break
+
+            # Determine if this round should force a final summary (no tools)
+            force_summary = (round_num >= FORCE_SUMMARY_AT) or approaching_deadline
 
             status.current_step = f"Round {round_num + 1}/{MAX_WORKER_ROUNDS} — {model_display}"
             status.progress_pct = min(95.0, (round_num / MAX_WORKER_ROUNDS) * 100)
@@ -186,7 +191,21 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 "temperature": 0.7,
                 "max_tokens": 4096,
             }
-            if tools_for_llm:
+
+            if force_summary:
+                # Don't send tools — force the LLM to respond with text only.
+                # Add a nudge message so the LLM knows to summarize.
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "[SYSTEM] You are running out of rounds. Please provide your "
+                        "FINAL summary now. Describe what you accomplished and include "
+                        "any relevant results, output, or file paths. Do NOT call any "
+                        "more tools — just respond with your final text."
+                    ),
+                })
+                logger.info(f"Worker {task.id} forced summary at round {round_num + 1}")
+            elif tools_for_llm:
                 call_kwargs["tools"] = tools_for_llm
 
             # LLM call with retry logic — litellm/httpx can raise CancelledError
@@ -239,8 +258,9 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                     final_texts.append(msg.content)
                 break
 
-            # Has tool calls — any text here is just "thinking out loud", NOT the result.
-            # We keep it in the conversation context but do NOT add it to final_texts.
+            # Has tool calls — text here is "thinking out loud". Keep as fallback.
+            if msg.content:
+                thinking_texts.append(msg.content)
 
             # Append the assistant message with tool calls
             assistant_msg: dict[str, Any] = {"role": "assistant"}
@@ -290,6 +310,10 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                         except Exception as e:
                             tool_result = f"[ERROR] {e}"
 
+                # Track tool output for fallback
+                if tool_result and not tool_result.startswith("[ERROR]"):
+                    tool_outputs.append(f"[{tool_name}]: {tool_result[:2000]}")
+
                 # Append tool result
                 messages.append({
                     "role": "tool",
@@ -297,10 +321,27 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                     "content": tool_result[:8000],  # cap to avoid context overflow
                 })
 
-        # The final result is ONLY the text from the last response (no tool calls).
-        # Earlier "thinking" text was intentionally excluded from final_texts.
-        if not errored and not timed_out:
-            result = "\n".join(final_texts) if final_texts else "Task completed successfully (worker used tools but produced no text summary)."
+        # Assemble the final result with fallback logic:
+        # 1. Best case: the LLM gave a proper final text-only response
+        # 2. Fallback: use thinking text + tool outputs if final response was empty
+        if not errored:
+            if final_texts:
+                # Got a proper final summary from the LLM
+                result = "\n".join(final_texts)
+            elif thinking_texts or tool_outputs:
+                # LLM didn't give a final summary, but we have context
+                parts = []
+                if thinking_texts:
+                    parts.append("\n".join(thinking_texts))
+                if tool_outputs:
+                    parts.append("\n---\nTool outputs:\n" + "\n".join(tool_outputs[-5:]))
+                if timed_out:
+                    parts.append("\n[Worker timed out — partial results above]")
+                result = "\n".join(parts)
+            elif timed_out:
+                result = f"[Worker timed out after {task.timeout}s with no output]"
+            else:
+                result = "Task completed but produced no output."
 
         # Update status
         status.current_step = "Done"
