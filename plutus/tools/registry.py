@@ -127,6 +127,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.subprocess_tool import SubprocessTool
     from plutus.tools.system_info import SystemInfoTool
     from plutus.tools.tool_creator import ToolCreatorTool
+    from plutus.tools.web_search import WebSearchTool
     from plutus.tools.wsl import WSLTool
 
     # Shared subprocess manager for all subprocess-based tools
@@ -158,6 +159,11 @@ def create_default_registry() -> ToolRegistry:
     # Tool creator (needs registry reference for dynamic registration)
     tool_creator = ToolCreatorTool(subprocess_mgr, registry)
     registry.register(tool_creator)
+
+    # ═══════════════════════════════════════════════════════════
+    # WEB TOOLS — internet access and search
+    # ═══════════════════════════════════════════════════════════
+    registry.register(WebSearchTool())
 
     # ═══════════════════════════════════════════════════════════
     # LEGACY TOOLS — kept for backward compatibility

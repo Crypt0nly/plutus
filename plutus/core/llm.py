@@ -51,6 +51,21 @@ class LLMResponse(BaseModel):
     usage: dict[str, int] = {}
 
 
+_ANTHROPIC_SERVER_TOOL_ID_PREFIX = "srvtoolu_"
+
+# Anthropic server-side tool types (executed by Anthropic, not the client)
+_ANTHROPIC_WEB_SEARCH_TOOL = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+    "max_uses": 5,
+}
+_ANTHROPIC_WEB_FETCH_TOOL = {
+    "type": "web_fetch_20250910",
+    "name": "web_fetch",
+    "max_uses": 5,
+}
+
+
 class LLMClient:
     """Unified LLM client with tool-calling support."""
 
@@ -108,6 +123,11 @@ class LLMClient:
         self._key_available = self._ensure_api_key()
         return self._key_available
 
+    @property
+    def is_anthropic(self) -> bool:
+        """Whether the current model is an Anthropic model."""
+        return self._config.provider == "anthropic" or self._model.startswith("anthropic/")
+
     def _build_kwargs(self, **overrides: Any) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "model": self._model,
@@ -135,11 +155,13 @@ class LLMClient:
             # Check if this is an assistant message with tool_calls
             tool_calls = msg.get("tool_calls", [])
             if msg.get("role") == "assistant" and tool_calls:
-                # Collect the tool_call IDs that need results
+                # Collect the tool_call IDs that need results.
+                # Skip server-side tool IDs (srvtoolu_*) — those are
+                # handled by Anthropic's servers and don't need client results.
                 expected_ids = set()
                 for tc in tool_calls:
                     tc_id = tc.get("id")
-                    if tc_id:
+                    if tc_id and not tc_id.startswith(_ANTHROPIC_SERVER_TOOL_ID_PREFIX):
                         expected_ids.add(tc_id)
 
                 # Look ahead for tool_result messages that follow
@@ -174,7 +196,7 @@ class LLMClient:
                 expected_ids = set()
                 for tc in tool_calls:
                     tc_id = tc.get("id")
-                    if tc_id:
+                    if tc_id and not tc_id.startswith(_ANTHROPIC_SERVER_TOOL_ID_PREFIX):
                         expected_ids.add(tc_id)
 
                 # Consume following tool messages
@@ -220,6 +242,37 @@ class LLMClient:
 
         return result
 
+    def _build_tools_list(
+        self, tools: list[ToolDefinition] | None
+    ) -> list[dict[str, Any]] | None:
+        """Build the tools list, injecting Anthropic server-side tools when applicable."""
+        if not tools:
+            # Even with no function tools, inject server-side tools for Anthropic
+            if self.is_anthropic and self._config.web_search:
+                return [_ANTHROPIC_WEB_SEARCH_TOOL, _ANTHROPIC_WEB_FETCH_TOOL]
+            return None
+
+        tool_list: list[dict[str, Any]] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in tools
+        ]
+
+        # Inject Anthropic server-side web search/fetch tools.
+        # These are executed by Anthropic's servers — the client never
+        # handles the tool call; results come back inside the response.
+        if self.is_anthropic and self._config.web_search:
+            tool_list.append(_ANTHROPIC_WEB_SEARCH_TOOL)
+            tool_list.append(_ANTHROPIC_WEB_FETCH_TOOL)
+
+        return tool_list
+
     async def complete(
         self,
         messages: list[dict[str, Any]],
@@ -230,18 +283,9 @@ class LLMClient:
         call_kwargs = self._build_kwargs(**kwargs)
         call_kwargs["messages"] = self._sanitize_messages(messages)
 
-        if tools:
-            call_kwargs["tools"] = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters,
-                    },
-                }
-                for t in tools
-            ]
+        built_tools = self._build_tools_list(tools)
+        if built_tools:
+            call_kwargs["tools"] = built_tools
 
         response = await litellm.acompletion(**call_kwargs)
         return self._parse_response(response)
@@ -256,18 +300,9 @@ class LLMClient:
         call_kwargs = self._build_kwargs(stream=True, **kwargs)
         call_kwargs["messages"] = self._sanitize_messages(messages)
 
-        if tools:
-            call_kwargs["tools"] = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters,
-                    },
-                }
-                for t in tools
-            ]
+        built_tools = self._build_tools_list(tools)
+        if built_tools:
+            call_kwargs["tools"] = built_tools
 
         response = await litellm.acompletion(**call_kwargs)
         async for chunk in response:
@@ -284,6 +319,15 @@ class LLMClient:
             import json
 
             for tc in message.tool_calls:
+                # Skip server-side tool calls (srvtoolu_*).  These are
+                # Anthropic server-executed tools (web_search, web_fetch)
+                # whose results are already baked into the response text.
+                if tc.id and tc.id.startswith(_ANTHROPIC_SERVER_TOOL_ID_PREFIX):
+                    logger.debug(
+                        f"Skipping server-side tool call: {tc.function.name} ({tc.id})"
+                    )
+                    continue
+
                 args = tc.function.arguments
                 if isinstance(args, str):
                     try:
