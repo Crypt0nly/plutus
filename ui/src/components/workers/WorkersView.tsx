@@ -276,11 +276,11 @@ function WorkersTab() {
             </div>
             <button
               onClick={toggleCostConscious}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${
+              className={`relative inline-flex items-center w-11 h-6 rounded-full transition-colors duration-300 shrink-0 ${
                 routing.cost_conscious ? "bg-emerald-500" : "bg-gray-700"
               }`}
             >
-              <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-300 ${
+              <span className={`inline-block w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-300 ${
                 routing.cost_conscious ? "translate-x-6" : "translate-x-1"
               }`} />
             </button>
