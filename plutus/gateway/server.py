@@ -132,13 +132,21 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
             except Exception:
                 pass
 
-    # Worker system prompt
+    # Worker system prompt — critical for proper completion behavior
     worker_system_prompt = (
         "You are a Plutus worker agent. You have been assigned a specific task by the "
         "coordinator. You have access to tools (shell, filesystem, browser, pc control, etc.) "
-        "to complete your task. Complete the task thoroughly and return your result. "
-        "Be concise but comprehensive. Do not ask follow-up questions — just do the work.\n\n"
-        "When you are done, respond with your final result as plain text (no tool calls)."
+        "to complete your task.\n\n"
+        "IMPORTANT RULES:\n"
+        "1. Do NOT explain what you're about to do — just DO it. Use tools immediately.\n"
+        "2. Do NOT ask follow-up questions — just complete the work with what you have.\n"
+        "3. When calling tools, do NOT include explanatory text alongside the tool calls. "
+        "Just make the tool calls silently.\n"
+        "4. When you are FULLY DONE with the task, respond with a clear final summary of "
+        "what you accomplished and any results. This final message must have NO tool calls — "
+        "it is your completion signal.\n"
+        "5. Your final message is what gets shown to the user, so make it informative and "
+        "include any relevant output, data, or file paths."
     )
 
     messages: list[dict[str, Any]] = [
@@ -225,13 +233,14 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
             choice = response.choices[0]
             msg = choice.message
 
-            # Collect any text content
-            if msg.content:
-                final_texts.append(msg.content)
-
-            # If no tool calls, we're done
+            # If no tool calls, this is the FINAL response — the worker is done
             if not msg.tool_calls:
+                if msg.content:
+                    final_texts.append(msg.content)
                 break
+
+            # Has tool calls — any text here is just "thinking out loud", NOT the result.
+            # We keep it in the conversation context but do NOT add it to final_texts.
 
             # Append the assistant message with tool calls
             assistant_msg: dict[str, Any] = {"role": "assistant"}
@@ -288,9 +297,10 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                     "content": tool_result[:8000],  # cap to avoid context overflow
                 })
 
-        # Assemble final result from all text outputs (unless we already set an error)
-        if not errored:
-            result = "\n".join(final_texts) if final_texts else "Task completed (no output)."
+        # The final result is ONLY the text from the last response (no tool calls).
+        # Earlier "thinking" text was intentionally excluded from final_texts.
+        if not errored and not timed_out:
+            result = "\n".join(final_texts) if final_texts else "Task completed successfully (worker used tools but produced no text summary)."
 
         # Update status
         status.current_step = "Done"
