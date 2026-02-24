@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from typing import Any, AsyncIterator
 
 import litellm
@@ -18,6 +19,15 @@ logger = logging.getLogger("plutus.llm")
 
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
+
+# Suppress Pydantic serialization warning for ServerToolUse.
+# LiteLLM passes a plain dict where Pydantic expects a model instance when
+# reporting server-side tool usage (web_search, web_fetch).  Harmless.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*Expected `ServerToolUse`.*",
+    category=UserWarning,
+)
 
 
 class ToolDefinition(BaseModel):
