@@ -142,9 +142,20 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         result = f"[Worker Error] {e}"
         logger.exception(f"Worker {task.id} LLM call failed: {e}")
 
+    # Broadcast completion status to workers panel
     await ws_manager.broadcast({
         "type": "worker_completed",
-        "worker": {"task_id": task.id, "name": task.name, "result": result[:200]},
+        "worker": {"task_id": task.id, "name": task.name, "result": result[:500]},
+    })
+
+    # Broadcast the full result to the chat — this is what the user sees
+    await ws_manager.broadcast({
+        "type": "worker_result",
+        "task_id": task.id,
+        "name": task.name,
+        "model": model_display,
+        "result": result,
+        "duration": 0.0,  # will be set by worker_pool via status
     })
 
     return result

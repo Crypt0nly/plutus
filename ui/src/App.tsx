@@ -184,6 +184,35 @@ export default function App() {
 
         case "plan_update":
           break;
+
+        // ── Worker events ─────────────────────────────────────────────
+        case "worker_result": {
+          // A background worker finished — show its result in chat
+          const workerName = msg.name || "Worker";
+          const workerModel = msg.model || "";
+          const workerResult = msg.result || "(no output)";
+          const modelTag = workerModel ? ` (${workerModel})` : "";
+          addMessage({
+            role: "assistant",
+            content: `**Worker Result — ${workerName}**${modelTag}\n\n${workerResult}`,
+          });
+          break;
+        }
+
+        case "worker_started": {
+          // A worker started running — subtle notification
+          const w = msg.worker || {};
+          addMessage({
+            role: "system",
+            content: `Worker **${w.name || w.task_id}** started (${w.model || "auto"})`,
+          });
+          break;
+        }
+
+        case "worker_completed":
+        case "worker_status":
+          // These are handled by the workers panel, not chat
+          break;
       }
     },
     [addMessage, setProcessing, setConversationId, clearMessages]

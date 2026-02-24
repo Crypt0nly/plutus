@@ -1,8 +1,11 @@
 """Worker Tool — allows the Coordinator to spawn and manage agent workers.
 
 The Coordinator (you) is the team lead. When you need to delegate tasks,
-use this tool to spawn workers. YOU decide which model each worker uses
-based on what the task requires:
+use this tool to spawn workers. Workers run IN THE BACKGROUND — you do NOT
+need to wait for them. Their results will be automatically delivered to the
+chat when they finish.
+
+YOU decide which model each worker uses based on what the task requires:
 
   - "claude-haiku":  Fast & cheap. Use for simple lookups, fetching data, summaries.
   - "claude-sonnet": Balanced. Use for standard tasks that need some reasoning.
@@ -11,13 +14,16 @@ based on what the task requires:
   - "auto":          Let the system auto-select based on task complexity.
 
 Operations:
-  - spawn:       Spawn a new worker with a task and model choice
+  - spawn:       Spawn a new worker (runs in background, result auto-delivered)
   - spawn_many:  Spawn multiple workers at once for parallel execution
   - list:        List all active and recent workers
-  - status:      Get status of a specific worker
+  - status:      Get status of a specific worker (check if done)
   - cancel:      Cancel a running worker
-  - wait:        Wait for a worker to complete and get its result
   - stats:       Get worker pool statistics
+
+IMPORTANT: After spawning workers, you are FREE to continue talking to the user
+or do other work. Worker results appear in the chat automatically when done.
+You do NOT need to call 'wait' — just spawn and move on.
 """
 
 from __future__ import annotations
@@ -44,6 +50,9 @@ class WorkerTool(Tool):
         return (
             "Spawn and manage agent workers for parallel task execution. "
             "You are the Coordinator — the team lead. Use this to delegate tasks to workers.\n\n"
+            "Workers run IN THE BACKGROUND. After spawning, you are FREE to continue "
+            "talking to the user or do other work. Results are automatically delivered "
+            "to the chat when workers finish — you do NOT need to wait.\n\n"
             "YOU choose which model each worker uses based on the task:\n"
             "- 'claude-haiku': Fast & cheap — fetching data, summaries, simple lookups\n"
             "- 'claude-sonnet': Balanced — standard tasks needing some reasoning\n"
@@ -51,18 +60,17 @@ class WorkerTool(Tool):
             "- 'gpt-5.2': OpenAI alternative for complex tasks\n"
             "- 'auto': Let the system pick based on task complexity\n\n"
             "Operations:\n"
-            "- spawn: Create a new worker. Set model_key to choose its brain.\n"
+            "- spawn: Create a new background worker. Set model_key to choose its brain.\n"
             "- spawn_many: Create multiple workers at once for parallel execution\n"
             "- list: List all active and recent workers\n"
-            "- status: Get detailed status of a specific worker\n"
+            "- status: Check if a specific worker is done yet\n"
             "- cancel: Cancel a running worker\n"
-            "- wait: Wait for a worker to complete and get its result\n"
             "- stats: Get worker pool statistics\n\n"
-            "Example: To research news while writing a blog post:\n"
-            "  1. worker(operation='spawn', name='News Research', prompt='Research latest AI news', model_key='claude-haiku')\n"
-            "  2. You (the Coordinator) start writing the blog post using your own model\n"
-            "  3. worker(operation='wait', task_id='...') to get the research results\n"
-            "  4. Incorporate the results into the blog post"
+            "WORKFLOW: Spawn workers → immediately respond to the user → results auto-appear.\n"
+            "Example:\n"
+            "  1. worker(operation='spawn_many', tasks=[...])\n"
+            "  2. Tell the user: 'I've dispatched X workers, results will appear shortly!'\n"
+            "  3. Worker results automatically show up in chat when done."
         )
 
     @property
@@ -72,7 +80,7 @@ class WorkerTool(Tool):
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["spawn", "spawn_many", "list", "status", "cancel", "wait", "stats"],
+                    "enum": ["spawn", "spawn_many", "list", "status", "cancel", "stats"],
                     "description": "The worker operation to perform.",
                 },
                 "name": {
@@ -119,7 +127,7 @@ class WorkerTool(Tool):
                 },
                 "task_id": {
                     "type": "string",
-                    "description": "Worker task ID (for 'status', 'cancel', 'wait').",
+                    "description": "Worker task ID (for 'status', 'cancel').",
                 },
             },
             "required": ["operation"],
@@ -139,8 +147,6 @@ class WorkerTool(Tool):
                 return self._status(kwargs)
             elif operation == "cancel":
                 return await self._cancel(kwargs)
-            elif operation == "wait":
-                return await self._wait(kwargs)
             elif operation == "stats":
                 return self._stats()
             else:
@@ -165,11 +171,11 @@ class WorkerTool(Tool):
         status = await self._pool.submit(task)
         return json.dumps({
             "success": True,
-            "message": f"Worker '{status.name}' spawned with model '{model_key}'.",
+            "message": f"Worker '{status.name}' spawned and running in background.",
             "task_id": status.task_id,
             "state": status.state.value,
             "model": model_key,
-            "tip": "Use worker(operation='wait', task_id='...') to get the result when done.",
+            "note": "Worker runs in the background. Results will auto-appear in chat when done. You can continue talking to the user now.",
         }, indent=2)
 
     async def _spawn_many(self, kwargs: dict) -> str:
@@ -189,7 +195,7 @@ class WorkerTool(Tool):
         statuses = await self._pool.submit_many(tasks)
         return json.dumps({
             "success": True,
-            "message": f"Spawned {len(statuses)} workers.",
+            "message": f"Spawned {len(statuses)} workers running in background.",
             "workers": [
                 {
                     "task_id": s.task_id,
@@ -199,6 +205,7 @@ class WorkerTool(Tool):
                 }
                 for i, s in enumerate(statuses)
             ],
+            "note": "All workers run in the background. Results will auto-appear in chat as each worker finishes. You can continue talking to the user now.",
         }, indent=2)
 
     def _list(self) -> str:
@@ -224,16 +231,6 @@ class WorkerTool(Tool):
         if success:
             return f"Worker '{task_id}' cancelled."
         return f"Worker '{task_id}' not found or already completed."
-
-    async def _wait(self, kwargs: dict) -> str:
-        task_id = kwargs.get("task_id", "")
-        if not task_id:
-            return "[ERROR] 'task_id' is required."
-        timeout = kwargs.get("timeout", 300.0)
-        status = await self._pool.wait_for(task_id, timeout=timeout)
-        if not status:
-            return f"[ERROR] Worker '{task_id}' not found."
-        return json.dumps(status.to_dict(), indent=2)
 
     def _stats(self) -> str:
         return json.dumps(self._pool.stats(), indent=2)

@@ -126,4 +126,8 @@ export type WSMessage =
   | { type: "heartbeat_status"; [key: string]: any }
   | { type: "plan_update"; result: string }
   | { type: "attachment"; file_name: string; file_path: string; file_size: number; is_image: boolean; caption?: string; image_base64?: string }
+  | { type: "worker_result"; task_id: string; name: string; model: string; result: string; duration: number }
+  | { type: "worker_started"; worker: { task_id: string; name: string; model: string } }
+  | { type: "worker_completed"; worker: { task_id: string; name: string; result: string } }
+  | { type: "worker_status"; worker: Record<string, unknown> }
   | { type: "pong" };
