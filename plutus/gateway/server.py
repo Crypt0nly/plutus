@@ -327,7 +327,8 @@ async def lifespan(app: FastAPI):
         f"api_key={key_status}, computer_use={cu_status}, "
         f"heartbeat={heartbeat_status}, scheduler={scheduler_status}, "
         f"max_workers={config.workers.max_concurrent_workers}, "
-        f"model_routing={'auto' if config.model_routing.auto_route else 'manual'}"
+        f"worker_model={config.model_routing.default_worker_model}, "
+        f"scheduler_model={config.model_routing.default_scheduler_model}"
     )
 
     # Auto-start connectors
