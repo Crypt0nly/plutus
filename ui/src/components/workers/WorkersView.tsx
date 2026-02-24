@@ -6,10 +6,8 @@ import {
   XCircle,
   Clock,
   RefreshCw,
-  StopCircle,
   BarChart3,
   Zap,
-  Timer,
   Brain,
   Calendar,
   Play,
@@ -17,14 +15,9 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
-  Settings2,
-  Sparkles,
-  AlertTriangle,
+  Shield,
   History,
   Layers,
-  Crown,
-  Shield,
-  Users,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -51,23 +44,69 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, color, sub }: {
-  icon: React.ElementType; label: string; value: string | number; color: string; sub?: string;
+function StatCard({ icon: Icon, label, value, color }: {
+  icon: React.ElementType; label: string; value: string | number; color: string;
 }) {
   const cm: Record<string, string> = {
-    blue: "bg-blue-500/10 text-blue-400", emerald: "bg-emerald-500/10 text-emerald-400",
-    red: "bg-red-500/10 text-red-400", purple: "bg-purple-500/10 text-purple-400",
-    amber: "bg-amber-500/10 text-amber-400", cyan: "bg-cyan-500/10 text-cyan-400",
+    blue: "bg-blue-500/10 text-blue-400",
+    emerald: "bg-emerald-500/10 text-emerald-400",
+    red: "bg-red-500/10 text-red-400",
+    purple: "bg-purple-500/10 text-purple-400",
+    amber: "bg-amber-500/10 text-amber-400",
+    cyan: "bg-cyan-500/10 text-cyan-400",
   };
   return (
-    <div className="card flex items-center gap-3 py-3">
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${cm[color]}`}>
-        <Icon className="w-4.5 h-4.5" />
+    <div className="bg-[#1a1a2e] border border-gray-800/60 rounded-xl p-4 flex items-center gap-3">
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${cm[color]}`}>
+        <Icon className="w-5 h-5" />
       </div>
       <div>
-        <p className="text-base font-bold text-gray-200">{value}</p>
-        <p className="text-[11px] text-gray-500">{label}</p>
-        {sub && <p className="text-[10px] text-gray-600">{sub}</p>}
+        <p className="text-xl font-bold text-gray-100">{value}</p>
+        <p className="text-xs text-gray-500">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ icon: Icon, title, count, pulse, action }: {
+  icon: React.ElementType; title: string; count?: number; pulse?: boolean;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <Icon className="w-4 h-4 text-gray-400" />
+          {pulse && count && count > 0 && (
+            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+          )}
+        </div>
+        <h2 className="text-sm font-semibold text-gray-300">{title}</h2>
+        {count !== undefined && (
+          <span className="text-xs text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded-full">{count}</span>
+        )}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function EmptyState({ icon: Icon, text, sub }: { icon: React.ElementType; text: string; sub?: string }) {
+  return (
+    <div className="bg-[#1a1a2e] border border-gray-800/60 rounded-xl text-center py-10">
+      <Icon className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+      <p className="text-sm text-gray-400">{text}</p>
+      {sub && <p className="text-xs text-gray-600 mt-1.5 max-w-sm mx-auto">{sub}</p>}
+    </div>
+  );
+}
+
+function LoadingSpinner({ text }: { text: string }) {
+  return (
+    <div className="flex items-center justify-center h-48">
+      <div className="flex items-center gap-3 text-gray-400">
+        <RefreshCw className="w-5 h-5 animate-spin" />
+        <span className="text-sm">{text}</span>
       </div>
     </div>
   );
@@ -99,23 +138,23 @@ function formatDate(ts: string | number | null): string {
   return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + formatTime(ts);
 }
 
-// Tab button
+// Tab button — fixed width to prevent layout shifts
 function Tab({ active, onClick, icon: Icon, label, badge }: {
   active: boolean; onClick: () => void; icon: React.ElementType; label: string; badge?: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+      className={`flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 min-w-[140px] ${
         active
-          ? "bg-blue-500/10 text-blue-400 border border-blue-500/30"
-          : "text-gray-400 hover:text-gray-300 hover:bg-gray-800/50"
+          ? "bg-blue-500/15 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/5"
+          : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/40 border border-transparent"
       }`}
     >
       <Icon className="w-4 h-4" />
       {label}
       {badge !== undefined && badge > 0 && (
-        <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+        <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full min-w-[18px] text-center font-bold">
           {badge}
         </span>
       )}
@@ -127,13 +166,18 @@ function Tab({ active, onClick, icon: Icon, label, badge }: {
 
 function WorkersTab() {
   const [data, setData] = useState<Record<string, any> | null>(null);
+  const [modelData, setModelData] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const fetch_ = useCallback(async () => {
     try {
-      const r = await api.getWorkers();
-      setData(r);
+      const [w, m] = await Promise.all([
+        api.getWorkers(),
+        api.getModelRouting().catch(() => null),
+      ]);
+      setData(w);
+      setModelData(m);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -141,7 +185,7 @@ function WorkersTab() {
   useEffect(() => { fetch_(); }, [fetch_]);
   useEffect(() => {
     if (!autoRefresh) return;
-    const iv = setInterval(fetch_, 2000);
+    const iv = setInterval(fetch_, 3000);
     return () => clearInterval(iv);
   }, [autoRefresh, fetch_]);
 
@@ -149,10 +193,19 @@ function WorkersTab() {
     try { await api.cancelWorker(id); fetch_(); } catch { /* ignore */ }
   };
 
+  const toggleCostConscious = async () => {
+    const current = modelData?.routing?.cost_conscious ?? false;
+    try {
+      await api.updateModelRouting({ cost_conscious: !current });
+      fetch_();
+    } catch { /* ignore */ }
+  };
+
   if (loading) return <LoadingSpinner text="Loading workers..." />;
 
   const stats = data?.stats || {};
   const workers = data?.workers || [];
+  const routing = modelData?.routing || {};
   const active = workers.filter((w: any) => w.state === "running" || w.status === "running");
   const queued = workers.filter((w: any) => w.state === "queued" || w.status === "queued");
   const recent = workers.filter((w: any) =>
@@ -160,32 +213,78 @@ function WorkersTab() {
     w.status === "completed" || w.status === "failed" || w.status === "cancelled"
   );
 
+  const maxWorkers = stats.max_concurrent || stats.max_workers || 3;
+  const usagePercent = Math.min((active.length / maxWorkers) * 100, 100);
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon={Zap} label="Active" value={stats.active || active.length} color="blue" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={Zap} label="Active Workers" value={stats.active || active.length} color="blue" />
         <StatCard icon={Clock} label="Queued" value={stats.queued || queued.length} color="amber" />
         <StatCard icon={CheckCircle2} label="Completed" value={stats.completed || 0} color="emerald" />
         <StatCard icon={XCircle} label="Failed" value={stats.failed || 0} color="red" />
       </div>
 
-      {/* Capacity Bar */}
-      <div className="card py-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-gray-400 flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5" />
-            Worker Capacity
-          </span>
-          <span className="text-xs text-gray-500">
-            {active.length} / {stats.max_concurrent || stats.max_workers || 3} slots
-          </span>
+      {/* Capacity + Cost Mode Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Capacity Bar — takes 2 cols */}
+        <div className="lg:col-span-2 bg-[#1a1a2e] border border-gray-800/60 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-gray-300 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-blue-400" />
+              Worker Capacity
+            </span>
+            <span className="text-sm font-mono text-gray-400">
+              {active.length} <span className="text-gray-600">/</span> {maxWorkers}
+            </span>
+          </div>
+          <div className="w-full bg-gray-800/80 rounded-full h-3">
+            <div
+              className={`rounded-full h-3 transition-all duration-700 ease-out ${
+                usagePercent > 80
+                  ? "bg-gradient-to-r from-red-500 to-orange-500"
+                  : usagePercent > 50
+                  ? "bg-gradient-to-r from-amber-500 to-yellow-500"
+                  : "bg-gradient-to-r from-blue-500 to-cyan-500"
+              }`}
+              style={{ width: `${Math.max(usagePercent, 2)}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-gray-600 mt-2">
+            Plutus automatically selects the best model for each worker based on task complexity.
+          </p>
         </div>
-        <div className="w-full bg-gray-800 rounded-full h-2">
-          <div
-            className="bg-gradient-to-r from-blue-500 to-purple-500 rounded-full h-2 transition-all duration-500"
-            style={{ width: `${Math.min((active.length / (stats.max_concurrent || stats.max_workers || 3)) * 100, 100)}%` }}
-          />
+
+        {/* Cost-Conscious Toggle */}
+        <div className="bg-[#1a1a2e] border border-gray-800/60 rounded-xl p-4 flex flex-col justify-between">
+          <div className="flex items-center gap-2 mb-3">
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm font-medium text-gray-300">Cost Mode</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={`text-sm font-semibold ${routing.cost_conscious ? "text-emerald-400" : "text-gray-400"}`}>
+                {routing.cost_conscious ? "Cost-Conscious" : "Performance"}
+              </p>
+              <p className="text-[10px] text-gray-600 mt-0.5">
+                {routing.cost_conscious
+                  ? "Workers prefer cheaper models"
+                  : "Workers use the smartest model needed"
+                }
+              </p>
+            </div>
+            <button
+              onClick={toggleCostConscious}
+              className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${
+                routing.cost_conscious ? "bg-emerald-500" : "bg-gray-700"
+              }`}
+            >
+              <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-300 ${
+                routing.cost_conscious ? "translate-x-6" : "translate-x-1"
+              }`} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -207,11 +306,11 @@ function WorkersTab() {
           <SectionHeader icon={Clock} title="Queued" count={queued.length} />
           <div className="space-y-2">
             {queued.map((w: any) => (
-              <div key={w.task_id || w.id} className="card py-3 flex items-center gap-3">
-                <Clock className="w-4 h-4 text-amber-400" />
+              <div key={w.task_id || w.id} className="bg-[#1a1a2e] border border-gray-800/60 rounded-xl p-4 flex items-center gap-3">
+                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-300 truncate">{w.task || w.description || w.task_id}</p>
-                  {w.model && <p className="text-[10px] text-gray-500 mt-0.5">Model: {w.model}</p>}
+                  {w.model && <p className="text-[10px] text-gray-600 mt-0.5">Model: {w.model}</p>}
                 </div>
                 <StatusBadge status="queued" />
               </div>
@@ -220,13 +319,17 @@ function WorkersTab() {
         </div>
       )}
 
-      {/* Recent */}
+      {/* Recent Tasks */}
       <div>
         <SectionHeader icon={History} title="Recent Tasks" count={recent.length} />
         {recent.length === 0 ? (
-          <EmptyState icon={BarChart3} text="No tasks yet" sub="Workers will appear here when Plutus spawns parallel tasks" />
+          <EmptyState
+            icon={BarChart3}
+            text="No tasks yet"
+            sub="Workers will appear here when Plutus spawns parallel tasks to handle your requests"
+          />
         ) : (
-          <div className="card p-0 overflow-hidden divide-y divide-gray-800">
+          <div className="bg-[#1a1a2e] border border-gray-800/60 rounded-xl overflow-hidden divide-y divide-gray-800/60">
             {recent.slice(0, 20).map((w: any, i: number) => (
               <RecentTaskRow key={w.task_id || i} task={w} />
             ))}
@@ -235,17 +338,17 @@ function WorkersTab() {
       </div>
 
       {/* Auto-refresh toggle */}
-      <div className="flex justify-center">
+      <div className="flex justify-center pt-2">
         <button
           onClick={() => setAutoRefresh(!autoRefresh)}
-          className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
+          className={`text-xs px-4 py-2 rounded-xl flex items-center gap-2 transition-all duration-200 ${
             autoRefresh
               ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-              : "bg-gray-800 text-gray-400 border border-gray-700"
+              : "bg-gray-800/50 text-gray-500 border border-gray-700/50 hover:text-gray-400"
           }`}
         >
-          <Activity className={`w-3 h-3 ${autoRefresh ? "animate-pulse" : ""}`} />
-          {autoRefresh ? "Live Updates" : "Paused"}
+          <Activity className={`w-3.5 h-3.5 ${autoRefresh ? "animate-pulse" : ""}`} />
+          {autoRefresh ? "Live Updates On" : "Live Updates Paused"}
         </button>
       </div>
     </div>
@@ -256,48 +359,41 @@ function WorkerCard({ worker, onCancel }: { worker: any; onCancel: (id: string) 
   const [expanded, setExpanded] = useState(false);
   const id = worker.task_id || worker.id;
   return (
-    <div className="card border-blue-500/20 bg-blue-500/5">
+    <div className="bg-[#1a1a2e] border border-blue-500/20 rounded-xl p-4">
       <div className="flex items-center gap-3">
-        <div className="relative">
-          <div className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse" />
-          <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping opacity-30" />
+        <div className="relative shrink-0">
+          <div className="w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
+          <div className="absolute inset-0 w-3 h-3 rounded-full bg-blue-400 animate-ping opacity-20" />
         </div>
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setExpanded(!expanded)}>
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-200 truncate">
-              {worker.task || worker.description || id?.slice(0, 12)}
+              {worker.task || worker.description || id?.slice(0, 20)}
             </span>
             <StatusBadge status="running" />
           </div>
-          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-500">
-            {worker.model && <span>Model: {worker.model}</span>}
-            <span>{formatDuration(worker.elapsed || 0)}</span>
-            {worker.steps_completed !== undefined && <span>Steps: {worker.steps_completed}</span>}
+          <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500">
+            {worker.model && (
+              <span className="flex items-center gap-1">
+                <Brain className="w-3 h-3" />
+                {worker.model}
+              </span>
+            )}
+            {worker.started_at && <span>Started {formatDate(worker.started_at)}</span>}
+            {worker.elapsed && <span>{formatDuration(worker.elapsed)}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setExpanded(!expanded)} className="text-gray-500 hover:text-gray-300">
-            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={() => onCancel(id)}
-            className="text-xs py-1 px-2.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors flex items-center gap-1"
-          >
-            <StopCircle className="w-3 h-3" />
-            Stop
-          </button>
-        </div>
+        <button
+          onClick={() => onCancel(id)}
+          className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+          title="Cancel"
+        >
+          <XCircle className="w-4 h-4" />
+        </button>
       </div>
       {expanded && worker.progress && (
-        <div className="mt-3 pt-3 border-t border-gray-800">
-          <div className="text-xs text-gray-400 space-y-1">
-            {worker.progress.map((p: string, i: number) => (
-              <p key={i} className="flex items-start gap-2">
-                <span className="text-gray-600 shrink-0">{i + 1}.</span>
-                <span>{p}</span>
-              </p>
-            ))}
-          </div>
+        <div className="mt-3 pt-3 border-t border-gray-800/60">
+          <p className="text-xs text-gray-400">{worker.progress}</p>
         </div>
       )}
     </div>
@@ -307,9 +403,9 @@ function WorkerCard({ worker, onCancel }: { worker: any; onCancel: (id: string) 
 function RecentTaskRow({ task }: { task: any }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className={`hover:bg-gray-800/30 transition-colors ${expanded ? "bg-gray-800/20" : ""}`}>
+    <div className={`transition-colors ${expanded ? "bg-gray-800/20" : "hover:bg-gray-800/10"}`}>
       <div
-        className="flex items-center gap-3 py-2.5 px-4 cursor-pointer"
+        className="flex items-center gap-3 py-3 px-4 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <StatusBadge status={task.state || task.status} />
@@ -318,8 +414,13 @@ function RecentTaskRow({ task }: { task: any }) {
             {task.task || task.description || task.task_id?.slice(0, 16)}
           </span>
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-gray-500 shrink-0">
-          {task.model && <span>{task.model}</span>}
+        <div className="flex items-center gap-4 text-[11px] text-gray-600 shrink-0">
+          {task.model && (
+            <span className="flex items-center gap-1">
+              <Brain className="w-3 h-3" />
+              {task.model}
+            </span>
+          )}
           <span>{formatDuration(task.duration || task.elapsed || 0)}</span>
           <span>{formatDate(task.completed_at || task.started_at)}</span>
         </div>
@@ -327,15 +428,15 @@ function RecentTaskRow({ task }: { task: any }) {
       {expanded && (
         <div className="px-4 pb-3 space-y-2">
           {task.result && (
-            <div className="bg-gray-800/50 rounded-lg p-3">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Result</p>
-              <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">
+            <div className="bg-gray-900/50 rounded-lg p-3">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Result</p>
+              <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed">
                 {typeof task.result === "string" ? task.result : JSON.stringify(task.result, null, 2)}
               </pre>
             </div>
           )}
           {task.error && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+            <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
               <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">{task.error}</p>
             </div>
           )}
@@ -390,9 +491,9 @@ function SchedulerTab() {
   const pausedJobs = jobs.filter((j: any) => j.status === "paused");
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard icon={Calendar} label="Total Jobs" value={stats.total_jobs || jobs.length} color="purple" />
         <StatCard icon={Play} label="Active" value={stats.active_jobs || activeJobs.length} color="emerald" />
         <StatCard icon={Pause} label="Paused" value={stats.paused_jobs || pausedJobs.length} color="amber" />
@@ -427,25 +528,25 @@ function SchedulerTab() {
       <div>
         <button
           onClick={() => setShowHistory(!showHistory)}
-          className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-300 mb-3"
+          className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-300 mb-3 transition-colors"
         >
           {showHistory ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <History className="w-4 h-4" />
           Execution History
-          <span className="text-xs text-gray-600">({history.length})</span>
+          <span className="text-xs text-gray-600 bg-gray-800/50 px-1.5 py-0.5 rounded-full">{history.length}</span>
         </button>
         {showHistory && (
           history.length === 0 ? (
             <EmptyState icon={History} text="No executions yet" sub="History will appear after scheduled jobs run" />
           ) : (
-            <div className="card p-0 overflow-hidden divide-y divide-gray-800">
+            <div className="bg-[#1a1a2e] border border-gray-800/60 rounded-xl overflow-hidden divide-y divide-gray-800/60">
               {history.map((ex: any, i: number) => (
-                <div key={i} className="flex items-center gap-3 py-2.5 px-4">
+                <div key={i} className="flex items-center gap-3 py-3 px-4 hover:bg-gray-800/10 transition-colors">
                   <StatusBadge status={ex.status || "completed"} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-300 truncate">{ex.job_name || ex.job_id}</p>
                   </div>
-                  <div className="text-[10px] text-gray-500 flex items-center gap-3">
+                  <div className="text-[11px] text-gray-600 flex items-center gap-4">
                     <span>{formatDuration(ex.duration || 0)}</span>
                     <span>{formatDate(ex.executed_at || ex.timestamp)}</span>
                   </div>
@@ -468,7 +569,9 @@ function JobCard({ job, onPause, onResume, onDelete }: {
   const isActive = job.status === "active";
 
   return (
-    <div className={`card ${isActive ? "border-emerald-500/20" : isPaused ? "border-amber-500/20 opacity-75" : ""}`}>
+    <div className={`bg-[#1a1a2e] border rounded-xl p-4 transition-colors ${
+      isActive ? "border-emerald-500/20" : isPaused ? "border-amber-500/20 opacity-75" : "border-gray-800/60"
+    }`}>
       <div className="flex items-center gap-3">
         <Calendar className={`w-4 h-4 shrink-0 ${isActive ? "text-emerald-400" : "text-gray-500"}`} />
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setExpanded(!expanded)}>
@@ -478,314 +581,50 @@ function JobCard({ job, onPause, onResume, onDelete }: {
             </span>
             <StatusBadge status={job.status} />
           </div>
-          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-gray-500">
-            {job.schedule && <span className="font-mono">{job.schedule}</span>}
-            {job.cron && <span className="font-mono">{job.cron}</span>}
+          <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500">
+            {job.schedule && <span className="font-mono bg-gray-800/50 px-1.5 py-0.5 rounded">{job.schedule}</span>}
+            {job.cron && <span className="font-mono bg-gray-800/50 px-1.5 py-0.5 rounded">{job.cron}</span>}
             {job.interval && <span>Every {formatDuration(job.interval)}</span>}
             {job.next_run && <span>Next: {formatDate(job.next_run)}</span>}
             {job.last_run && <span>Last: {formatDate(job.last_run)}</span>}
             {job.run_count !== undefined && <span>Runs: {job.run_count}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 shrink-0">
           {isActive ? (
             <button
               onClick={() => onPause(id)}
-              className="p-1.5 rounded-lg text-amber-400 hover:bg-amber-500/10 transition-colors"
+              className="p-2 rounded-lg text-amber-400 hover:bg-amber-500/10 transition-colors"
               title="Pause"
             >
-              <Pause className="w-3.5 h-3.5" />
+              <Pause className="w-4 h-4" />
             </button>
           ) : isPaused ? (
             <button
               onClick={() => onResume(id)}
-              className="p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+              className="p-2 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-colors"
               title="Resume"
             >
-              <Play className="w-3.5 h-3.5" />
+              <Play className="w-4 h-4" />
             </button>
           ) : null}
           <button
             onClick={() => onDelete(id)}
-            className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+            className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
             title="Delete"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-400 space-y-1">
-          {job.task && <p><span className="text-gray-500">Task:</span> {job.task}</p>}
-          {job.description && <p><span className="text-gray-500">Description:</span> {job.description}</p>}
-          {job.model && <p><span className="text-gray-500">Model:</span> {job.model}</p>}
-          {job.created_at && <p><span className="text-gray-500">Created:</span> {formatDate(job.created_at)}</p>}
+        <div className="mt-3 pt-3 border-t border-gray-800/60 text-xs text-gray-400 space-y-1.5">
+          {job.task && <p><span className="text-gray-600">Task:</span> {job.task}</p>}
+          {job.description && <p><span className="text-gray-600">Description:</span> {job.description}</p>}
+          {job.model && <p><span className="text-gray-600">Model:</span> {job.model}</p>}
+          {job.created_at && <p><span className="text-gray-600">Created:</span> {formatDate(job.created_at)}</p>}
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Models Tab ─────────────────────────────────────────────
-
-function ModelsTab() {
-  const [data, setData] = useState<Record<string, any> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const fetch_ = useCallback(async () => {
-    try {
-      const r = await api.getModelRouting();
-      setData(r);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { fetch_(); }, [fetch_]);
-
-  const updateRouting = async (key: string, value: any) => {
-    setSaving(true);
-    try {
-      await api.updateModelRouting({ [key]: value });
-      fetch_();
-    } catch { /* ignore */ }
-    finally { setSaving(false); }
-  };
-
-  if (loading) return <LoadingSpinner text="Loading models..." />;
-
-  const models = data?.models || [];
-  const routing = data?.routing || {};
-  const status = data?.status || {};
-
-  // Group models by provider
-  const byProvider: Record<string, any[]> = {};
-  models.forEach((m: any) => {
-    const p = m.provider || "unknown";
-    if (!byProvider[p]) byProvider[p] = [];
-    byProvider[p].push(m);
-  });
-
-  return (
-    <div className="space-y-5">
-      {/* Architecture Explainer */}
-      <div className="card border-purple-500/20 bg-gradient-to-br from-purple-500/5 to-transparent">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
-            <Crown className="w-5 h-5 text-purple-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-200 mb-1">Coordinator Architecture</h3>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              <strong className="text-purple-300">You choose the Coordinator model</strong> in Settings — that's the brain Plutus always uses when talking to you.
-              When the Coordinator spawns workers, <strong className="text-blue-300">it decides which model each worker gets</strong> based on the task.
-              Simple tasks get fast/cheap models, complex tasks get smarter ones.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Worker Model Defaults */}
-      <div className="card">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-4 h-4 text-blue-400" />
-          <h3 className="text-sm font-semibold text-gray-200">Worker Model Defaults</h3>
-          {saving && <RefreshCw className="w-3 h-3 text-gray-500 animate-spin" />}
-        </div>
-        <p className="text-[10px] text-gray-500 mb-4">
-          These are fallback defaults. The Coordinator can override these per-worker when spawning tasks.
-        </p>
-
-        <div className="space-y-4">
-          {/* Default worker model */}
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Default Worker Model</label>
-            <select
-              value={routing.default_worker_model || "auto"}
-              onChange={(e) => updateRouting("default_worker_model", e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-blue-500/50 focus:outline-none"
-            >
-              <option value="auto">Auto (system picks based on task complexity)</option>
-              {models.map((m: any) => (
-                <option key={m.key || m.id} value={m.key || m.id}>
-                  {m.display_name || m.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-gray-600 mt-1">
-              Used when the Coordinator sets model_key="auto" or doesn't specify a model.
-            </p>
-          </div>
-
-          {/* Default scheduler model */}
-          <div>
-            <label className="text-xs text-gray-400 block mb-1.5">Default Scheduler Model</label>
-            <select
-              value={routing.default_scheduler_model || "auto"}
-              onChange={(e) => updateRouting("default_scheduler_model", e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-blue-500/50 focus:outline-none"
-            >
-              <option value="auto">Auto (system picks based on job complexity)</option>
-              {models.map((m: any) => (
-                <option key={m.key || m.id} value={m.key || m.id}>
-                  {m.display_name || m.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-gray-600 mt-1">
-              Used for cron jobs and scheduled tasks.
-            </p>
-          </div>
-
-          {/* Cost-conscious toggle */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-800">
-            <div>
-              <p className="text-sm text-gray-300 flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                Cost-Conscious Mode
-              </p>
-              <p className="text-[10px] text-gray-500">When auto-selecting, prefer cheaper models for workers</p>
-            </div>
-            <button
-              onClick={() => updateRouting("cost_conscious", !routing.cost_conscious)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${
-                routing.cost_conscious ? "bg-emerald-500" : "bg-gray-700"
-              }`}
-            >
-              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                routing.cost_conscious ? "translate-x-5" : "translate-x-0.5"
-              }`} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Available Models Reference */}
-      <div>
-        <SectionHeader icon={Brain} title="Available Models" count={models.length} />
-        <p className="text-[10px] text-gray-500 mb-3 -mt-1">
-          The Coordinator can assign any of these to workers. Models require a valid API key for their provider.
-        </p>
-        {Object.entries(byProvider).map(([provider, providerModels]) => (
-          <div key={provider} className="mb-4">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 pl-1">
-              {provider === "anthropic" ? "Anthropic (Claude)" : provider === "openai" ? "OpenAI" : provider}
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {(providerModels as any[]).map((m: any) => (
-                <ModelCard key={m.key || m.id || m.name} model={m} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Worker Usage Stats */}
-      {status.usage && (
-        <div className="card">
-          <SectionHeader icon={BarChart3} title="Worker Usage" />
-          <div className="grid grid-cols-3 gap-3 mt-3">
-            <div className="text-center">
-              <p className="text-lg font-bold text-gray-200">{status.usage.total_requests || 0}</p>
-              <p className="text-[10px] text-gray-500">Worker Calls</p>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-gray-200">{status.usage.total_tokens || 0}</p>
-              <p className="text-[10px] text-gray-500">Worker Tokens</p>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-gray-200">${(status.usage.estimated_cost || 0).toFixed(4)}</p>
-              <p className="text-[10px] text-gray-500">Est. Worker Cost</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ModelCard({ model }: { model: any }) {
-  const tierColors: Record<string, string> = {
-    complex: "text-purple-400 bg-purple-500/10",
-    high: "text-purple-400 bg-purple-500/10",
-    moderate: "text-blue-400 bg-blue-500/10",
-    medium: "text-blue-400 bg-blue-500/10",
-    simple: "text-emerald-400 bg-emerald-500/10",
-    low: "text-emerald-400 bg-emerald-500/10",
-    fast: "text-emerald-400 bg-emerald-500/10",
-  };
-  const tier = model.complexity_tier || model.tier || "moderate";
-  const tierColor = tierColors[tier] || tierColors.moderate;
-  const tierLabel = tier === "complex" || tier === "high" ? "Complex" : tier === "simple" || tier === "low" || tier === "fast" ? "Fast" : "Balanced";
-
-  return (
-    <div className={`card py-3 ${!model.available ? "opacity-50" : ""}`}>
-      <div className="flex items-center gap-3">
-        <Sparkles className={`w-4 h-4 shrink-0 ${tierColor.split(" ")[0]}`} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-200">{model.display_name || model.name}</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${tierColor}`}>
-              {tierLabel}
-            </span>
-            {!model.available && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400">
-                No API Key
-              </span>
-            )}
-          </div>
-          <p className="text-[10px] text-gray-500 mt-0.5">
-            {model.description || model.id}
-          </p>
-          <p className="text-[10px] text-gray-600 mt-0.5">
-            {model.id}
-            {model.cost_per_1k_input ? ` · $${model.cost_per_1k_input} in / $${model.cost_per_1k_output} out per 1K` : ""}
-            {model.calls > 0 && ` · ${model.calls} calls`}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Shared UI Helpers ──────────────────────────────────────
-
-function SectionHeader({ icon: Icon, title, count, pulse }: {
-  icon: React.ElementType; title: string; count?: number; pulse?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-2 mb-3">
-      <div className="relative">
-        <Icon className="w-4 h-4 text-gray-400" />
-        {pulse && count && count > 0 && (
-          <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-blue-400 animate-ping" />
-        )}
-      </div>
-      <h2 className="text-sm font-semibold text-gray-300">{title}</h2>
-      {count !== undefined && (
-        <span className="text-xs text-gray-500">{count}</span>
-      )}
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, text, sub }: { icon: React.ElementType; text: string; sub?: string }) {
-  return (
-    <div className="card text-center py-8">
-      <Icon className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-      <p className="text-sm text-gray-400">{text}</p>
-      {sub && <p className="text-xs text-gray-600 mt-1 max-w-sm mx-auto">{sub}</p>}
-    </div>
-  );
-}
-
-function LoadingSpinner({ text }: { text: string }) {
-  return (
-    <div className="flex items-center justify-center h-48">
-      <div className="flex items-center gap-3 text-gray-400">
-        <RefreshCw className="w-5 h-5 animate-spin" />
-        <span className="text-sm">{text}</span>
-      </div>
     </div>
   );
 }
@@ -793,11 +632,10 @@ function LoadingSpinner({ text }: { text: string }) {
 // ── Main Component ─────────────────────────────────────────
 
 export function WorkersView() {
-  const [tab, setTab] = useState<"workers" | "scheduler" | "models">("workers");
+  const [tab, setTab] = useState<"workers" | "scheduler">("workers");
   const [workerCount, setWorkerCount] = useState(0);
   const [jobCount, setJobCount] = useState(0);
 
-  // Fetch badge counts
   useEffect(() => {
     const fetchCounts = async () => {
       try {
@@ -816,26 +654,28 @@ export function WorkersView() {
   }, []);
 
   return (
-    <div className="h-full overflow-y-auto max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-gray-100">Workers & Automation</h1>
-        <p className="text-sm text-gray-400 mt-1">
-          Monitor workers, scheduled jobs, and model routing in real-time.
-        </p>
-      </div>
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-4xl mx-auto px-1">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-100">Workers & Automation</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Monitor active workers, scheduled jobs, and task history.
+          </p>
+        </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 mb-5 overflow-x-auto pb-1">
-        <Tab active={tab === "workers"} onClick={() => setTab("workers")} icon={Cpu} label="Workers" badge={workerCount} />
-        <Tab active={tab === "scheduler"} onClick={() => setTab("scheduler")} icon={Calendar} label="Scheduler" badge={jobCount} />
-        <Tab active={tab === "models"} onClick={() => setTab("models")} icon={Brain} label="Models" />
-      </div>
+        {/* Tabs — fixed layout */}
+        <div className="flex items-center gap-2 mb-6">
+          <Tab active={tab === "workers"} onClick={() => setTab("workers")} icon={Cpu} label="Workers" badge={workerCount} />
+          <Tab active={tab === "scheduler"} onClick={() => setTab("scheduler")} icon={Calendar} label="Scheduler" badge={jobCount} />
+        </div>
 
-      {/* Tab Content */}
-      {tab === "workers" && <WorkersTab />}
-      {tab === "scheduler" && <SchedulerTab />}
-      {tab === "models" && <ModelsTab />}
+        {/* Tab Content — min height prevents layout jump */}
+        <div className="min-h-[400px]">
+          {tab === "workers" && <WorkersTab />}
+          {tab === "scheduler" && <SchedulerTab />}
+        </div>
+      </div>
     </div>
   );
 }

@@ -116,7 +116,7 @@ def create_router() -> APIRouter:
             else False,
             "worker_pool": worker_pool.stats() if worker_pool else None,
             "scheduler": scheduler.stats() if scheduler else None,
-            "model_routing": model_router.get_status() if model_router else None,
+            "model_routing": model_router.config.to_dict() if model_router else None,
         }
 
     # ── Guardrails ──────────────────────────────────────────
@@ -472,14 +472,14 @@ def create_router() -> APIRouter:
             return {"models": [], "routing": {}}
 
         return {
-            "models": model_router.list_models(),
+            "models": model_router.get_available_models(),
             "routing": {
                 "cost_conscious": config.model_routing.cost_conscious if config else False,
                 "default_worker_model": config.model_routing.default_worker_model if config else "auto",
                 "default_scheduler_model": config.model_routing.default_scheduler_model if config else "auto",
                 "enabled_models": config.model_routing.enabled_models if config else [],
             },
-            "status": model_router.get_status(),
+            "usage": model_router.get_usage_stats(),
         }
 
     @router.patch("/models/config")
