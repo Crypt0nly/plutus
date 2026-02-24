@@ -658,15 +658,16 @@ export function MessageBubble({ message, send }: Props) {
   }
 
   if (role === "assistant") {
+    const safeContent = typeof content === "string" ? content : String(content || "");
     // Check if this is a worker result
-    if (content?.startsWith("__WORKER_RESULT__:")) {
-      const rest = content.replace("__WORKER_RESULT__:", "");
+    if (safeContent.startsWith("__WORKER_RESULT__:")) {
+      const rest = safeContent.replace("__WORKER_RESULT__:", "");
       const firstColon = rest.indexOf(":");
-      const workerName = rest.slice(0, firstColon);
-      const afterName = rest.slice(firstColon + 1);
+      const workerName = firstColon >= 0 ? rest.slice(0, firstColon) : "Worker";
+      const afterName = firstColon >= 0 ? rest.slice(firstColon + 1) : rest;
       const secondColon = afterName.indexOf(":");
-      const workerModel = afterName.slice(0, secondColon);
-      const workerResult = afterName.slice(secondColon + 1);
+      const workerModel = secondColon >= 0 ? afterName.slice(0, secondColon) : "";
+      const workerResult = secondColon >= 0 ? afterName.slice(secondColon + 1) : afterName;
 
       return (
         <div className="flex gap-3 animate-fade-in">
@@ -760,11 +761,11 @@ export function MessageBubble({ message, send }: Props) {
     }
 
     // Worker started indicator
-    if (content?.startsWith("__WORKER_STARTED__:")) {
+    if (typeof content === "string" && content.startsWith("__WORKER_STARTED__:")) {
       const rest = content.replace("__WORKER_STARTED__:", "");
       const colonIdx = rest.indexOf(":");
-      const wName = rest.slice(0, colonIdx);
-      const wModel = rest.slice(colonIdx + 1);
+      const wName = colonIdx >= 0 ? rest.slice(0, colonIdx) : rest;
+      const wModel = colonIdx >= 0 ? rest.slice(colonIdx + 1) : "";
       return (
         <div className="flex items-center justify-center gap-2 py-2 animate-fade-in">
           <div className="px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 bg-amber-500/10 text-amber-400/80 border border-amber-500/15">

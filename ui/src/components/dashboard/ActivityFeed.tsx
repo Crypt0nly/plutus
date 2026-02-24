@@ -24,7 +24,8 @@ function timeAgo(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString();
 }
 
-export function ActivityFeed({ entries }: Props) {
+export function ActivityFeed({ entries: rawEntries }: Props) {
+  const entries = Array.isArray(rawEntries) ? rawEntries : [];
   if (entries.length === 0) {
     return (
       <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">

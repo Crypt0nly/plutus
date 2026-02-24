@@ -94,7 +94,13 @@ class ShellTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> str:
-        command: str = kwargs["command"]
+        command = kwargs.get("command") or kwargs.get("cmd") or kwargs.get("script")
+        if not command:
+            return (
+                "[ERROR] No 'command' parameter provided. "
+                "You MUST pass command='your command here' to execute a shell command. "
+                f"Received parameters: {list(kwargs.keys())}"
+            )
         working_dir: str = kwargs.get("working_directory", os.path.expanduser("~"))
         timeout: int = kwargs.get("timeout", 120)
         use_wsl: bool = kwargs.get("use_wsl", False)
