@@ -342,7 +342,10 @@ class WorkerPool:
             status.started_at = time.time()
 
             if self._on_status_change:
-                await self._on_status_change(status)
+                try:
+                    await self._on_status_change(status)
+                except Exception:
+                    pass
 
             try:
                 # Execute with timeout
@@ -359,10 +362,13 @@ class WorkerPool:
                 status.state = WorkerState.TIMEOUT
                 status.error = f"Timed out after {task.timeout}s"
                 self._total_failed += 1
+                logger.warning(f"Worker {task.id} timed out after {task.timeout}s")
 
             except asyncio.CancelledError:
                 status.state = WorkerState.CANCELLED
+                status.error = "Cancelled"
                 self._total_failed += 1
+                logger.info(f"Worker {task.id} was cancelled")
 
             except Exception as e:
                 status.state = WorkerState.FAILED
@@ -372,10 +378,27 @@ class WorkerPool:
 
             finally:
                 status.completed_at = time.time()
-                status.duration = status.completed_at - status.started_at
+                status.duration = status.completed_at - (status.started_at or status.completed_at)
 
+                # Ensure progress shows 100% for completed workers
+                if status.state in (WorkerState.COMPLETED, WorkerState.FAILED,
+                                    WorkerState.CANCELLED, WorkerState.TIMEOUT):
+                    status.progress_pct = 100.0
+                    if status.state == WorkerState.COMPLETED:
+                        status.current_step = "Done"
+                    elif status.state == WorkerState.FAILED:
+                        status.current_step = f"Failed: {status.error or 'Unknown error'}"
+                    elif status.state == WorkerState.TIMEOUT:
+                        status.current_step = "Timed out"
+                    elif status.state == WorkerState.CANCELLED:
+                        status.current_step = "Cancelled"
+
+                # Broadcast the FINAL state — this is critical for the UI
                 if self._on_status_change:
-                    await self._on_status_change(status)
+                    try:
+                        await self._on_status_change(status)
+                    except Exception as e:
+                        logger.error(f"Failed to broadcast final status for {task.id}: {e}")
 
                 self._move_to_completed(task.id)
 
