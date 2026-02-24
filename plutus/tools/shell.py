@@ -1,9 +1,17 @@
-"""Shell tool — execute commands on the local system."""
+"""Shell tool — execute commands on the local system.
+
+Supports running commands via:
+  - Default system shell (cmd.exe on Windows, bash on Linux/macOS)
+  - WSL (Windows Subsystem for Linux) when use_wsl=True
+  - PowerShell when use_powershell=True
+"""
 
 from __future__ import annotations
 
 import asyncio
 import os
+import platform
+import shutil
 from typing import Any
 
 
@@ -20,6 +28,8 @@ BLOCKED_COMMANDS = [
 ]
 
 MAX_OUTPUT_LENGTH = 50_000
+IS_WINDOWS = platform.system() == "Windows"
+HAS_WSL = IS_WINDOWS and shutil.which("wsl") is not None
 
 
 class ShellTool(Tool):
@@ -29,30 +39,57 @@ class ShellTool(Tool):
 
     @property
     def description(self) -> str:
+        wsl_note = (
+            " WSL (Windows Subsystem for Linux) is available — set use_wsl=true "
+            "to run bash/Linux commands. This is recommended for scripting, "
+            "file manipulation, and development tasks."
+        ) if HAS_WSL else ""
         return (
             "Execute a shell command on the local system. "
             "Use this for running scripts, installing packages, git operations, "
             "build commands, and any other terminal tasks."
+            f"{wsl_note}"
         )
 
     @property
     def parameters(self) -> dict[str, Any]:
+        props: dict[str, Any] = {
+            "command": {
+                "type": "string",
+                "description": "The shell command to execute",
+            },
+            "working_directory": {
+                "type": "string",
+                "description": "Working directory for the command (default: home directory)",
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Timeout in seconds (default: 120)",
+            },
+        }
+
+        if HAS_WSL:
+            props["use_wsl"] = {
+                "type": "boolean",
+                "description": (
+                    "Run the command in WSL (bash/Linux environment) instead of "
+                    "the Windows shell. Recommended for scripting and file operations. "
+                    "WSL can access Windows files at /mnt/c/Users/... (default: false)"
+                ),
+            }
+
+        if IS_WINDOWS:
+            props["use_powershell"] = {
+                "type": "boolean",
+                "description": (
+                    "Run the command in PowerShell instead of cmd.exe. "
+                    "Useful for Windows-specific automation. (default: false)"
+                ),
+            }
+
         return {
             "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The shell command to execute",
-                },
-                "working_directory": {
-                    "type": "string",
-                    "description": "Working directory for the command (default: home directory)",
-                },
-                "timeout": {
-                    "type": "integer",
-                    "description": "Timeout in seconds (default: 120)",
-                },
-            },
+            "properties": props,
             "required": ["command"],
         }
 
@@ -60,6 +97,8 @@ class ShellTool(Tool):
         command: str = kwargs["command"]
         working_dir: str = kwargs.get("working_directory", os.path.expanduser("~"))
         timeout: int = kwargs.get("timeout", 120)
+        use_wsl: bool = kwargs.get("use_wsl", False)
+        use_powershell: bool = kwargs.get("use_powershell", False)
 
         # Safety check
         cmd_lower = command.lower().strip()
@@ -67,9 +106,23 @@ class ShellTool(Tool):
             if blocked in cmd_lower:
                 return f"[BLOCKED] Command contains blocked pattern: '{blocked}'"
 
+        # Build the actual command based on shell preference
+        if use_wsl and HAS_WSL:
+            # Wrap command for WSL execution
+            # Escape single quotes in the command for bash
+            escaped_cmd = command.replace("'", "'\\''")
+            actual_command = f'wsl bash -c \'{escaped_cmd}\''
+        elif use_powershell and IS_WINDOWS:
+            # Wrap command for PowerShell execution
+            # Escape double quotes for PowerShell -Command
+            escaped_cmd = command.replace('"', '\\"')
+            actual_command = f'powershell -NoProfile -Command "{escaped_cmd}"'
+        else:
+            actual_command = command
+
         try:
             process = await asyncio.create_subprocess_shell(
-                command,
+                actual_command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=working_dir,
@@ -94,6 +147,9 @@ class ShellTool(Tool):
             if stderr_text.strip():
                 result_parts.append(f"stderr:\n{stderr_text.strip()}")
             result_parts.append(f"exit_code: {process.returncode}")
+
+            shell_type = "WSL" if (use_wsl and HAS_WSL) else ("PowerShell" if (use_powershell and IS_WINDOWS) else "shell")
+            result_parts.append(f"shell: {shell_type}")
 
             return "\n".join(result_parts)
 

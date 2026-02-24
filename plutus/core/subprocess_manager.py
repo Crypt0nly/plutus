@@ -15,7 +15,9 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import signal
+import sys
 import tempfile
 import time
 import uuid
@@ -114,8 +116,10 @@ class WorkerProcess:
     async def start(self) -> None:
         """Start the worker subprocess."""
         env = {**os.environ, **self.env}
+        # Use the same Python that's running Plutus — avoids "python3 not found" on Windows
+        python_exe = sys.executable or shutil.which("python") or shutil.which("python3") or "python"
         self.process = await asyncio.create_subprocess_exec(
-            "python3", self.script_path,
+            python_exe, self.script_path,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
