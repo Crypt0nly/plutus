@@ -121,6 +121,9 @@ class ConversationManager:
 
     async def add_tool_result(self, tool_call_id: str, content: str) -> int:
         assert self._active_conversation_id
+        # Anthropic requires tool messages to always have non-empty content
+        if not content or not content.strip():
+            content = "(no output)"
         return await self._memory.add_message(
             self._active_conversation_id,
             "tool",
@@ -258,6 +261,9 @@ class ConversationManager:
                 entry: dict[str, Any] = {"role": msg["role"]}
                 if msg["content"]:
                     entry["content"] = msg["content"]
+                elif msg["role"] == "tool":
+                    # Anthropic requires tool messages to always have non-empty content
+                    entry["content"] = "(no output)"
                 if msg["tool_calls"]:
                     # Convert stored format to OpenAI-compatible format for LiteLLM
                     entry["tool_calls"] = [

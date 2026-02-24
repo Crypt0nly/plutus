@@ -1051,6 +1051,10 @@ class AgentRuntime:
                     result_text = f"[ERROR] Tool execution failed: {e}"
                     logger.exception(f"Tool {tc.name} failed")
 
+                # Ensure tool result content is never empty (Anthropic requirement)
+                if not result_text or not result_text.strip():
+                    result_text = "(no output)"
+
                 yield AgentEvent(
                     "tool_result",
                     {"id": tc.id, "tool": tc.name, "result": result_text},

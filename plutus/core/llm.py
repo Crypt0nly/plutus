@@ -181,6 +181,9 @@ class LLMClient:
                 j = i + 1
                 while j < len(sanitized) and sanitized[j].get("role") == "tool":
                     tool_msg = sanitized[j]
+                    # Anthropic requires tool messages to always have non-empty content
+                    if not tool_msg.get("content"):
+                        tool_msg["content"] = "(no output)"
                     result.append(tool_msg)
                     tcid = tool_msg.get("tool_call_id")
                     if tcid in expected_ids:
