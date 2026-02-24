@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -62,7 +63,7 @@ async def _heartbeat_on_event(event_data: dict[str, Any]) -> None:
 
 # ── Worker executor ──────────────────────────────────────────────────────────
 
-async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
+async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float | None = None) -> str:
     """Execute a worker task with an independent multi-turn agent loop.
 
     Workers have access to ALL tools from the registry and can make multiple
@@ -149,9 +150,21 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
     result = "Task completed (no output)."
     final_texts: list[str] = []
     errored = False
+    timed_out = False
 
     try:
         for round_num in range(MAX_WORKER_ROUNDS):
+            # Check deadline BEFORE each round
+            if deadline and time.time() >= deadline:
+                remaining_text = "\n".join(final_texts) if final_texts else ""
+                if remaining_text:
+                    result = remaining_text + "\n\n[Worker timed out — partial result above]"
+                else:
+                    result = f"[Worker timed out after {task.timeout}s]"
+                timed_out = True
+                logger.warning(f"Worker {task.id} hit deadline at round {round_num + 1}")
+                break
+
             status.current_step = f"Round {round_num + 1}/{MAX_WORKER_ROUNDS} — {model_display}"
             status.progress_pct = min(95.0, (round_num / MAX_WORKER_ROUNDS) * 100)
             try:
@@ -305,7 +318,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
                     "task_id": task.id,
                     "name": task.name,
                     "result": result[:500],
-                    "state": "failed" if result.startswith("[Worker Error]") else "completed",
+                    "state": "timed_out" if timed_out else ("failed" if result.startswith("[Worker Error]") else "completed"),
                 },
             })
 

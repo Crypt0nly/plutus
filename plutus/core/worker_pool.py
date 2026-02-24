@@ -47,7 +47,7 @@ class WorkerTask:
     prompt: str = ""                      # The instruction for the worker
     model_key: str | None = None          # Explicit model choice (None = auto-route)
     complexity: str | None = None         # "simple", "moderate", "complex" (hint)
-    timeout: float = 300.0                # 5 min default
+    timeout: float = 600.0                # 10 min default
     tools: list[str] | None = None        # Tool names the worker can use (None = all)
     parent_task_id: str | None = None     # If spawned by another worker
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -103,10 +103,9 @@ class WorkerStatus:
 
 # Type for the worker execution function
 # Signature: async def execute(task, on_status_update) -> str
-WorkerExecutor = Callable[
-    ["WorkerTask", Callable[[WorkerStatus], Awaitable[None]]],
-    Awaitable[str]
-]
+# The executor signature: (task, on_status_callback, *, deadline=None) -> result_str
+# We use a simple Callable type here; the deadline kwarg is passed via **kwargs
+WorkerExecutor = Callable[..., Awaitable[str]]
 
 
 class WorkerPool:
@@ -331,7 +330,18 @@ class WorkerPool:
     # ── Internal ──────────────────────────────────────────────────────────
 
     async def _run_worker(self, task: WorkerTask) -> None:
-        """Execute a worker task with concurrency control."""
+        """Execute a worker task with concurrency control.
+
+        IMPORTANT: We do NOT use asyncio.wait_for() because it cancels
+        the inner coroutine on timeout, which:
+          1. Prevents the executor's broadcast/cleanup code from running
+          2. Causes CancelledError to be caught instead of TimeoutError
+          3. Makes timeouts look like cancellations in the UI
+
+        Instead, we pass the deadline into the executor and let it
+        manage its own timeout gracefully (finishing the current round
+        then stopping).
+        """
         status = self._active.get(task.id)
         if not status:
             return
@@ -340,6 +350,7 @@ class WorkerPool:
         async with self._semaphore:
             status.state = WorkerState.RUNNING
             status.started_at = time.time()
+            deadline = time.time() + task.timeout
 
             if self._on_status_change:
                 try:
@@ -348,27 +359,20 @@ class WorkerPool:
                     pass
 
             try:
-                # Execute with timeout
-                result = await asyncio.wait_for(
-                    self._executor(task, self._update_status),
-                    timeout=task.timeout,
-                )
+                # Pass the deadline to the executor so it can check it
+                # between rounds and stop gracefully
+                result = await self._executor(task, self._update_status, deadline=deadline)
 
                 status.state = WorkerState.COMPLETED
                 status.result = result
                 self._total_completed += 1
 
-            except asyncio.TimeoutError:
-                status.state = WorkerState.TIMEOUT
-                status.error = f"Timed out after {task.timeout}s"
-                self._total_failed += 1
-                logger.warning(f"Worker {task.id} timed out after {task.timeout}s")
-
             except asyncio.CancelledError:
+                # Only happens on explicit pool.cancel() — a REAL cancellation
                 status.state = WorkerState.CANCELLED
-                status.error = "Cancelled"
+                status.error = "Cancelled by user"
                 self._total_failed += 1
-                logger.info(f"Worker {task.id} was cancelled")
+                logger.info(f"Worker {task.id} was cancelled by user")
 
             except Exception as e:
                 status.state = WorkerState.FAILED

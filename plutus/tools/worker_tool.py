@@ -165,7 +165,7 @@ class WorkerTool(Tool):
             name=kwargs.get("name", ""),
             prompt=prompt,
             model_key=model_key,
-            timeout=kwargs.get("timeout", 300.0),
+            timeout=kwargs.get("timeout", 600.0),
         )
 
         status = await self._pool.submit(task)
@@ -189,7 +189,7 @@ class WorkerTool(Tool):
                 name=td.get("name", ""),
                 prompt=td.get("prompt", ""),
                 model_key=td.get("model_key", "auto"),
-                timeout=td.get("timeout", 300.0),
+                timeout=td.get("timeout", 600.0),
             ))
 
         statuses = await self._pool.submit_many(tasks)
