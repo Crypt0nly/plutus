@@ -81,7 +81,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         current_step="Processing task...",
     )
     if model_router and task.model_key:
-        spec = model_router.route(task.prompt, model_override=task.model_key)
+        spec = model_router.select_for_worker(task.prompt, model_key=task.model_key)
         status.model_used = spec.display_name
     await on_status(status)
 
