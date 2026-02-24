@@ -27,9 +27,9 @@ const providerEnvVars: Record<string, string> = {
 
 const defaultModels: Record<string, { id: string; label: string; desc: string }[]> = {
   anthropic: [
-    { id: "claude-opus-4-6", label: "Claude Opus 4", desc: "Most capable — complex reasoning & analysis" },
-    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4", desc: "Balanced — great for most tasks" },
-    { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", desc: "Fast & efficient — simple tasks" },
+    { id: "claude-opus-4-6", label: "Claude Opus 4-6", desc: "Most capable — complex reasoning & analysis" },
+    { id: "claude-sonnet-4-6", label: "Claude Sonnet 4-6", desc: "Balanced — great for most tasks" },
+    { id: "claude-haiku-4-5", label: "Claude Haiku 4-5", desc: "Fast & efficient — simple tasks" },
   ],
   openai: [
     { id: "gpt-5.2", label: "GPT-5.2", desc: "Latest flagship model" },
