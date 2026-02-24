@@ -226,6 +226,23 @@ export function SettingsView() {
                 />
                 <p className="text-[10px] text-gray-600 mt-1">Total messages stored per conversation</p>
               </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Auto-Delete After (days)</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
+                  defaultValue={config.memory?.conversation_auto_delete_days ?? 30}
+                  onChange={(e) =>
+                    handleSave({
+                      memory: { conversation_auto_delete_days: parseInt(e.target.value) || 0 },
+                    })
+                  }
+                />
+                <p className="text-[10px] text-gray-600 mt-1">
+                  Conversations with no activity for this many days are automatically deleted. Set to 0 to disable.
+                </p>
+              </div>
             </div>
           </div>
         </div>

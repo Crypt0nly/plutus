@@ -11,6 +11,7 @@ import {
   Plug,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
+import { ConversationHistory } from "../chat/ConversationHistory";
 
 interface NavSection {
   label: string;
@@ -45,8 +46,22 @@ const navSections: NavSection[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  send?: (data: Record<string, unknown>) => void;
+}
+
+export function Sidebar({ send }: SidebarProps) {
   const { view, setView, connected, currentTier } = useAppStore();
+
+  const handleNewChat = () => {
+    useAppStore.getState().clearMessages();
+    useAppStore.getState().setConversationId(null);
+    setView("chat");
+    // Tell the backend to start a new conversation
+    if (send) {
+      send({ type: "new_conversation" });
+    }
+  };
 
   return (
     <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
@@ -79,6 +94,23 @@ export function Sidebar() {
           <Shield className="w-3 h-3 text-gray-500" />
           <span className="text-gray-400 capitalize">{currentTier} mode</span>
         </div>
+      </div>
+
+      {/* New Chat button */}
+      <div className="px-3 pt-3 pb-1">
+        <button
+          onClick={handleNewChat}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg
+                     bg-plutus-600/20 hover:bg-plutus-600/30 text-plutus-400 text-sm font-medium transition-colors border border-plutus-500/20"
+        >
+          <Plus className="w-4 h-4" />
+          New Chat
+        </button>
+      </div>
+
+      {/* Conversation History */}
+      <div className="px-3 pb-1 border-b border-gray-800">
+        {send && <ConversationHistory send={send} />}
       </div>
 
       {/* Navigation */}
@@ -118,28 +150,12 @@ export function Sidebar() {
       </nav>
 
       {/* Latest Update */}
-      <div className="px-3 pb-2">
+      <div className="px-3 pb-3">
         <div className="rounded-lg bg-plutus-500/10 border border-plutus-500/20 px-3 py-2">
           <p className="text-[9px] font-semibold text-plutus-400 uppercase tracking-wider">Latest Update</p>
-          <p className="text-xs text-gray-300 mt-0.5 font-medium">Workers Coordinator Architecture Queue Redesign</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">v0.3.2 · Feb 24, 2026</p>
+          <p className="text-xs text-gray-300 mt-0.5 font-medium">Conversation History & Auto-Cleanup</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">v0.3.3 · Feb 24, 2026</p>
         </div>
-      </div>
-
-      {/* New Chat button */}
-      <div className="p-3 border-t border-gray-800">
-        <button
-          onClick={() => {
-            useAppStore.getState().clearMessages();
-            useAppStore.getState().setConversationId(null);
-            setView("chat");
-          }}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg
-                     bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Chat
-        </button>
       </div>
     </aside>
   );

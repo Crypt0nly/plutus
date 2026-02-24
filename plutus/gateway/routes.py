@@ -71,6 +71,10 @@ class PlanStatusUpdate(BaseModel):
     status: str
 
 
+class RenameConversationRequest(BaseModel):
+    title: str
+
+
 class ConnectorConfigUpdate(BaseModel):
     config: dict[str, Any]
 
@@ -218,14 +222,14 @@ def create_router() -> APIRouter:
     # ── Conversations ───────────────────────────────────────
 
     @router.get("/conversations")
-    async def list_conversations(limit: int = 20) -> list[dict[str, Any]]:
+    async def list_conversations(limit: int = 50) -> list[dict[str, Any]]:
         from plutus.gateway.server import get_state
 
         state = get_state()
-        agent = state.get("agent")
-        if not agent:
+        memory = state.get("memory")
+        if not memory:
             return []
-        return await agent.conversation.list_conversations(limit)
+        return await memory.list_conversations(limit)
 
     @router.delete("/conversations/{conv_id}")
     async def delete_conversation(conv_id: str) -> dict[str, str]:
@@ -237,6 +241,16 @@ def create_router() -> APIRouter:
             await agent.conversation.delete_conversation(conv_id)
         return {"message": "Deleted"}
 
+    @router.patch("/conversations/{conv_id}")
+    async def rename_conversation(conv_id: str, body: RenameConversationRequest) -> dict[str, str]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        if memory:
+            await memory.rename_conversation(conv_id, body.title)
+        return {"message": "Renamed", "title": body.title}
+
     @router.get("/conversations/{conv_id}/messages")
     async def get_messages(conv_id: str) -> list[dict[str, Any]]:
         from plutus.gateway.server import get_state
@@ -246,6 +260,22 @@ def create_router() -> APIRouter:
         if not memory:
             return []
         return await memory.get_messages(conv_id)
+
+    @router.post("/conversations/cleanup")
+    async def cleanup_conversations() -> dict[str, Any]:
+        """Manually trigger conversation cleanup."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        memory = state.get("memory")
+        config = state.get("config")
+        if not memory or not config:
+            return {"deleted": 0}
+        days = config.memory.conversation_auto_delete_days
+        if days <= 0:
+            return {"deleted": 0, "message": "Auto-delete is disabled"}
+        deleted = await memory.cleanup_stale_conversations(days)
+        return {"deleted": deleted, "max_age_days": days}
 
     # ── Tools ───────────────────────────────────────────────
 

@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     created_at REAL NOT NULL,
     title TEXT,
-    metadata TEXT DEFAULT '{}'
+    metadata TEXT DEFAULT '{}',
+    last_activity REAL
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -93,6 +94,32 @@ class MemoryStore:
         self._db = await aiosqlite.connect(self._db_path)
         await self._db.executescript(_SCHEMA)
         await self._db.commit()
+        # Migrate: add last_activity column if missing (for existing databases)
+        await self._migrate_last_activity()
+        # Create index after migration ensures column exists
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_last_activity ON conversations(last_activity)"
+        )
+        await self._db.commit()
+
+    async def _migrate_last_activity(self) -> None:
+        """Add last_activity column to conversations table if it doesn't exist."""
+        assert self._db
+        try:
+            cursor = await self._db.execute("PRAGMA table_info(conversations)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "last_activity" not in columns:
+                await self._db.execute(
+                    "ALTER TABLE conversations ADD COLUMN last_activity REAL"
+                )
+                # Backfill: set last_activity to the latest message time or created_at
+                await self._db.execute(
+                    "UPDATE conversations SET last_activity = "
+                    "COALESCE((SELECT MAX(created_at) FROM messages WHERE conversation_id = conversations.id), created_at)"
+                )
+                await self._db.commit()
+        except Exception:
+            pass  # Column already exists or other non-critical error
 
     async def close(self) -> None:
         if self._db:
@@ -102,17 +129,20 @@ class MemoryStore:
 
     async def create_conversation(self, conv_id: str, title: str | None = None) -> None:
         assert self._db
+        now = time.time()
         await self._db.execute(
-            "INSERT INTO conversations (id, created_at, title) VALUES (?, ?, ?)",
-            (conv_id, time.time(), title),
+            "INSERT INTO conversations (id, created_at, title, last_activity) VALUES (?, ?, ?, ?)",
+            (conv_id, now, title, now),
         )
         await self._db.commit()
 
-    async def list_conversations(self, limit: int = 20) -> list[dict[str, Any]]:
+    async def list_conversations(self, limit: int = 50) -> list[dict[str, Any]]:
         assert self._db
         cursor = await self._db.execute(
-            "SELECT id, created_at, title, metadata FROM conversations "
-            "ORDER BY created_at DESC LIMIT ?",
+            "SELECT c.id, c.created_at, c.title, c.metadata, c.last_activity, "
+            "(SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) as msg_count "
+            "FROM conversations c "
+            "ORDER BY COALESCE(c.last_activity, c.created_at) DESC LIMIT ?",
             (limit,),
         )
         rows = await cursor.fetchall()
@@ -121,10 +151,30 @@ class MemoryStore:
                 "id": r[0],
                 "created_at": r[1],
                 "title": r[2],
-                "metadata": json.loads(r[3]),
+                "metadata": json.loads(r[3]) if r[3] else {},
+                "last_activity": r[4] or r[1],
+                "message_count": r[5],
             }
             for r in rows
         ]
+
+    async def rename_conversation(self, conv_id: str, title: str) -> None:
+        """Rename a conversation."""
+        assert self._db
+        await self._db.execute(
+            "UPDATE conversations SET title = ? WHERE id = ?",
+            (title, conv_id),
+        )
+        await self._db.commit()
+
+    async def touch_conversation(self, conv_id: str) -> None:
+        """Update last_activity timestamp for a conversation."""
+        assert self._db
+        await self._db.execute(
+            "UPDATE conversations SET last_activity = ? WHERE id = ?",
+            (time.time(), conv_id),
+        )
+        await self._db.commit()
 
     async def delete_conversation(self, conv_id: str) -> None:
         assert self._db
@@ -134,6 +184,49 @@ class MemoryStore:
         await self._db.execute("DELETE FROM checkpoints WHERE conversation_id = ?", (conv_id,))
         await self._db.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
         await self._db.commit()
+
+    async def cleanup_stale_conversations(self, max_age_days: int = 30) -> int:
+        """Delete conversations with no activity for more than max_age_days.
+
+        Returns the number of conversations deleted.
+        """
+        assert self._db
+        cutoff = time.time() - (max_age_days * 86400)
+
+        # Find stale conversations
+        cursor = await self._db.execute(
+            "SELECT id FROM conversations WHERE COALESCE(last_activity, created_at) < ?",
+            (cutoff,),
+        )
+        stale_ids = [r[0] for r in await cursor.fetchall()]
+
+        if not stale_ids:
+            return 0
+
+        # Delete all related data for each stale conversation
+        placeholders = ",".join("?" for _ in stale_ids)
+        await self._db.execute(
+            f"DELETE FROM messages WHERE conversation_id IN ({placeholders})",
+            stale_ids,
+        )
+        await self._db.execute(
+            f"DELETE FROM conversation_summaries WHERE conversation_id IN ({placeholders})",
+            stale_ids,
+        )
+        await self._db.execute(
+            f"DELETE FROM goals WHERE conversation_id IN ({placeholders})",
+            stale_ids,
+        )
+        await self._db.execute(
+            f"DELETE FROM checkpoints WHERE conversation_id IN ({placeholders})",
+            stale_ids,
+        )
+        await self._db.execute(
+            f"DELETE FROM conversations WHERE id IN ({placeholders})",
+            stale_ids,
+        )
+        await self._db.commit()
+        return len(stale_ids)
 
     # -- Messages --
 
@@ -146,6 +239,7 @@ class MemoryStore:
         tool_call_id: str | None = None,
     ) -> int:
         assert self._db
+        now = time.time()
         cursor = await self._db.execute(
             "INSERT INTO messages (conversation_id, role, content, tool_calls, tool_call_id, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
@@ -155,8 +249,13 @@ class MemoryStore:
                 content,
                 json.dumps(tool_calls) if tool_calls else None,
                 tool_call_id,
-                time.time(),
+                now,
             ),
+        )
+        # Update last_activity on the conversation
+        await self._db.execute(
+            "UPDATE conversations SET last_activity = ? WHERE id = ?",
+            (now, conversation_id),
         )
         await self._db.commit()
         return cursor.lastrowid  # type: ignore
