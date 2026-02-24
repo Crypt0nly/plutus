@@ -204,6 +204,20 @@ class LLMClient:
 
             i += 1
 
+        # Final sweep: ensure every tool message has non-empty content and every
+        # assistant message has a content field.  This catches edge cases where
+        # tool messages end up in unexpected positions (e.g. after context-window
+        # truncation splits an assistant+tool pair).
+        for msg in result:
+            if msg.get("role") == "tool":
+                if not msg.get("content"):
+                    msg["content"] = "(no output)"
+            elif msg.get("role") == "assistant":
+                # Anthropic requires a content field on assistant messages even
+                # when the message only contains tool_use blocks.
+                if "content" not in msg:
+                    msg["content"] = ""
+
         return result
 
     async def complete(
@@ -240,7 +254,7 @@ class LLMClient:
     ) -> AsyncIterator[str]:
         """Stream a completion response, yielding text chunks."""
         call_kwargs = self._build_kwargs(stream=True, **kwargs)
-        call_kwargs["messages"] = messages
+        call_kwargs["messages"] = self._sanitize_messages(messages)
 
         if tools:
             call_kwargs["tools"] = [
