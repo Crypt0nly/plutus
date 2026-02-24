@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from plutus.tools.base import Tool
+
+logger = logging.getLogger("plutus.tools.filesystem")
 
 MAX_FILE_SIZE = 1_000_000  # 1MB read limit
 MAX_READ_LINES = 2000
@@ -110,17 +113,43 @@ class FilesystemTool(Tool):
         return content
 
     async def _write(self, path: Path, kwargs: dict) -> str:
-        content = kwargs.get("content", "")
+        content = kwargs.get("content")
+        if content is None:
+            # Check for common alternative key names the LLM might use
+            content = kwargs.get("text") or kwargs.get("data") or kwargs.get("file_content")
+        if content is None:
+            logger.error(f"filesystem._write called with no content! kwargs keys: {list(kwargs.keys())}")
+            return (
+                "[ERROR] No 'content' parameter provided. "
+                "You MUST pass content='your file content here' to write a file. "
+                f"Received parameters: {list(kwargs.keys())}"
+            )
+        if not content:
+            logger.warning(f"filesystem._write called with empty content string for {path}")
+            return (
+                "[WARNING] Content is an empty string — this will create an empty file. "
+                "If this is unintentional, call filesystem again with the actual content."
+            )
+        logger.info(f"filesystem._write: writing {len(content)} chars to {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-        return f"Written {len(content)} bytes to {path}"
+        path.write_text(content, encoding="utf-8")
+        return f"Successfully written {len(content)} characters ({len(content.encode('utf-8'))} bytes) to {path}"
 
     async def _append(self, path: Path, kwargs: dict) -> str:
-        content = kwargs.get("content", "")
+        content = kwargs.get("content")
+        if content is None:
+            content = kwargs.get("text") or kwargs.get("data") or kwargs.get("file_content")
+        if content is None:
+            logger.error(f"filesystem._append called with no content! kwargs keys: {list(kwargs.keys())}")
+            return (
+                "[ERROR] No 'content' parameter provided. "
+                "You MUST pass content='text to append' to append to a file. "
+                f"Received parameters: {list(kwargs.keys())}"
+            )
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a") as f:
+        with open(path, "a", encoding="utf-8") as f:
             f.write(content)
-        return f"Appended {len(content)} bytes to {path}"
+        return f"Appended {len(content)} characters to {path}"
 
     async def _list(self, path: Path, kwargs: dict) -> str:
         if not path.is_dir():
