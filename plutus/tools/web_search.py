@@ -169,11 +169,15 @@ async def _fetch_url(url: str) -> str:
 
 
 class WebSearchTool(Tool):
-    """Web search and URL fetching tool for real-time information access."""
+    """Web search and URL fetching tool for real-time information access.
+
+    This is a client-side fallback used for non-Anthropic models.
+    Anthropic models use native server-side web_search/web_fetch tools instead.
+    """
 
     @property
     def name(self) -> str:
-        return "web_search"
+        return "web"
 
     @property
     def description(self) -> str:

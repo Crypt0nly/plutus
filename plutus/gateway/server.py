@@ -132,6 +132,21 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
             except Exception:
                 pass
 
+    # Inject Anthropic server-side web search/fetch tools for workers too
+    from plutus.core.llm import (
+        _ANTHROPIC_SERVER_TOOL_ID_PREFIX,
+        _ANTHROPIC_WEB_FETCH_TOOL,
+        _ANTHROPIC_WEB_SEARCH_TOOL,
+    )
+
+    config: PlutusConfig | None = _state.get("config")
+    _is_anthropic = model_key.startswith("anthropic") or (
+        config and config.model.provider == "anthropic"
+    )
+    if _is_anthropic and (not config or config.model.web_search):
+        tools_for_llm.append(_ANTHROPIC_WEB_SEARCH_TOOL)
+        tools_for_llm.append(_ANTHROPIC_WEB_FETCH_TOOL)
+
     # Worker system prompt — critical for proper completion behavior
     worker_system_prompt = (
         "You are a Plutus worker agent running on a Windows PC with WSL (Windows Subsystem "
@@ -305,8 +320,16 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 })
                 continue
 
-            # If no tool calls, this is the FINAL response — the worker is done
-            if not msg.tool_calls:
+            # Filter out server-side tool calls (srvtoolu_*) — these are
+            # Anthropic server-executed (web_search, web_fetch) and their
+            # results are already in the response text.
+            client_tool_calls = [
+                tc for tc in (msg.tool_calls or [])
+                if not (tc.id and tc.id.startswith(_ANTHROPIC_SERVER_TOOL_ID_PREFIX))
+            ]
+
+            # If no client-side tool calls, this is the FINAL response
+            if not client_tool_calls:
                 if msg.content:
                     final_texts.append(msg.content)
                     logger.info(f"Worker {task.id} completed with final text ({len(msg.content)} chars)")
@@ -331,12 +354,12 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                         "arguments": tc.function.arguments if isinstance(tc.function.arguments, str) else _json.dumps(tc.function.arguments),
                     },
                 }
-                for tc in msg.tool_calls
+                for tc in client_tool_calls
             ]
             messages.append(assistant_msg)
 
             # Execute each tool call
-            for tc in msg.tool_calls:
+            for tc in client_tool_calls:
                 tool_name = tc.function.name
                 try:
                     args_raw = tc.function.arguments
