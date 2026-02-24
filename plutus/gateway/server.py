@@ -464,15 +464,25 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 "duration": 0.0,
             })
 
-            # Inject the result into the coordinator's conversation context
-            # so Plutus can see what the workers produced
+            # Queue the result for the coordinator to pick up.
+            # We do NOT inject directly into the conversation because
+            # Anthropic requires strict tool_use → tool_result pairing.
+            # Any message injected mid-tool-loop breaks this constraint.
+            # Instead, we store it in a pending queue that the agent
+            # drains at the start of each new process_message call.
             agent: AgentRuntime | None = _state.get("agent")
-            if agent and hasattr(agent, 'conversation') and agent.conversation.conversation_id:
+            if agent:
                 worker_context_msg = (
-                    f"[Worker Result — {task.name} ({model_display})]\n"
-                    f"{result}"
+                    f"[WORKER COMPLETED — {task.name} ({model_display})]\n"
+                    f"{result}\n"
+                    f"[You may reference this worker's output when responding to the user.]"
                 )
-                await agent.conversation.add_assistant_message(content=worker_context_msg)
+                if not hasattr(agent, '_pending_worker_results'):
+                    agent._pending_worker_results = []
+                agent._pending_worker_results.append(worker_context_msg)
+                logger.info(f"Worker {task.id} result queued for coordinator (queue size: {len(agent._pending_worker_results)})")
+            else:
+                logger.warning(f"Worker {task.id} could not queue result — no agent in state")
         except Exception as broadcast_err:
             logger.error(f"Worker {task.id} failed to broadcast results: {broadcast_err}")
 
