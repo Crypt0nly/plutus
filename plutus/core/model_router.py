@@ -58,7 +58,7 @@ class ModelSpec:
 AVAILABLE_MODELS: dict[str, ModelSpec] = {
     # Anthropic
     "claude-opus": ModelSpec(
-        id="claude-opus-4",
+        id="claude-opus-4-6",
         provider="anthropic",
         display_name="Claude Opus",
         complexity_tier=Complexity.COMPLEX,
@@ -78,7 +78,7 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         cost_per_1k_output=0.015,
     ),
     "claude-haiku": ModelSpec(
-        id="claude-haiku-4",
+        id="claude-haiku-4-5",
         provider="anthropic",
         display_name="Claude Haiku",
         complexity_tier=Complexity.SIMPLE,

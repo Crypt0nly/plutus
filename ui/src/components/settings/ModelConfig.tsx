@@ -22,7 +22,7 @@ const defaultModels: Record<string, string[]> = {
   anthropic: [
     "claude-opus-4-6",
     "claude-sonnet-4-6",
-    "claude-haiku-4-5-20251001",
+    "claude-haiku-4-5",
   ],
   openai: [
     "gpt-5.2",
@@ -107,7 +107,7 @@ export function ModelConfig({ config, onSave, saving, keyStatus, onKeyStatusChan
         </h3>
         <p className="text-[10px] text-gray-500 -mt-2 mb-4">
           This is the main brain Plutus uses when talking to you. It never changes automatically.
-          Workers may use different models — configure those in Workers & Automation → Models.
+          Workers use different models automatically based on task complexity.
         </p>
 
         <div className="space-y-4">
