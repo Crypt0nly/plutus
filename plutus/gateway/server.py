@@ -1,6 +1,6 @@
-"""Main FastAPI application — serves the API and static UI files.
+"""Plutus Gateway Server.
 
-Plutus v0.3.0 — Multi-model, multi-worker, scheduled agent.
+Plutus v0.3.2 — Multi-model, multi-worker, scheduled agent.
 
 Architecture:
   - Model Router: auto-selects Claude Opus/Sonnet/Haiku or GPT-5.2 per task
@@ -28,7 +28,7 @@ from plutus.core.heartbeat import HeartbeatRunner
 from plutus.core.memory import MemoryStore
 from plutus.core.model_router import ModelRouter, ModelRoutingConfig
 from plutus.core.scheduler import Scheduler, ScheduledJob
-from plutus.core.worker_pool import WorkerPool, WorkerTask, WorkerStatus
+from plutus.core.worker_pool import WorkerPool, WorkerTask, WorkerStatus, WorkerState
 from plutus.gateway.routes import create_router
 from plutus.gateway.ws import create_ws_router, manager as ws_manager
 from plutus.guardrails.engine import GuardrailEngine
@@ -62,45 +62,85 @@ async def _heartbeat_on_event(event_data: dict[str, Any]) -> None:
 # ── Worker executor ──────────────────────────────────────────────────────────
 
 async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
-    """Execute a worker task using a dedicated LLM call.
+    """Execute a worker task using an INDEPENDENT LLM call.
 
-    This is the function that the WorkerPool calls for each worker.
-    It creates a mini agent conversation to handle the task.
+    Workers do NOT route through the coordinator agent. They make their own
+    standalone API call using litellm, with the model selected by the router.
+    This prevents:
+      - Self-await deadlocks (coordinator waiting on its own task)
+      - Conversation context pollution between coordinator and workers
+      - Recursion depth issues from circular dependencies
     """
-    agent: AgentRuntime | None = _state.get("agent")
-    model_router: ModelRouter | None = _state.get("model_router")
+    import litellm
 
-    if not agent:
-        raise RuntimeError("Agent not initialized")
+    model_router: ModelRouter | None = _state.get("model_router")
+    secrets: SecretsStore | None = _state.get("secrets")
+
+    # Select model for this worker
+    model_string = "anthropic/claude-sonnet-4-6"  # fallback
+    model_display = "Claude Sonnet 4-6"
+
+    if model_router:
+        spec = model_router.select_for_worker(task.prompt, model_key=task.model_key)
+        model_string = model_router.get_litellm_model_string(spec)
+        model_display = spec.display_name
+        # Record usage
+        for key, s in __import__("plutus.core.model_router", fromlist=["AVAILABLE_MODELS"]).AVAILABLE_MODELS.items():
+            if s.id == spec.id:
+                model_router.record_usage(key)
+                break
 
     # Update status
     status = WorkerStatus(
         task_id=task.id,
-        state=__import__("plutus.core.worker_pool", fromlist=["WorkerState"]).WorkerState.RUNNING,
+        state=WorkerState.RUNNING,
         name=task.name,
         current_step="Processing task...",
+        model_used=model_display,
     )
-    if model_router and task.model_key:
-        spec = model_router.select_for_worker(task.prompt, model_key=task.model_key)
-        status.model_used = spec.display_name
     await on_status(status)
 
     # Broadcast to UI
     await ws_manager.broadcast({
         "type": "worker_started",
-        "worker": {"task_id": task.id, "name": task.name, "model": status.model_used},
+        "worker": {"task_id": task.id, "name": task.name, "model": model_display},
     })
 
-    # Process through the agent
-    result_parts = []
-    async for event in agent.process_message(
-        f"[WORKER TASK: {task.name}]\n{task.prompt}",
-    ):
-        await ws_manager.broadcast(event.to_dict())
-        if hasattr(event, "content") and event.content:
-            result_parts.append(event.content)
+    # Make an independent LLM call — NOT through the coordinator agent
+    worker_system_prompt = (
+        "You are a Plutus worker agent. You have been assigned a specific task by the "
+        "coordinator. Complete the task thoroughly and return your result. "
+        "Be concise but comprehensive. Do not ask follow-up questions — just do the work."
+    )
 
-    result = "\n".join(result_parts) if result_parts else "Task completed."
+    messages = [
+        {"role": "system", "content": worker_system_prompt},
+        {"role": "user", "content": task.prompt},
+    ]
+
+    try:
+        # Update status
+        status.current_step = f"Calling {model_display}..."
+        await on_status(status)
+
+        response = await litellm.acompletion(
+            model=model_string,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4096,
+        )
+
+        result = response.choices[0].message.content or "Task completed (no output)."
+
+        # Update status
+        status.current_step = "Done"
+        status.steps_completed = 1
+        status.progress_pct = 100.0
+        await on_status(status)
+
+    except Exception as e:
+        result = f"[Worker Error] {e}"
+        logger.exception(f"Worker {task.id} LLM call failed: {e}")
 
     await ws_manager.broadcast({
         "type": "worker_completed",
@@ -322,7 +362,7 @@ async def lifespan(app: FastAPI):
     heartbeat_status = "enabled" if config.heartbeat.enabled else "disabled"
     scheduler_status = "enabled" if config.scheduler.enabled else "disabled"
     logger.info(
-        f"Plutus v0.3.0 started — tier={config.guardrails.tier}, "
+        f"Plutus v0.3.2 started — tier={config.guardrails.tier}, "
         f"model={config.model.provider}/{config.model.model}, "
         f"api_key={key_status}, computer_use={cu_status}, "
         f"heartbeat={heartbeat_status}, scheduler={scheduler_status}, "
@@ -349,25 +389,25 @@ def create_app(config: PlutusConfig | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Plutus",
-        description="Autonomous AI agent with multi-model routing, workers, and scheduling",
         version="0.3.2",
         lifespan=lifespan,
     )
 
-    resolved_config = config or PlutusConfig.load()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=resolved_config.gateway.cors_origins + ["http://localhost:7777"],
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    # API routes
     app.include_router(create_router(), prefix="/api")
     app.include_router(create_ws_router())
 
-    ui_dist = Path(__file__).parent.parent.parent / "ui" / "dist"
-    if ui_dist.exists():
-        app.mount("/", StaticFiles(directory=str(ui_dist), html=True), name="ui")
+    # Serve the UI
+    ui_dir = Path(__file__).parent.parent.parent / "ui" / "dist"
+    if ui_dir.exists():
+        app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
 
     return app

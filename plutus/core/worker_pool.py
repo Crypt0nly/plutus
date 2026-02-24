@@ -276,26 +276,49 @@ class WorkerPool:
         }
 
     async def wait_for(self, task_id: str, timeout: float = 300.0) -> WorkerStatus | None:
-        """Wait for a specific worker to complete."""
-        if task_id in self._tasks:
-            try:
-                await asyncio.wait_for(self._tasks[task_id], timeout=timeout)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass
+        """Wait for a specific worker to complete by polling status.
+
+        Uses polling instead of directly awaiting the asyncio task to avoid
+        self-await deadlocks when the coordinator calls wait from within
+        its own agent loop.
+        """
+        import time as _time
+        deadline = _time.monotonic() + timeout
+        poll_interval = 0.5  # check every 500ms
+
+        while _time.monotonic() < deadline:
+            status = self.get_status(task_id)
+            if status is None:
+                return None
+            if status.state in (WorkerState.COMPLETED, WorkerState.FAILED,
+                                WorkerState.CANCELLED, WorkerState.TIMEOUT):
+                return status
+            await asyncio.sleep(poll_interval)
+            # Gradually increase poll interval up to 2s
+            poll_interval = min(poll_interval * 1.2, 2.0)
+
+        # Timed out waiting
         return self.get_status(task_id)
 
     async def wait_all(self, task_ids: list[str] | None = None, timeout: float = 600.0) -> list[WorkerStatus]:
-        """Wait for multiple workers to complete."""
+        """Wait for multiple workers to complete by polling status."""
+        import time as _time
         ids = task_ids or list(self._tasks.keys())
-        tasks = [self._tasks[tid] for tid in ids if tid in self._tasks]
-        if tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=timeout
-                )
-            except asyncio.TimeoutError:
-                pass
+        deadline = _time.monotonic() + timeout
+        poll_interval = 0.5
+
+        while _time.monotonic() < deadline:
+            all_done = True
+            for tid in ids:
+                status = self.get_status(tid)
+                if status and status.state in (WorkerState.QUEUED, WorkerState.RUNNING):
+                    all_done = False
+                    break
+            if all_done:
+                break
+            await asyncio.sleep(poll_interval)
+            poll_interval = min(poll_interval * 1.2, 2.0)
+
         return [self.get_status(tid) for tid in ids if self.get_status(tid)]
 
     async def cleanup(self) -> None:
