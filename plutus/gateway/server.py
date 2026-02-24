@@ -12,6 +12,7 @@ Architecture:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -147,6 +148,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
     MAX_WORKER_ROUNDS = 15
     result = "Task completed (no output)."
     final_texts: list[str] = []
+    errored = False
 
     try:
         for round_num in range(MAX_WORKER_ROUNDS):
@@ -163,7 +165,14 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
             if tools_for_llm:
                 call_kwargs["tools"] = tools_for_llm
 
-            response = await litellm.acompletion(**call_kwargs)
+            try:
+                response = await litellm.acompletion(**call_kwargs)
+            except Exception as llm_err:
+                logger.error(f"Worker {task.id} LLM call failed on round {round_num + 1}: {llm_err}")
+                result = f"[Worker Error] LLM call failed: {llm_err}"
+                errored = True
+                break
+
             choice = response.choices[0]
             msg = choice.message
 
@@ -220,8 +229,9 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
                     "content": tool_result[:8000],  # cap to avoid context overflow
                 })
 
-        # Assemble final result from all text outputs
-        result = "\n".join(final_texts) if final_texts else "Task completed (no output)."
+        # Assemble final result from all text outputs (unless we already set an error)
+        if not errored:
+            result = "\n".join(final_texts) if final_texts else "Task completed (no output)."
 
         # Update status
         status.current_step = "Done"
@@ -229,35 +239,48 @@ async def _worker_executor(task: WorkerTask, on_status: Any) -> str:
         status.progress_pct = 100.0
         await on_status(status)
 
+    except asyncio.CancelledError:
+        result = "[Worker Cancelled]"
+        logger.info(f"Worker {task.id} was cancelled")
     except Exception as e:
         result = f"[Worker Error] {e}"
         logger.exception(f"Worker {task.id} failed: {e}")
+    finally:
+        # ALWAYS broadcast results, even on error/cancellation.
+        # This guarantees the UI gets the result and the coordinator sees it.
+        try:
+            # Broadcast completion status to workers panel
+            await ws_manager.broadcast({
+                "type": "worker_completed",
+                "worker": {
+                    "task_id": task.id,
+                    "name": task.name,
+                    "result": result[:500],
+                    "state": "failed" if result.startswith("[Worker Error]") or result.startswith("[Worker Cancelled]") else "completed",
+                },
+            })
 
-    # Broadcast completion status to workers panel
-    await ws_manager.broadcast({
-        "type": "worker_completed",
-        "worker": {"task_id": task.id, "name": task.name, "result": result[:500]},
-    })
+            # Broadcast the full result to the chat — this is what the user sees
+            await ws_manager.broadcast({
+                "type": "worker_result",
+                "task_id": task.id,
+                "name": task.name,
+                "model": model_display,
+                "result": result,
+                "duration": 0.0,
+            })
 
-    # Broadcast the full result to the chat — this is what the user sees
-    await ws_manager.broadcast({
-        "type": "worker_result",
-        "task_id": task.id,
-        "name": task.name,
-        "model": model_display,
-        "result": result,
-        "duration": 0.0,
-    })
-
-    # Inject the result into the coordinator's conversation context
-    # so Plutus can see what the workers produced
-    agent: AgentRuntime | None = _state.get("agent")
-    if agent and agent.conversation.conversation_id:
-        worker_context_msg = (
-            f"[Worker Result — {task.name} ({model_display})]\n"
-            f"{result}"
-        )
-        await agent.conversation.add_assistant_message(content=worker_context_msg)
+            # Inject the result into the coordinator's conversation context
+            # so Plutus can see what the workers produced
+            agent: AgentRuntime | None = _state.get("agent")
+            if agent and agent.conversation.conversation_id:
+                worker_context_msg = (
+                    f"[Worker Result — {task.name} ({model_display})]\n"
+                    f"{result}"
+                )
+                await agent.conversation.add_assistant_message(content=worker_context_msg)
+        except Exception as broadcast_err:
+            logger.error(f"Worker {task.id} failed to broadcast results: {broadcast_err}")
 
     return result
 
