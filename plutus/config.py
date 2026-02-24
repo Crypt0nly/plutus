@@ -34,6 +34,7 @@ class ModelConfig(BaseModel):
     base_url: str | None = None
     temperature: float = 0.7
     max_tokens: int = 16384
+    web_search: bool = True  # Enable Anthropic server-side web search/fetch tools
 
 
 class ToolOverride(BaseModel):
