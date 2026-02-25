@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   MessageSquare,
   LayoutDashboard,
@@ -9,12 +10,15 @@ import {
   Sparkles,
   Brain,
   Plug,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 import { ConversationHistory } from "../chat/ConversationHistory";
 
 interface NavSection {
   label: string;
+  collapsible?: boolean;
   items: { id: View; label: string; icon: React.ElementType; badge?: string }[];
 }
 
@@ -29,15 +33,17 @@ const navSections: NavSection[] = [
   },
   {
     label: "Agent",
+    collapsible: true,
     items: [
       { id: "memory", label: "Memory & Plans", icon: Brain },
       { id: "tools", label: "Tools", icon: Wrench },
-      { id: "workers", label: "Workers & Automation", icon: Cpu },
+      { id: "workers", label: "Workers", icon: Cpu },
       { id: "tool-creator", label: "Tool Creator", icon: Sparkles },
     ],
   },
   {
     label: "System",
+    collapsible: true,
     items: [
       { id: "connectors", label: "Connectors", icon: Plug, badge: "New" },
       { id: "guardrails", label: "Guardrails", icon: Shield },
@@ -52,111 +58,144 @@ interface SidebarProps {
 
 export function Sidebar({ send }: SidebarProps) {
   const { view, setView, connected, currentTier } = useAppStore();
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  const toggleSection = (label: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
 
   const handleNewChat = () => {
     useAppStore.getState().clearMessages();
     useAppStore.getState().setConversationId(null);
     setView("chat");
-    // Tell the backend to start a new conversation
     if (send) {
       send({ type: "new_conversation" });
     }
   };
 
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
-      {/* Logo */}
-      <div className="p-5 border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-plutus-500 to-plutus-700 flex items-center justify-center font-bold text-lg shadow-lg shadow-plutus-500/20">
-            P
-          </div>
-          <div>
-            <h1 className="font-bold text-lg leading-none">Plutus</h1>
-            <p className="text-xs text-gray-500 mt-0.5">v0.3.2</p>
+    <aside className="w-72 bg-gray-950 border-r border-gray-800/60 flex flex-col h-full">
+      {/* Header: Logo + Status */}
+      <div className="px-4 pt-5 pb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-plutus-500 to-plutus-700 flex items-center justify-center font-bold text-base shadow-lg shadow-plutus-600/20 ring-1 ring-white/10">
+              P
+            </div>
+            <div>
+              <h1 className="font-semibold text-[15px] leading-none text-gray-100">Plutus</h1>
+              <div className="flex items-center gap-1.5 mt-1">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    connected
+                      ? "bg-emerald-400 shadow-sm shadow-emerald-400/60"
+                      : "bg-red-400"
+                  }`}
+                />
+                <span className="text-[10px] text-gray-500">
+                  {connected ? "Online" : "Offline"}
+                </span>
+                <span className="text-gray-800 text-[10px]">·</span>
+                <span className="text-[10px] text-gray-500 capitalize">{currentTier}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Status */}
-      <div className="px-4 py-3 border-b border-gray-800">
-        <div className="flex items-center gap-2 text-xs">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              connected ? "bg-emerald-500 shadow-sm shadow-emerald-500/50" : "bg-red-500"
-            }`}
-          />
-          <span className="text-gray-400">
-            {connected ? "Connected" : "Disconnected"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-xs mt-1.5">
-          <Shield className="w-3 h-3 text-gray-500" />
-          <span className="text-gray-400 capitalize">{currentTier} mode</span>
-        </div>
-      </div>
-
-      {/* New Chat button */}
-      <div className="px-3 pt-3 pb-1">
+      {/* New Chat */}
+      <div className="px-3 pb-3">
         <button
           onClick={handleNewChat}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg
-                     bg-plutus-600/20 hover:bg-plutus-600/30 text-plutus-400 text-sm font-medium transition-colors border border-plutus-500/20"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl
+                     bg-plutus-600 hover:bg-plutus-500 text-white text-sm font-medium
+                     transition-all duration-200 shadow-md shadow-plutus-600/20
+                     hover:shadow-lg hover:shadow-plutus-500/25 active:scale-[0.98]"
         >
           <Plus className="w-4 h-4" />
           New Chat
         </button>
       </div>
 
-      {/* Conversation History */}
-      <div className="px-3 pb-1 border-b border-gray-800">
+      {/* Conversation History — takes flexible space */}
+      <div className="flex-1 min-h-0 flex flex-col border-b border-gray-800/60">
         {send && <ConversationHistory send={send} />}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
-        {navSections.map((section) => (
-          <div key={section.label}>
-            <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-3 mb-1.5">
-              {section.label}
-            </p>
-            <div className="space-y-0.5">
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                const active = view === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setView(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      active
-                        ? "bg-plutus-600/20 text-plutus-400 shadow-sm"
-                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="flex-1 text-left">{item.label}</span>
-                    {item.badge && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-plutus-500/20 text-plutus-400 font-semibold">
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
+      <nav className="p-2 space-y-1 overflow-y-auto sidebar-scroll shrink-0">
+        {navSections.map((section) => {
+          const isCollapsed = collapsedSections.has(section.label);
+          const hasActiveItem = section.items.some((item) => item.id === view);
 
-      {/* Latest Update */}
-      <div className="px-3 pb-3">
-        <div className="rounded-lg bg-plutus-500/10 border border-plutus-500/20 px-3 py-2">
-          <p className="text-[9px] font-semibold text-plutus-400 uppercase tracking-wider">Latest Update</p>
-          <p className="text-xs text-gray-300 mt-0.5 font-medium">Conversation History & Auto-Cleanup</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">v0.3.3 · Feb 24, 2026</p>
-        </div>
-      </div>
+          return (
+            <div key={section.label}>
+              {/* Section header */}
+              {section.collapsible ? (
+                <button
+                  onClick={() => toggleSection(section.label)}
+                  className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wider hover:text-gray-400 transition-colors"
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                  <span>{section.label}</span>
+                  {isCollapsed && hasActiveItem && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-plutus-500 ml-auto" />
+                  )}
+                </button>
+              ) : (
+                <p className="px-2.5 py-1.5 text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
+                  {section.label}
+                </p>
+              )}
+
+              {/* Section items */}
+              {!isCollapsed && (
+                <div className="space-y-0.5">
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = view === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setView(item.id)}
+                        className={`w-full relative flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+                          active
+                            ? "bg-gray-800/80 text-gray-100"
+                            : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/40"
+                        }`}
+                      >
+                        {active && (
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-plutus-500" />
+                        )}
+                        <Icon
+                          className={`w-4 h-4 ${
+                            active ? "text-plutus-400" : ""
+                          }`}
+                        />
+                        <span className="flex-1 text-left">{item.label}</span>
+                        {item.badge && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-plutus-500/15 text-plutus-400 font-semibold ring-1 ring-plutus-500/20">
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
     </aside>
   );
 }
