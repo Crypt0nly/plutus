@@ -145,7 +145,24 @@ export default function App() {
         case "conversation_resumed":
           setConversationId(msg.conversation_id);
           clearMessages();
-          msg.messages.forEach((m: any) => addMessage(m));
+          msg.messages.forEach((m: any) => {
+            // Remap internal/system messages that were stored as "user" role
+            if (m.role === "user" && typeof m.content === "string") {
+              if (m.content.startsWith("[HEARTBEAT]")) {
+                addMessage({ ...m, role: "system" });
+                return;
+              }
+              if (m.content.startsWith("[SYSTEM NOTIFICATION]")) {
+                addMessage({ ...m, role: "system" });
+                return;
+              }
+              if (m.content.startsWith("[SYSTEM]")) {
+                addMessage({ ...m, role: "system" });
+                return;
+              }
+            }
+            addMessage(m);
+          });
           break;
 
         case "heartbeat":

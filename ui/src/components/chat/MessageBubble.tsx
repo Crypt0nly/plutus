@@ -33,6 +33,8 @@ import {
   Send,
   Users,
   Cpu,
+  Heart,
+  Info,
 } from "lucide-react";
 import type { Message } from "../../lib/types";
 import { ToolApproval } from "./ToolApproval";
@@ -773,6 +775,44 @@ export function MessageBubble({ message, send }: Props) {
             <Cpu className="w-3 h-3" />
             <span>Worker <strong>{wName}</strong> dispatched</span>
             <span className="text-[10px] font-mono text-amber-400/50">{wModel}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Heartbeat indicator (persisted from DB)
+    if (typeof content === "string" && content.startsWith("[HEARTBEAT]")) {
+      return (
+        <div className="flex items-center justify-center gap-2 py-2 animate-fade-in">
+          <div className="px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 bg-rose-500/10 text-rose-400/80 border border-rose-500/15">
+            <Heart className="w-3 h-3" />
+            <span>Heartbeat</span>
+          </div>
+        </div>
+      );
+    }
+
+    // System notification (worker results injected into conversation)
+    if (typeof content === "string" && content.startsWith("[SYSTEM NOTIFICATION]")) {
+      const notifText = content.replace("[SYSTEM NOTIFICATION]\n", "").replace("[SYSTEM NOTIFICATION]", "").trim();
+      return (
+        <div className="flex items-center justify-center gap-2 py-2 animate-fade-in">
+          <div className="px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 bg-blue-500/10 text-blue-400/80 border border-blue-500/15 max-w-lg truncate">
+            <Info className="w-3 h-3 shrink-0" />
+            <span className="truncate">{notifText || "System notification"}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Generic [SYSTEM] messages (e.g. truncation notices)
+    if (typeof content === "string" && content.startsWith("[SYSTEM]")) {
+      const sysText = content.replace("[SYSTEM]", "").trim();
+      return (
+        <div className="flex items-center justify-center gap-2 py-2 animate-fade-in">
+          <div className="px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 bg-gray-500/10 text-gray-400 border border-gray-500/15 max-w-lg">
+            <Info className="w-3 h-3 shrink-0" />
+            <span className="truncate">{sysText}</span>
           </div>
         </div>
       );
