@@ -137,8 +137,8 @@ class ConnectorTool(Tool):
             return self._get_status(service)
 
         elif action == "send":
-            service = kwargs.get("service", "")
-            message = kwargs.get("message", "")
+            service = kwargs.pop("service", "")
+            message = kwargs.pop("message", "")
 
             if not service:
                 return "Error: 'service' parameter is required for send action"
