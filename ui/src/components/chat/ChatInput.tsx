@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 import { CommandCenter } from "./CommandCenter";
 
@@ -50,10 +50,12 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
     if (onStop) onStop();
   };
 
+  const hasInput = input.trim().length > 0;
+
   return (
-    <div className="border-t border-gray-800/50 bg-gray-900/80 backdrop-blur-sm px-4 py-3">
+    <div className="bg-gray-950/80 backdrop-blur-md px-4 pt-2 pb-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-end gap-2 bg-gray-800/80 border border-gray-700/50 rounded-xl px-3 py-2 focus-within:border-plutus-500/40 focus-within:ring-1 focus-within:ring-plutus-500/20 transition-all">
+        <div className="relative bg-gray-900 border border-gray-800 rounded-2xl shadow-lg shadow-black/20 transition-all focus-within:border-gray-700 focus-within:shadow-xl focus-within:shadow-black/30">
           <textarea
             ref={textareaRef}
             value={input}
@@ -66,34 +68,43 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
             }
             disabled={disabled}
             rows={1}
-            className="flex-1 bg-transparent border-none outline-none text-sm text-gray-200 placeholder-gray-500 resize-none leading-6 disabled:opacity-50"
+            className="w-full bg-transparent border-none outline-none text-sm text-gray-100 placeholder-gray-600 resize-none leading-6 px-4 pt-3.5 pb-12"
             style={{ height: "24px", minHeight: "24px", maxHeight: "160px" }}
           />
-          <CommandCenter />
-          {isProcessing ? (
-            <button
-              onClick={handleStop}
-              className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-500/90 hover:bg-red-500 flex items-center justify-center transition-colors"
-              title="Stop current task"
-            >
-              <Square className="w-3 h-3 text-white fill-white" />
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={disabled || !input.trim()}
-              className="flex-shrink-0 w-8 h-8 rounded-lg bg-plutus-600 hover:bg-plutus-500 flex items-center justify-center transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
-            >
-              <Send className="w-3.5 h-3.5 text-white" />
-            </button>
-          )}
+          {/* Bottom bar inside the input */}
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 pb-2.5">
+            <div className="flex items-center gap-1">
+              <CommandCenter />
+              <span className="text-[11px] text-gray-600 ml-1 select-none">
+                {isProcessing
+                  ? "Working on your task"
+                  : "Enter to send"
+                }
+              </span>
+            </div>
+            {isProcessing ? (
+              <button
+                onClick={handleStop}
+                className="w-7 h-7 rounded-lg bg-red-500/90 hover:bg-red-500 flex items-center justify-center transition-colors"
+                title="Stop current task"
+              >
+                <Square className="w-3 h-3 text-white fill-white" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={disabled || !hasInput}
+                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                  hasInput
+                    ? "bg-plutus-600 hover:bg-plutus-500 text-white shadow-sm shadow-plutus-600/30"
+                    : "bg-gray-800 text-gray-600 cursor-not-allowed"
+                }`}
+              >
+                <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
+              </button>
+            )}
+          </div>
         </div>
-        <p className="text-[10px] text-gray-600 mt-1.5 text-center">
-          {isProcessing
-            ? "Plutus is working on your task — press ■ to stop"
-            : "Press Enter to send · Shift+Enter for new line"
-          }
-        </p>
       </div>
     </div>
   );

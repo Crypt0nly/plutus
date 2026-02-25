@@ -27,9 +27,9 @@ function CodeBlock({
   };
 
   return (
-    <div className="my-2 bg-gray-900 rounded-lg overflow-hidden border border-gray-800 group/code">
-      <div className="flex items-center justify-between px-3 py-1 bg-gray-800/50 border-b border-gray-800">
-        <span className="text-[10px] text-gray-500 font-mono">
+    <div className="my-3 bg-gray-950 rounded-xl overflow-hidden border border-gray-800/80">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900/80 border-b border-gray-800/50">
+        <span className="text-[11px] text-gray-500 font-mono">
           {lang || "code"}
         </span>
         <button
@@ -38,13 +38,13 @@ function CodeBlock({
           title="Copy code"
         >
           {copied ? (
-            <Check className="w-3 h-3 text-emerald-400" />
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
           ) : (
-            <Copy className="w-3 h-3" />
+            <Copy className="w-3.5 h-3.5" />
           )}
         </button>
       </div>
-      <pre className="px-3 py-2 text-xs font-mono text-gray-300 overflow-x-auto">
+      <pre className="px-4 py-3 text-[13px] font-mono text-gray-300 overflow-x-auto leading-relaxed">
         <code>{code}</code>
       </pre>
     </div>
@@ -52,14 +52,13 @@ function CodeBlock({
 }
 
 const components: Components = {
-  // Headings
   h1: ({ children }) => (
-    <h1 className="text-xl font-bold text-gray-100 mt-4 mb-2 pb-1 border-b border-gray-700/50">
+    <h1 className="text-xl font-semibold text-gray-100 mt-5 mb-2 pb-1.5 border-b border-gray-800/50">
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 className="text-lg font-bold text-gray-100 mt-3 mb-2 pb-1 border-b border-gray-800/50">
+    <h2 className="text-lg font-semibold text-gray-100 mt-4 mb-2 pb-1 border-b border-gray-800/40">
       {children}
     </h2>
   ),
@@ -69,7 +68,7 @@ const components: Components = {
     </h3>
   ),
   h4: ({ children }) => (
-    <h4 className="text-sm font-semibold text-gray-200 mt-2 mb-1">
+    <h4 className="text-sm font-semibold text-gray-200 mt-2.5 mb-1">
       {children}
     </h4>
   ),
@@ -82,18 +81,15 @@ const components: Components = {
     </h6>
   ),
 
-  // Paragraphs
   p: ({ children }) => (
-    <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+    <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>
   ),
 
-  // Bold and italic
   strong: ({ children }) => (
     <strong className="font-semibold text-gray-100">{children}</strong>
   ),
   em: ({ children }) => <em className="italic text-gray-300">{children}</em>,
 
-  // Links
   a: ({ href, children }) => (
     <a
       href={href}
@@ -105,12 +101,11 @@ const components: Components = {
     </a>
   ),
 
-  // Lists
   ul: ({ children }) => (
-    <ul className="list-disc list-outside ml-5 mb-2 space-y-0.5">{children}</ul>
+    <ul className="list-disc list-outside ml-5 mb-3 space-y-1">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal list-outside ml-5 mb-2 space-y-0.5">
+    <ol className="list-decimal list-outside ml-5 mb-3 space-y-1">
       {children}
     </ol>
   ),
@@ -118,7 +113,6 @@ const components: Components = {
     <li className="text-gray-200 leading-relaxed pl-1">{children}</li>
   ),
 
-  // Code
   code: ({ className, children, ...props }) => {
     const isBlock = className?.includes("language-") || String(children).includes("\n");
 
@@ -126,59 +120,52 @@ const components: Components = {
       return <CodeBlock className={className}>{children}</CodeBlock>;
     }
 
-    // Inline code
     return (
-      <code className="px-1.5 py-0.5 bg-gray-700 rounded text-plutus-300 text-xs font-mono">
+      <code className="px-1.5 py-0.5 bg-gray-800/80 border border-gray-700/40 rounded-md text-plutus-300 text-[13px] font-mono">
         {children}
       </code>
     );
   },
 
-  // Pre — just pass through, code block handles styling
   pre: ({ children }) => <>{children}</>,
 
-  // Blockquotes
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-plutus-500/40 pl-3 my-2 text-gray-400 italic">
+    <blockquote className="border-l-2 border-plutus-500/30 pl-4 my-3 text-gray-400 italic">
       {children}
     </blockquote>
   ),
 
-  // Horizontal rule
-  hr: () => <hr className="my-3 border-gray-700/50" />,
+  hr: () => <hr className="my-4 border-gray-800/50" />,
 
-  // Tables
   table: ({ children }) => (
-    <div className="my-2 overflow-x-auto rounded-lg border border-gray-800">
+    <div className="my-3 overflow-x-auto rounded-xl border border-gray-800">
       <table className="w-full text-xs">{children}</table>
     </div>
   ),
   thead: ({ children }) => (
-    <thead className="bg-gray-800/50">{children}</thead>
+    <thead className="bg-gray-900/60">{children}</thead>
   ),
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => (
     <tr className="border-b border-gray-800/50 last:border-0">{children}</tr>
   ),
   th: ({ children }) => (
-    <th className="px-3 py-1.5 text-left font-semibold text-gray-300">
+    <th className="px-3 py-2 text-left font-semibold text-gray-300">
       {children}
     </th>
   ),
   td: ({ children }) => (
-    <td className="px-3 py-1.5 text-gray-400">{children}</td>
+    <td className="px-3 py-2 text-gray-400">{children}</td>
   ),
 
-  // Images
   img: ({ src, alt }) => (
     <img
       src={src}
       alt={alt || ""}
-      className="max-w-full rounded-lg my-2 border border-gray-800"
+      className="max-w-full rounded-xl my-3 border border-gray-800"
     />
   ),
 
-  // Task lists (GFM)
   input: ({ checked, ...props }) => (
     <input
       type="checkbox"
@@ -189,7 +176,6 @@ const components: Components = {
     />
   ),
 
-  // Strikethrough
   del: ({ children }) => (
     <del className="text-gray-500 line-through">{children}</del>
   ),
