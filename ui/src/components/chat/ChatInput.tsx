@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Square, Paperclip } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
+import { CommandCenter } from "./CommandCenter";
 
 interface Props {
   onSend: (content: string) => void;
@@ -68,6 +69,7 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
             className="flex-1 bg-transparent border-none outline-none text-sm text-gray-200 placeholder-gray-500 resize-none leading-6 disabled:opacity-50"
             style={{ height: "24px", minHeight: "24px", maxHeight: "160px" }}
           />
+          <CommandCenter />
           {isProcessing ? (
             <button
               onClick={handleStop}
