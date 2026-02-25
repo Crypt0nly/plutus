@@ -363,7 +363,15 @@ class Scheduler:
                     if job.state != JobState.ACTIVE:
                         continue
                     if job.next_run and now >= job.next_run:
-                        # Fire the job
+                        # Advance next_run immediately to prevent re-firing
+                        # on the next loop iteration while _fire_job runs
+                        if job.max_runs > 0 and job.run_count + 1 >= job.max_runs:
+                            job.next_run = 0
+                        elif job.job_type == JobType.ONCE:
+                            job.next_run = 0
+                        else:
+                            job.next_run = self._calc_next_run(job)
+
                         asyncio.create_task(
                             self._fire_job(job),
                             name=f"job-{job.id}"
