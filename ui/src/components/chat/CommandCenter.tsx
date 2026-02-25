@@ -7,7 +7,6 @@ import {
   Heart,
   Play,
   Square,
-  Globe,
   Sliders,
   ChevronDown,
   CheckCircle2,
@@ -146,7 +145,6 @@ export function CommandCenter() {
   const provider = config?.model?.provider || "anthropic";
   const model = config?.model?.model || "";
   const temperature = config?.model?.temperature ?? 0.7;
-  const webSearch = config?.model?.web_search !== false;
   const maxToolRounds = config?.agent?.max_tool_rounds || 25;
   const models = defaultModels[provider] || [];
 
@@ -311,25 +309,10 @@ export function CommandCenter() {
               </div>
             </Section>
 
-            {/* Quick Toggles */}
-            <Section icon={Globe} iconColor="text-blue-400 bg-blue-500/10" title="Features">
-              {/* Web Search */}
-              <div className="flex items-center justify-between py-1">
-                <span className="text-xs text-gray-300">Web Search</span>
-                <button
-                  onClick={() => handleSave({ model: { web_search: !webSearch } })}
-                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
-                    webSearch ? "bg-plutus-500" : "bg-gray-700"
-                  }`}
-                >
-                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                    webSearch ? "translate-x-[18px]" : "translate-x-[3px]"
-                  }`} />
-                </button>
-              </div>
-
+            {/* Agent */}
+            <Section icon={Sliders} iconColor="text-blue-400 bg-blue-500/10" title="Agent">
               {/* Max Tool Rounds */}
-              <div className="pt-2 border-t border-gray-800/40">
+              <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs text-gray-300">Max Tool Rounds</span>
                   <span className="text-xs font-mono text-plutus-400 bg-plutus-500/10 px-2 py-0.5 rounded">
