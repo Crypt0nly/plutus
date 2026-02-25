@@ -2,7 +2,7 @@ import { useRef, useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { Globe, MousePointer, AppWindow, KeyRound, Zap, Brain } from "lucide-react";
+import { Globe, MousePointer, AppWindow, KeyRound, Zap, Brain, ArrowRight } from "lucide-react";
 
 interface Props {
   send: (data: Record<string, unknown>) => void;
@@ -31,23 +31,27 @@ export function ChatView({ send }: Props) {
   return (
     <div className="flex h-full flex-col flex-1 min-h-0">
       {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {messages.length === 0 ? (
-          keyConfigured ? <EmptyState onSend={handleSend} /> : <SetupPrompt />
-        ) : (
-          messages.map((msg, i) => <MessageBubble key={i} message={msg} send={send} />)
-        )}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 py-6 space-y-1">
+          {messages.length === 0 ? (
+            keyConfigured ? <EmptyState onSend={handleSend} /> : <SetupPrompt />
+          ) : (
+            messages.map((msg, i) => <MessageBubble key={i} message={msg} send={send} />)
+          )}
 
-        {isProcessing && (
-          <div className="flex items-center gap-2 text-sm text-gray-500 animate-fade-in">
-            <div className="flex gap-1">
-              <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          {isProcessing && (
+            <div className="flex items-center gap-3 py-4 px-1 animate-fade-in">
+              <div className="w-7 h-7 rounded-full bg-plutus-600/15 flex items-center justify-center flex-shrink-0">
+                <div className="dot-pulse flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full" />
+                  <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full" />
+                  <span className="w-1.5 h-1.5 bg-plutus-400 rounded-full" />
+                </div>
+              </div>
+              <span className="text-sm text-gray-500">Thinking...</span>
             </div>
-            <span>Plutus is working...</span>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Input area */}
@@ -58,24 +62,22 @@ export function ChatView({ send }: Props) {
 
 function SetupPrompt() {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center py-20">
-      <div className="w-16 h-16 rounded-2xl bg-amber-500/20 flex items-center justify-center mb-6">
-        <KeyRound className="w-8 h-8 text-amber-400" />
+    <div className="flex-1 flex flex-col items-center justify-center text-center py-24">
+      <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-5">
+        <KeyRound className="w-7 h-7 text-amber-400" />
       </div>
-      <h3 className="text-xl font-semibold text-gray-200 mb-2">
+      <h3 className="text-xl font-semibold text-gray-100 mb-2">
         API Key Required
       </h3>
-      <p className="text-gray-500 max-w-md text-sm leading-relaxed mb-4">
-        To get started, configure your API key in Settings.
-        Your key is stored locally and never leaves your machine.
+      <p className="text-gray-400 max-w-sm text-sm leading-relaxed mb-2">
+        Configure your API key in Settings to get started.
       </p>
-      <p className="text-gray-600 max-w-md text-xs leading-relaxed mb-6">
-        Plutus uses AI to understand your screen, navigate apps, browse the web,
-        and automate tasks on your computer.
+      <p className="text-gray-600 max-w-sm text-xs leading-relaxed mb-6">
+        Your key is stored locally and never leaves your machine.
       </p>
       <button
         onClick={() => useAppStore.getState().setView("settings")}
-        className="px-5 py-2.5 rounded-xl bg-plutus-600 hover:bg-plutus-500 text-white text-sm font-medium transition-colors"
+        className="px-5 py-2.5 rounded-lg bg-plutus-600 hover:bg-plutus-500 text-white text-sm font-medium transition-colors"
       >
         Go to Settings
       </button>
@@ -87,27 +89,31 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
   const capabilities = [
     {
       icon: Globe,
-      color: "text-blue-400 bg-blue-500/10",
+      color: "text-blue-400",
+      bg: "bg-blue-500/8 border-blue-500/10",
       label: "Browse the Web",
-      description: "Navigate websites, read content, fill forms, and interact with web apps",
+      description: "Navigate sites, read content, fill forms",
     },
     {
       icon: MousePointer,
-      color: "text-purple-400 bg-purple-500/10",
+      color: "text-violet-400",
+      bg: "bg-violet-500/8 border-violet-500/10",
       label: "Control Your PC",
-      description: "Click, type, open apps, manage files, and navigate Windows",
+      description: "Click, type, open apps, manage files",
     },
     {
       icon: Brain,
-      color: "text-emerald-400 bg-emerald-500/10",
+      color: "text-emerald-400",
+      bg: "bg-emerald-500/8 border-emerald-500/10",
       label: "Learn & Improve",
-      description: "Creates reusable skills from completed tasks to get faster over time",
+      description: "Creates reusable skills over time",
     },
     {
       icon: AppWindow,
-      color: "text-amber-400 bg-amber-500/10",
+      color: "text-amber-400",
+      bg: "bg-amber-500/8 border-amber-500/10",
       label: "Automate Anything",
-      description: "Chain actions across apps, schedule tasks, and build workflows",
+      description: "Chain actions, schedule tasks",
     },
   ];
 
@@ -121,33 +127,33 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
   ];
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
-      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-plutus-500/20 to-purple-500/20 flex items-center justify-center mb-5 shadow-lg shadow-plutus-500/10">
-        <Zap className="w-7 h-7 text-plutus-400" />
+    <div className="flex-1 flex flex-col items-center justify-center text-center py-16">
+      {/* Hero */}
+      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-plutus-500/20 to-violet-500/20 border border-plutus-500/10 flex items-center justify-center mb-6">
+        <Zap className="w-6 h-6 text-plutus-400" />
       </div>
-      <h3 className="text-lg font-semibold text-gray-200 mb-2">
+      <h2 className="text-2xl font-semibold text-gray-100 mb-2 tracking-tight">
         What can I help you with?
-      </h3>
-      <p className="text-gray-500 max-w-lg text-sm leading-relaxed mb-8">
-        I can browse the web, control your apps, manage files, automate tasks,
-        and more. Just describe what you need in plain English.
+      </h2>
+      <p className="text-gray-500 max-w-md text-sm leading-relaxed mb-10">
+        Describe what you need in plain English. I can browse the web,
+        control apps, manage files, and automate tasks.
       </p>
 
       {/* Capabilities */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl w-full mb-10">
         {capabilities.map((cap) => {
           const Icon = cap.icon;
-          const [textColor, bgColor] = cap.color.split(" ");
           return (
             <div
               key={cap.label}
-              className="flex flex-col items-center gap-2 p-3 rounded-xl bg-gray-800/30 border border-gray-800/50"
+              className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border ${cap.bg} transition-colors hover:bg-gray-800/40`}
             >
-              <div className={`w-8 h-8 rounded-lg ${bgColor} flex items-center justify-center`}>
-                <Icon className={`w-4 h-4 ${textColor}`} />
+              <Icon className={`w-5 h-5 ${cap.color}`} />
+              <div>
+                <span className="text-xs font-medium text-gray-200 block">{cap.label}</span>
+                <span className="text-[11px] text-gray-500 leading-snug mt-0.5 block">{cap.description}</span>
               </div>
-              <span className="text-xs font-medium text-gray-300">{cap.label}</span>
-              <span className="text-[10px] text-gray-500 leading-tight">{cap.description}</span>
             </div>
           );
         })}
@@ -159,9 +165,10 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
           <button
             key={suggestion}
             onClick={() => onSend(suggestion)}
-            className="text-left px-4 py-2.5 rounded-xl bg-gray-800/40 border border-gray-800/50 hover:border-plutus-500/30 hover:bg-gray-800/70 text-sm text-gray-400 hover:text-gray-200 transition-all"
+            className="group text-left px-4 py-3 rounded-xl border border-gray-800/60 bg-gray-900/40 hover:bg-gray-800/50 hover:border-gray-700/60 text-sm text-gray-400 hover:text-gray-200 transition-all flex items-center gap-3"
           >
-            {suggestion}
+            <span className="flex-1">{suggestion}</span>
+            <ArrowRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100" />
           </button>
         ))}
       </div>
