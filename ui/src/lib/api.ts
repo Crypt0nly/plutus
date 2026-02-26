@@ -254,4 +254,34 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ auto_start }),
     }),
+
+  // WSL
+  getWSLStatus: () =>
+    request<{
+      platform: string;
+      is_windows: boolean;
+      wsl_installed: boolean;
+      enabled: boolean;
+      setup_completed: boolean;
+      preferred_distro: string;
+    }>("/wsl/status"),
+  enableWSL: (enabled: boolean) =>
+    request<{ message: string }>("/wsl/enable", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+  completeWSLSetup: () =>
+    request<{ message: string }>("/wsl/setup-complete", { method: "POST" }),
+  getWSLSetupGuide: () =>
+    request<{
+      needed: boolean;
+      message?: string;
+      steps: {
+        id: string;
+        title: string;
+        description: string;
+        command: string | null;
+        note: string;
+      }[];
+    }>("/wsl/setup-guide"),
 };

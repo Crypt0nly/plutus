@@ -1594,4 +1594,132 @@ def create_router() -> APIRouter:
         connector.clear_config()
         return {"message": f"{connector.display_name} disconnected", "status": connector.status()}
 
+    # ── WSL (Windows Subsystem for Linux) ─────────────────────
+
+    @router.get("/wsl/status")
+    async def get_wsl_status() -> dict[str, Any]:
+        """Check WSL availability and configuration."""
+        import platform
+        import shutil
+
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+
+        is_windows = platform.system() == "Windows"
+        wsl_binary = shutil.which("wsl") or shutil.which("wsl.exe") if is_windows else None
+        wsl_installed = wsl_binary is not None
+
+        return {
+            "platform": platform.system(),
+            "is_windows": is_windows,
+            "wsl_installed": wsl_installed,
+            "enabled": config.wsl.enabled if config else False,
+            "setup_completed": config.wsl.setup_completed if config else False,
+            "preferred_distro": config.wsl.preferred_distro if config else "Ubuntu",
+        }
+
+    @router.put("/wsl/enable")
+    async def enable_wsl(body: dict[str, Any]) -> dict[str, str]:
+        """Toggle WSL integration on/off."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        if not config:
+            raise HTTPException(500, "Config not loaded")
+
+        enabled = body.get("enabled", False)
+        config.update({"wsl": {"enabled": enabled}})
+        return {"message": f"WSL {'enabled' if enabled else 'disabled'}"}
+
+    @router.post("/wsl/setup-complete")
+    async def mark_wsl_setup_complete() -> dict[str, str]:
+        """Mark WSL setup as finished after user completes the guide."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        if not config:
+            raise HTTPException(500, "Config not loaded")
+
+        config.update({"wsl": {"setup_completed": True, "enabled": True}})
+        return {"message": "WSL setup completed"}
+
+    @router.get("/wsl/setup-guide")
+    async def get_wsl_setup_guide() -> dict[str, Any]:
+        """Return step-by-step WSL setup instructions."""
+        import platform
+
+        is_windows = platform.system() == "Windows"
+
+        if not is_windows:
+            return {
+                "needed": False,
+                "message": (
+                    "You're already running on Linux/macOS. "
+                    "Plutus has full access to Linux tools natively — no WSL needed."
+                ),
+                "steps": [],
+            }
+
+        return {
+            "needed": True,
+            "steps": [
+                {
+                    "id": "enable",
+                    "title": "Turn on WSL",
+                    "description": (
+                        "Open PowerShell as Administrator (right-click the Start button "
+                        "> 'Terminal (Admin)') and run this command:"
+                    ),
+                    "command": "wsl --install",
+                    "note": (
+                        "This downloads and installs WSL along with Ubuntu. "
+                        "It may take a few minutes depending on your internet speed."
+                    ),
+                },
+                {
+                    "id": "reboot",
+                    "title": "Restart your computer",
+                    "description": (
+                        "Windows needs a restart to finish setting up WSL. "
+                        "Save your work, then restart."
+                    ),
+                    "command": None,
+                    "note": (
+                        "After restarting, Ubuntu will automatically open a window "
+                        "and ask you to create a username and password. "
+                        "This is just for the Linux side — pick anything you like."
+                    ),
+                },
+                {
+                    "id": "create_user",
+                    "title": "Create your Linux username",
+                    "description": (
+                        "When the Ubuntu window opens after reboot, it will ask you to "
+                        "pick a username and password. Type them in and press Enter."
+                    ),
+                    "command": None,
+                    "note": (
+                        "This username is only for Linux and doesn't affect your Windows account. "
+                        "You'll use it when Plutus runs Linux commands."
+                    ),
+                },
+                {
+                    "id": "verify",
+                    "title": "Verify it works",
+                    "description": (
+                        "Open a regular PowerShell or Command Prompt and run:"
+                    ),
+                    "command": "wsl echo 'WSL is working!'",
+                    "note": (
+                        "If you see 'WSL is working!' printed back, you're all set. "
+                        "Come back to Plutus and click 'I've finished setup'."
+                    ),
+                },
+            ],
+        }
+
     return router
