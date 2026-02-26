@@ -126,39 +126,39 @@ export function ConversationHistory({ send }: Props) {
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      {/* Search bar — compact */}
-      <div className="px-2 pt-1 pb-1.5">
+      {/* Search bar */}
+      <div className="px-3 pt-1 pb-3">
         <div
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all duration-200 ${
+          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 ${
             searchFocused
               ? "bg-gray-800 ring-1 ring-plutus-500/30"
               : "bg-gray-800/50 hover:bg-gray-800/80"
           }`}
         >
-          <Search className="w-3 h-3 text-gray-500 shrink-0" />
+          <Search className="w-3.5 h-3.5 text-gray-500 shrink-0" />
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Search..."
+            placeholder="Search chats..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
-            className="flex-1 bg-transparent text-[11px] text-gray-300 placeholder-gray-600 focus:outline-none min-w-0"
+            className="flex-1 bg-transparent text-xs text-gray-300 placeholder-gray-600 focus:outline-none min-w-0"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
               className="p-0.5 rounded text-gray-500 hover:text-gray-300 transition-colors"
             >
-              <X className="w-2.5 h-2.5" />
+              <X className="w-3 h-3" />
             </button>
           )}
         </div>
       </div>
 
       {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-1.5 pb-1.5 sidebar-scroll">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 sidebar-scroll">
         {filteredConversations.length === 0 ? (
           <div className="px-3 py-4 text-center">
             <Search className="w-4 h-4 text-gray-700 mx-auto mb-1.5" />
@@ -167,14 +167,14 @@ export function ConversationHistory({ send }: Props) {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {grouped.map(
               (group) =>
                 group.items.length > 0 && (
                   <div key={group.label}>
                     {/* Group header */}
-                    <div className="flex items-center gap-2 px-1.5 mb-0.5">
-                      <span className="text-[9px] font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                    <div className="flex items-center gap-2 px-2 mb-1">
+                      <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
                         {group.label}
                       </span>
                       <div className="flex-1 h-px bg-gray-800/60" />

@@ -109,7 +109,7 @@ export function Sidebar({ send }: SidebarProps) {
       </div>
 
       {/* New Chat */}
-      <div className="px-3 pb-3">
+      <div className="px-3 pb-5">
         <button
           onClick={handleNewChat}
           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl
