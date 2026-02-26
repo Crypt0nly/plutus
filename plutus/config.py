@@ -113,6 +113,7 @@ class PlutusConfig(BaseSettings):
     model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
+    onboarding_completed: bool = False  # set True after first-run wizard finishes
 
     @classmethod
     def load(cls) -> PlutusConfig:

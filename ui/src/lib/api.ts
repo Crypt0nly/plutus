@@ -129,6 +129,10 @@ export const api = {
   deleteKey: (provider: string) =>
     request<Record<string, string>>(`/keys/${provider}`, { method: "DELETE" }),
 
+  // Setup / Onboarding
+  completeSetup: () =>
+    request<{ message: string }>("/setup/complete", { method: "POST" }),
+
   // Config
   getConfig: () => request<Record<string, unknown>>("/config"),
   updateConfig: (patch: Record<string, unknown>) =>
