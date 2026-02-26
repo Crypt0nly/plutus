@@ -1,5 +1,5 @@
 # Plutus Installer for Windows
-# Usage: iwr -useb https://raw.githubusercontent.com/Crypt0nly/plutus/main/install.ps1 | iex
+# Usage: iwr -useb https://useplutus.ai/install.ps1 | iex
 #
 # What this script does:
 #   1. Checks if Python 3.11+ is installed (installs via winget if not)
