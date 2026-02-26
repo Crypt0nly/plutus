@@ -65,7 +65,7 @@ echo "[1/3] $PY_VER found."
 echo "[2/3] Installing Plutus..."
 
 $PYTHON_CMD -m pip install --upgrade pip >/dev/null 2>&1 || true
-$PYTHON_CMD -m pip install plutus
+$PYTHON_CMD -m pip install plutus-ai
 
 echo "       Plutus installed."
 
@@ -79,4 +79,4 @@ echo "  First time? The setup wizard will guide you through everything."
 echo "  ─────────────────────────────"
 echo ""
 
-plutus start
+$PYTHON_CMD -m plutus start
