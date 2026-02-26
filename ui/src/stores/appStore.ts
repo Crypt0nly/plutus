@@ -44,6 +44,19 @@ interface AppState {
   // Onboarding
   onboardingCompleted: boolean | null; // null = not yet loaded
   setOnboardingCompleted: (v: boolean) => void;
+
+  // Updates
+  updateInfo: {
+    available: boolean;
+    dismissed: boolean;
+    currentVersion: string;
+    latestVersion: string;
+    releaseName: string;
+    releaseNotes: string;
+    releaseUrl: string;
+    publishedAt: string;
+  } | null;
+  setUpdateInfo: (info: AppState["updateInfo"]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -93,4 +106,8 @@ export const useAppStore = create<AppState>((set) => ({
   // Onboarding
   onboardingCompleted: null,
   setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
+
+  // Updates
+  updateInfo: null,
+  setUpdateInfo: (updateInfo) => set({ updateInfo }),
 }));
