@@ -14,6 +14,7 @@ import SkillsView from "./components/skills/SkillsView";
 import { MemoryView } from "./components/memory/MemoryView";
 import ConnectorsView from "./components/connectors/ConnectorsView";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
+import { UpdateBanner } from "./components/layout/UpdateBanner";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 
@@ -29,6 +30,7 @@ export default function App() {
     clearMessages,
     onboardingCompleted,
     setOnboardingCompleted,
+    setUpdateInfo,
   } = useAppStore();
 
   const handleWSMessage = useCallback(
@@ -259,6 +261,33 @@ export default function App() {
     });
   }, [setCurrentTier, setKeyConfigured, setOnboardingCompleted]);
 
+  // Check for updates on mount, then every 6 hours
+  useEffect(() => {
+    const check = () => {
+      api.checkForUpdate().then((res) => {
+        if (res.update_available) {
+          setUpdateInfo({
+            available: true,
+            dismissed: res.dismissed ?? false,
+            currentVersion: res.current_version,
+            latestVersion: res.latest_version,
+            releaseName: res.release_name || "",
+            releaseNotes: res.release_notes || "",
+            releaseUrl: res.release_url || "",
+            publishedAt: res.published_at || "",
+          });
+        }
+      }).catch(() => {});
+    };
+    // Initial check after a short delay so the app loads fast
+    const initial = setTimeout(check, 5_000);
+    const interval = setInterval(check, 6 * 60 * 60 * 1000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, [setUpdateInfo]);
+
   // Show loading state while checking onboarding status
   if (onboardingCompleted === null) {
     return (
@@ -295,6 +324,7 @@ export default function App() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar send={send} />
       <div className="flex-1 flex flex-col min-w-0">
+        <UpdateBanner />
         <Header />
         <main className={`flex-1 flex flex-col overflow-hidden ${view === "chat" ? "" : "p-6"}`}>
           {viewComponents[view] || viewComponents.chat}
