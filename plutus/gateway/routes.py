@@ -1651,6 +1651,7 @@ def create_router() -> APIRouter:
     async def get_wsl_setup_guide() -> dict[str, Any]:
         """Return step-by-step WSL setup instructions."""
         import platform
+        import shutil
 
         is_windows = platform.system() == "Windows"
 
@@ -1662,61 +1663,235 @@ def create_router() -> APIRouter:
                     "Plutus has full access to Linux tools natively — no WSL needed."
                 ),
                 "steps": [],
+                "prerequisites": [],
+                "troubleshooting": [],
             }
+
+        wsl_binary = shutil.which("wsl") or shutil.which("wsl.exe")
+        wsl_already_installed = wsl_binary is not None
 
         return {
             "needed": True,
+            "wsl_detected": wsl_already_installed,
+            "prerequisites": [
+                {
+                    "id": "windows_version",
+                    "label": "Windows 10 (version 2004+) or Windows 11",
+                    "detail": (
+                        "WSL 2 requires Windows 10 May 2020 Update (build 19041) or later. "
+                        "Press Win+R, type 'winver', and press Enter to check your version."
+                    ),
+                },
+                {
+                    "id": "admin_access",
+                    "label": "Administrator access on this PC",
+                    "detail": (
+                        "You'll need to run one command as Administrator. If this is a "
+                        "work computer, you may need to ask your IT department."
+                    ),
+                },
+                {
+                    "id": "disk_space",
+                    "label": "~2 GB of free disk space",
+                    "detail": (
+                        "Ubuntu needs about 1.5-2 GB for the base installation. "
+                        "Additional tools you install later will need more space."
+                    ),
+                },
+                {
+                    "id": "internet",
+                    "label": "Internet connection",
+                    "detail": (
+                        "Required to download Ubuntu. The download is around 400-500 MB."
+                    ),
+                },
+            ],
             "steps": [
                 {
-                    "id": "enable",
-                    "title": "Turn on WSL",
+                    "id": "open_terminal",
+                    "title": "Open Terminal as Administrator",
                     "description": (
-                        "Open PowerShell as Administrator (right-click the Start button "
-                        "> 'Terminal (Admin)') and run this command:"
+                        "Right-click the Start button (Windows icon, bottom-left) and "
+                        "select 'Terminal (Admin)' or 'PowerShell (Admin)' from the menu."
                     ),
+                    "substeps": [
+                        "Right-click the Start button (or press Win + X)",
+                        "Click 'Terminal (Admin)' — on older Windows 10, look for 'Windows PowerShell (Admin)'",
+                        "Click 'Yes' on the User Account Control popup",
+                    ],
+                    "command": None,
+                    "note": (
+                        "You must use an Administrator terminal for the install command. "
+                        "A regular terminal will fail with a permissions error."
+                    ),
+                    "warning": None,
+                },
+                {
+                    "id": "install_wsl",
+                    "title": "Install WSL and Ubuntu",
+                    "description": (
+                        "In the Administrator terminal, paste this command and press Enter. "
+                        "It will download and install everything automatically."
+                    ),
+                    "substeps": [
+                        "Copy the command below (click the copy button)",
+                        "Right-click in the terminal window to paste it",
+                        "Press Enter and wait — this will take 2-10 minutes",
+                        "You'll see progress messages as it downloads Ubuntu",
+                    ],
                     "command": "wsl --install",
                     "note": (
-                        "This downloads and installs WSL along with Ubuntu. "
-                        "It may take a few minutes depending on your internet speed."
+                        "This single command enables the WSL feature, downloads the Linux kernel, "
+                        "and installs Ubuntu. If you already have WSL with a different distro, "
+                        "run 'wsl --install -d Ubuntu' to add Ubuntu specifically."
                     ),
+                    "warning": None,
                 },
                 {
                     "id": "reboot",
                     "title": "Restart your computer",
                     "description": (
-                        "Windows needs a restart to finish setting up WSL. "
-                        "Save your work, then restart."
+                        "Windows needs to restart to finish enabling WSL. "
+                        "Save all your work, close your apps, and restart."
                     ),
+                    "substeps": [
+                        "Save any open documents and close your applications",
+                        "Click Start > Power > Restart (don't use Shut Down)",
+                        "Wait for your PC to fully restart and log back in",
+                        "After logging in, wait 30-60 seconds — Ubuntu may auto-launch",
+                    ],
                     "command": None,
                     "note": (
-                        "After restarting, Ubuntu will automatically open a window "
-                        "and ask you to create a username and password. "
-                        "This is just for the Linux side — pick anything you like."
+                        "A full restart is required — just logging out and back in won't work. "
+                        "After rebooting, Plutus will remember your progress so you can "
+                        "continue right where you left off."
                     ),
+                    "warning": "Make sure to use Restart, not Shut Down. Shut Down on Windows "
+                    "doesn't fully reset all system components due to Fast Startup.",
                 },
                 {
                     "id": "create_user",
-                    "title": "Create your Linux username",
+                    "title": "Set up your Linux account",
                     "description": (
-                        "When the Ubuntu window opens after reboot, it will ask you to "
-                        "pick a username and password. Type them in and press Enter."
+                        "After the restart, an Ubuntu terminal window should pop up automatically. "
+                        "If it doesn't, open the Start menu and type 'Ubuntu' to launch it."
                     ),
+                    "substeps": [
+                        "Wait for the message 'Enter new UNIX username:'",
+                        "Type a short, lowercase username (e.g. your first name) and press Enter",
+                        "Type a password when prompted — characters won't appear as you type, that's normal",
+                        "Re-type the password to confirm",
+                    ],
                     "command": None,
                     "note": (
-                        "This username is only for Linux and doesn't affect your Windows account. "
-                        "You'll use it when Plutus runs Linux commands."
+                        "This Linux username and password are completely separate from your "
+                        "Windows account. They're only used inside the Linux environment. "
+                        "Pick something short and easy to remember — you'll rarely need to type it."
+                    ),
+                    "warning": (
+                        "When typing your password, nothing will appear on screen — no dots, "
+                        "no asterisks, nothing. This is normal Linux behavior, not a bug. "
+                        "Just type your password and press Enter."
                     ),
                 },
                 {
-                    "id": "verify",
-                    "title": "Verify it works",
+                    "id": "update_packages",
+                    "title": "Update Linux packages",
                     "description": (
-                        "Open a regular PowerShell or Command Prompt and run:"
+                        "While the Ubuntu terminal is still open, run this command to make sure "
+                        "everything is up to date. This ensures Plutus has access to the "
+                        "latest tools."
                     ),
-                    "command": "wsl echo 'WSL is working!'",
+                    "substeps": [
+                        "Type the command below into the Ubuntu terminal",
+                        "Enter your Linux password if prompted",
+                        "Wait for it to finish — this takes 1-3 minutes",
+                    ],
+                    "command": "sudo apt update && sudo apt upgrade -y",
                     "note": (
-                        "If you see 'WSL is working!' printed back, you're all set. "
-                        "Come back to Plutus and click 'I've finished setup'."
+                        "This downloads security patches and updates for the Linux system. "
+                        "It's like running Windows Update but for your Linux environment."
+                    ),
+                    "warning": None,
+                },
+                {
+                    "id": "verify",
+                    "title": "Verify everything works",
+                    "description": (
+                        "Open a new PowerShell or Command Prompt window (regular, not Admin) "
+                        "and run this command to confirm WSL is working."
+                    ),
+                    "substeps": [
+                        "Open a regular (non-Admin) PowerShell or Terminal",
+                        "Copy and paste the command below",
+                        "You should see 'Hello from Linux!' printed",
+                        "Then run the second command to see your Linux version",
+                    ],
+                    "command": "wsl echo 'Hello from Linux!'",
+                    "command_verify": "wsl lsb_release -a",
+                    "note": (
+                        "If both commands work, WSL is fully set up and ready. "
+                        "Plutus can now use Linux tools like apt, pip, Docker, Git, "
+                        "compilers, and thousands of other programs."
+                    ),
+                    "warning": None,
+                },
+            ],
+            "troubleshooting": [
+                {
+                    "id": "not_recognized",
+                    "problem": "'wsl' is not recognized as a command",
+                    "solution": (
+                        "Your Windows version may be too old. Press Win+R, type 'winver', and check "
+                        "that you're on Windows 10 version 2004 (build 19041) or later. "
+                        "If not, update Windows first via Settings > Update & Security > Windows Update."
+                    ),
+                },
+                {
+                    "id": "virtualization",
+                    "problem": "Error about virtualization or Hyper-V not enabled",
+                    "solution": (
+                        "You need to enable virtualization in your BIOS/UEFI. Restart your PC, "
+                        "press F2/Del/F12 during boot (varies by manufacturer) to enter BIOS, "
+                        "find 'Intel VT-x', 'AMD-V', or 'SVM Mode', enable it, save, and restart. "
+                        "You can also try running this in an Admin PowerShell: "
+                        "dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart"
+                    ),
+                },
+                {
+                    "id": "ubuntu_no_launch",
+                    "problem": "Ubuntu doesn't open after restart",
+                    "solution": (
+                        "Open the Start menu, type 'Ubuntu', and click on it. "
+                        "If it's not listed, open PowerShell as Admin and run: wsl --install -d Ubuntu. "
+                        "If that says it's already installed, try: wsl --set-default Ubuntu"
+                    ),
+                },
+                {
+                    "id": "error_0x80370102",
+                    "problem": "Error 0x80370102 — virtualization not enabled",
+                    "solution": (
+                        "This means hardware virtualization is disabled. Enter your BIOS settings "
+                        "(restart and press F2/Del) and look for Intel VT-x or AMD SVM and enable it. "
+                        "If you're in a virtual machine, enable nested virtualization in your VM settings."
+                    ),
+                },
+                {
+                    "id": "error_0x80040154",
+                    "problem": "Error 0x80040154 — WSL feature not enabled",
+                    "solution": (
+                        "Run these two commands in Admin PowerShell, then restart:\n"
+                        "dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart\n"
+                        "dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart"
+                    ),
+                },
+                {
+                    "id": "slow_filesystem",
+                    "problem": "WSL feels slow or file access is laggy",
+                    "solution": (
+                        "Store your project files inside the Linux filesystem (e.g. ~/projects/) "
+                        "rather than accessing /mnt/c/. Cross-filesystem access is significantly "
+                        "slower. You can also run 'wsl --update' to ensure you have the latest version."
                     ),
                 },
             ],
