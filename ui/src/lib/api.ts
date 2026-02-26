@@ -298,4 +298,32 @@ export const api = {
         solution: string;
       }[];
     }>("/wsl/setup-guide"),
+
+  // Updates
+  checkForUpdate: () =>
+    request<{
+      update_available: boolean;
+      dismissed?: boolean;
+      current_version: string;
+      latest_version: string;
+      release_name?: string;
+      release_notes?: string;
+      release_url?: string;
+      published_at?: string;
+      error?: string;
+    }>("/updates/check"),
+  dismissUpdate: (version: string) =>
+    request<{ message: string }>("/updates/dismiss", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
+  applyUpdate: () =>
+    request<{
+      success: boolean;
+      error?: string;
+      previous_version: string;
+      new_version?: string;
+      steps?: { step: string; success: boolean; output: string }[];
+      restart_required?: boolean;
+    }>("/updates/apply", { method: "POST" }),
 };

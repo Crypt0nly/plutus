@@ -809,9 +809,11 @@ async def lifespan(app: FastAPI):
 
 def create_app(config: PlutusConfig | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
+    from plutus import __version__
+
     app = FastAPI(
         title="Plutus",
-        version="0.3.2",
+        version=__version__,
         lifespan=lifespan,
     )
 

@@ -11,6 +11,16 @@ from pydantic import BaseModel
 from plutus.guardrails.tiers import Tier, get_tier_info
 
 
+def _version_newer(latest: str, current: str) -> bool:
+    """Return True if *latest* is strictly newer than *current* (semver segments)."""
+    try:
+        l_parts = [int(x) for x in latest.split(".")]
+        c_parts = [int(x) for x in current.split(".")]
+        return l_parts > c_parts
+    except (ValueError, AttributeError):
+        return False
+
+
 # ── Request body models (module-level for proper FastAPI schema generation) ──
 
 
@@ -96,6 +106,7 @@ def create_router() -> APIRouter:
 
     @router.get("/status")
     async def get_status() -> dict[str, Any]:
+        from plutus import __version__
         from plutus.gateway.server import get_state
 
         state = get_state()
@@ -110,7 +121,7 @@ def create_router() -> APIRouter:
 
         config = state.get("config")
         return {
-            "version": "0.3.0",
+            "version": __version__,
             "status": "running",
             "key_configured": agent.key_configured if agent else False,
             "onboarding_completed": config.onboarding_completed if config else False,
@@ -1895,6 +1906,197 @@ def create_router() -> APIRouter:
                     ),
                 },
             ],
+        }
+
+    # ── Updates ───────────────────────────────────────────────
+
+    @router.get("/updates/check")
+    async def check_for_update() -> dict[str, Any]:
+        """Check GitHub releases for a newer version."""
+        import httpx
+
+        from plutus import __version__
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        repo = "plutus-ai/plutus"
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"https://api.github.com/repos/{repo}/releases/latest",
+                    headers={"Accept": "application/vnd.github+json"},
+                )
+                if resp.status_code == 404:
+                    # No releases yet — treat as up-to-date
+                    return {
+                        "update_available": False,
+                        "current_version": __version__,
+                        "latest_version": __version__,
+                    }
+                resp.raise_for_status()
+                data = resp.json()
+
+            latest_tag = data.get("tag_name", "").lstrip("v")
+            release_name = data.get("name", latest_tag)
+            release_body = data.get("body", "")
+            release_url = data.get("html_url", "")
+            published_at = data.get("published_at", "")
+
+            update_available = _version_newer(latest_tag, __version__)
+            dismissed = (
+                config.updates.dismissed_version == latest_tag if config else False
+            )
+
+            return {
+                "update_available": update_available,
+                "dismissed": dismissed,
+                "current_version": __version__,
+                "latest_version": latest_tag,
+                "release_name": release_name,
+                "release_notes": release_body,
+                "release_url": release_url,
+                "published_at": published_at,
+            }
+        except Exception as e:
+            return {
+                "update_available": False,
+                "current_version": __version__,
+                "latest_version": __version__,
+                "error": str(e),
+            }
+
+    @router.post("/updates/dismiss")
+    async def dismiss_update(body: dict[str, Any]) -> dict[str, str]:
+        """Dismiss an update banner so it won't show again for this version."""
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        if not config:
+            raise HTTPException(500, "Config not loaded")
+        version = body.get("version", "")
+        config.update({"updates": {"dismissed_version": version}})
+        return {"message": f"Dismissed update v{version}"}
+
+    @router.post("/updates/apply")
+    async def apply_update() -> dict[str, Any]:
+        """Pull latest from GitHub and reinstall. Returns status."""
+        import asyncio
+        import shutil
+        import sys
+
+        from plutus import __version__
+
+        async def run(cmd: list[str], cwd: str | None = None) -> tuple[int, str, str]:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+            stdout, stderr = await proc.communicate()
+            return (
+                proc.returncode or 0,
+                stdout.decode(errors="replace"),
+                stderr.decode(errors="replace"),
+            )
+
+        # Detect installation method
+        from pathlib import Path
+
+        import plutus as _pkg
+
+        pkg_dir = str(Path(_pkg.__file__).resolve().parent.parent)
+        git_dir = Path(pkg_dir) / ".git"
+
+        if not git_dir.is_dir():
+            return {
+                "success": False,
+                "error": (
+                    "Plutus was not installed from a git clone. "
+                    "Please update manually: pip install --upgrade plutus-ai"
+                ),
+                "previous_version": __version__,
+            }
+
+        steps: list[dict[str, Any]] = []
+
+        # Step 1: git pull
+        code, out, err = await run(
+            ["git", "pull", "--ff-only", "origin", "main"], cwd=pkg_dir
+        )
+        steps.append({
+            "step": "git_pull",
+            "success": code == 0,
+            "output": out.strip() or err.strip(),
+        })
+        if code != 0:
+            return {
+                "success": False,
+                "error": f"git pull failed: {err.strip()}",
+                "steps": steps,
+                "previous_version": __version__,
+            }
+
+        # Step 2: pip install -e .
+        pip = shutil.which("pip") or sys.executable + " -m pip"
+        pip_cmd = (
+            [pip, "install", "-e", "."]
+            if shutil.which("pip")
+            else [sys.executable, "-m", "pip", "install", "-e", "."]
+        )
+        code, out, err = await run(pip_cmd, cwd=pkg_dir)
+        steps.append({
+            "step": "pip_install",
+            "success": code == 0,
+            "output": (out.strip() or err.strip())[:500],
+        })
+        if code != 0:
+            return {
+                "success": False,
+                "error": f"pip install failed: {err.strip()[:300]}",
+                "steps": steps,
+                "previous_version": __version__,
+            }
+
+        # Step 3: rebuild UI (if npm is available)
+        ui_dir = Path(pkg_dir) / "ui"
+        npm = shutil.which("npm")
+        if npm and ui_dir.is_dir():
+            code, out, err = await run([npm, "install"], cwd=str(ui_dir))
+            steps.append({
+                "step": "npm_install",
+                "success": code == 0,
+                "output": (out.strip() or err.strip())[:300],
+            })
+            code, out, err = await run([npm, "run", "build"], cwd=str(ui_dir))
+            steps.append({
+                "step": "npm_build",
+                "success": code == 0,
+                "output": (out.strip() or err.strip())[:300],
+            })
+
+        # Read new version
+        new_version = __version__
+        try:
+            # Re-read __init__.py since the import cache has the old version
+            init_path = Path(pkg_dir) / "plutus" / "__init__.py"
+            if init_path.exists():
+                for line in init_path.read_text().splitlines():
+                    if line.startswith("__version__"):
+                        new_version = line.split("=")[1].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "previous_version": __version__,
+            "new_version": new_version,
+            "steps": steps,
+            "restart_required": True,
         }
 
     return router
