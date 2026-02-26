@@ -97,6 +97,11 @@ class WSLConfig(BaseModel):
     preferred_distro: str = "Ubuntu"  # default distro to use
 
 
+class UpdateConfig(BaseModel):
+    auto_check: bool = True  # periodically check GitHub for new releases
+    dismissed_version: str = ""  # version the user dismissed (don't nag again for this one)
+
+
 class AgentConfig(BaseModel):
     max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
 
@@ -119,6 +124,7 @@ class PlutusConfig(BaseSettings):
     model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     wsl: WSLConfig = Field(default_factory=WSLConfig)
+    updates: UpdateConfig = Field(default_factory=UpdateConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
     onboarding_completed: bool = False  # set True after first-run wizard finishes
 
