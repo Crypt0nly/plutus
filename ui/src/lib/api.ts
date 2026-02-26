@@ -275,13 +275,27 @@ export const api = {
   getWSLSetupGuide: () =>
     request<{
       needed: boolean;
+      wsl_detected?: boolean;
       message?: string;
+      prerequisites?: {
+        id: string;
+        label: string;
+        detail: string;
+      }[];
       steps: {
         id: string;
         title: string;
         description: string;
+        substeps?: string[];
         command: string | null;
+        command_verify?: string;
         note: string;
+        warning?: string | null;
+      }[];
+      troubleshooting?: {
+        id: string;
+        problem: string;
+        solution: string;
       }[];
     }>("/wsl/setup-guide"),
 };
