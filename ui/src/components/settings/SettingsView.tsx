@@ -3,6 +3,7 @@ import { Bot, Server, Database, Info } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
+import { WSLSetup } from "./WSLSetup";
 import { useAppStore } from "../../stores/appStore";
 
 export function SettingsView() {
@@ -86,6 +87,9 @@ export function SettingsView() {
           onSave={handleSave}
           saving={saving}
         />
+
+        {/* WSL / Linux Superpowers */}
+        <WSLSetup />
 
         {/* Agent Behavior */}
         <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">

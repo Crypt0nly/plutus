@@ -91,6 +91,12 @@ class SchedulerConfig(BaseModel):
     max_concurrent_jobs: int = 3  # max jobs running simultaneously
 
 
+class WSLConfig(BaseModel):
+    enabled: bool = False  # user has opted in to WSL superpowers
+    setup_completed: bool = False  # WSL install + distro confirmed working
+    preferred_distro: str = "Ubuntu"  # default distro to use
+
+
 class AgentConfig(BaseModel):
     max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
 
@@ -112,6 +118,7 @@ class PlutusConfig(BaseSettings):
     workers: WorkerConfig = Field(default_factory=WorkerConfig)
     model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    wsl: WSLConfig = Field(default_factory=WSLConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
     onboarding_completed: bool = False  # set True after first-run wizard finishes
 
