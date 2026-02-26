@@ -79,4 +79,4 @@ echo "  First time? The setup wizard will guide you through everything."
 echo "  ─────────────────────────────"
 echo ""
 
-plutus start
+$PYTHON_CMD -m plutus start

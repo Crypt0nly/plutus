@@ -829,8 +829,10 @@ def create_app(config: PlutusConfig | None = None) -> FastAPI:
     app.include_router(create_router(), prefix="/api")
     app.include_router(create_ws_router())
 
-    # Serve the UI
-    ui_dir = Path(__file__).parent.parent.parent / "ui" / "dist"
+    # Serve the UI — check bundled location first (pip install), then dev location
+    ui_dir = Path(__file__).parent.parent / "ui_dist"
+    if not ui_dir.exists():
+        ui_dir = Path(__file__).parent.parent.parent / "ui" / "dist"
     if ui_dir.exists():
         app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
 
