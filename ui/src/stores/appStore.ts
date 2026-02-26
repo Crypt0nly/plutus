@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Message, Tier, ApprovalRequest } from "../lib/types";
 
-export type View = "chat" | "dashboard" | "guardrails" | "settings" | "tools" | "workers" | "tool-creator" | "skills" | "memory" | "connectors";
+export type View = "chat" | "dashboard" | "guardrails" | "settings" | "tools" | "workers" | "tool-creator" | "skills" | "memory" | "connectors" | "onboarding";
 
 interface ChatMessage extends Message {
   // Extended with UI-specific fields
@@ -40,6 +40,10 @@ interface AppState {
   // Connection
   connected: boolean;
   setConnected: (v: boolean) => void;
+
+  // Onboarding
+  onboardingCompleted: boolean | null; // null = not yet loaded
+  setOnboardingCompleted: (v: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -85,4 +89,8 @@ export const useAppStore = create<AppState>((set) => ({
   // Connection
   connected: false,
   setConnected: (connected) => set({ connected }),
+
+  // Onboarding
+  onboardingCompleted: null,
+  setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
 }));

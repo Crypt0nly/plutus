@@ -108,16 +108,16 @@ def create_router() -> APIRouter:
         scheduler = state.get("scheduler")
         model_router = state.get("model_router")
 
+        config = state.get("config")
         return {
             "version": "0.3.0",
             "status": "running",
             "key_configured": agent.key_configured if agent else False,
+            "onboarding_completed": config.onboarding_completed if config else False,
             "guardrails": guardrails.get_status() if guardrails else None,
             "tools": tool_registry.list_tools() if tool_registry else [],
             "heartbeat": heartbeat.status() if heartbeat else None,
-            "planner_enabled": state.get("config", {}).planner.enabled
-            if state.get("config")
-            else False,
+            "planner_enabled": config.planner.enabled if config else False,
             "worker_pool": worker_pool.stats() if worker_pool else None,
             "scheduler": scheduler.stats() if scheduler else None,
             "model_routing": model_router.config.to_dict() if model_router else None,
@@ -775,6 +775,20 @@ def create_router() -> APIRouter:
         config = state.get("config")
         config.update(body.patch)
         return {"message": "Config updated"}
+
+    # ── Setup / Onboarding ────────────────────────────────────
+
+    @router.post("/setup/complete")
+    async def complete_setup() -> dict[str, str]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        if not config:
+            raise HTTPException(500, "Config not loaded")
+        config.onboarding_completed = True
+        config.save()
+        return {"message": "Onboarding completed"}
 
     # ── Heartbeat ────────────────────────────────────────────
 

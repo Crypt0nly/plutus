@@ -13,6 +13,7 @@ import { ToolCreatorView } from "./components/tool-creator/ToolCreatorView";
 import SkillsView from "./components/skills/SkillsView";
 import { MemoryView } from "./components/memory/MemoryView";
 import ConnectorsView from "./components/connectors/ConnectorsView";
+import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 
@@ -26,6 +27,8 @@ export default function App() {
     setConversationId,
     setKeyConfigured,
     clearMessages,
+    onboardingCompleted,
+    setOnboardingCompleted,
   } = useAppStore();
 
   const handleWSMessage = useCallback(
@@ -240,7 +243,7 @@ export default function App() {
     setConnected(connected);
   }, [connected, setConnected]);
 
-  // Load initial status
+  // Load initial status (including onboarding state)
   useEffect(() => {
     api.getStatus().then((status: any) => {
       if (status?.guardrails?.tier) {
@@ -249,8 +252,31 @@ export default function App() {
       if (status?.key_configured !== undefined) {
         setKeyConfigured(status.key_configured);
       }
-    }).catch(() => {});
-  }, [setCurrentTier, setKeyConfigured]);
+      setOnboardingCompleted(status?.onboarding_completed ?? true);
+    }).catch(() => {
+      // If status fails, assume onboarding is done (don't block the UI)
+      setOnboardingCompleted(true);
+    });
+  }, [setCurrentTier, setKeyConfigured, setOnboardingCompleted]);
+
+  // Show loading state while checking onboarding status
+  if (onboardingCompleted === null) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-plutus-500 to-plutus-700 flex items-center justify-center font-bold text-lg shadow-lg shadow-plutus-600/20 ring-1 ring-white/10">
+            P
+          </div>
+          <div className="w-6 h-6 border-2 border-plutus-500/30 border-t-plutus-500 rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  // Show onboarding wizard for first-time users
+  if (!onboardingCompleted) {
+    return <OnboardingWizard />;
+  }
 
   const viewComponents: Record<string, React.ReactNode> = {
     chat: <ChatView send={send} />,

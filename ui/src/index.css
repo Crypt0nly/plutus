@@ -157,3 +157,13 @@
 .scroll-smooth {
   scroll-behavior: smooth;
 }
+
+/* Onboarding wizard step entrance */
+@keyframes onboardIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-onboard-in {
+  animation: onboardIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
