@@ -71,7 +71,7 @@ echo "[1/4] $PY_VER found."
 echo "[2/4] Installing Plutus..."
 
 $PYTHON_CMD -m pip install --upgrade pip >/dev/null 2>&1 || true
-$PYTHON_CMD -m pip install --upgrade plutus-ai
+$PYTHON_CMD -m pip install --upgrade "plutus-ai[all]"
 
 echo "       Plutus installed."
 
