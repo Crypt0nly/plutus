@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plutus-ai"
-version = "0.3.4"
+dynamic = ["version"]
 description = "Autonomous AI agent with subprocess orchestration, dynamic tool creation, and a local-first web interface"
 readme = "README.md"
 license = "MIT"
@@ -32,18 +32,26 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "aiosqlite>=0.20.0",
     "httpx>=0.28.0",
-    "playwright>=1.49.0",
     "psutil>=6.1.0",
     "python-multipart>=0.0.18",
-    "pyautogui>=0.9.54",
     "anthropic>=0.40.0",
     "pyperclip>=1.8.0",
-    "pywinauto>=0.6.8; sys_platform == 'win32'",
     "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
+desktop = [
+    "pyautogui>=0.9.54",
+    "pywinauto>=0.6.8; sys_platform == 'win32'",
+]
+browser = [
+    "playwright>=1.49.0",
+]
+all = [
+    "plutus-ai[desktop,browser]",
+]
 dev = [
+    "plutus-ai[all]",
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
@@ -57,6 +65,9 @@ plutus = "plutus.cli:main"
 Homepage = "https://github.com/plutus-ai/plutus"
 Repository = "https://github.com/plutus-ai/plutus"
 Issues = "https://github.com/plutus-ai/plutus/issues"
+
+[tool.hatch.version]
+path = "plutus/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["plutus"]
