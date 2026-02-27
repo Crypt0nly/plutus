@@ -57,6 +57,10 @@ dev = [
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
 ]
+build = [
+    "cython>=3.0.0",
+    "setuptools>=69.0.0",
+]
 
 [project.scripts]
 plutus = "plutus.cli:main"
@@ -71,6 +75,8 @@ path = "plutus/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["plutus"]
+# Include compiled .so (Linux/macOS) and .pyd (Windows) in the wheel
+artifacts = ["plutus/**/*.so", "plutus/**/*.pyd"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "ui/dist" = "plutus/ui_dist"
