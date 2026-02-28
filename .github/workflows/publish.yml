@@ -10,6 +10,10 @@ on:
   release:
     types: [published]
 
+  # Auto-publish on every push to main
+  push:
+    branches: [main]
+
   # Allow manual trigger for testing
   workflow_dispatch:
 
@@ -35,10 +39,29 @@ jobs:
           npm ci
           npm run build
 
+      # On push-to-main builds, stamp a unique dev version so PyPI accepts it.
+      # Releases keep the version from __init__.py as-is.
+      - name: Stamp dev version (push builds only)
+        if: github.event_name == 'push'
+        run: |
+          TIMESTAMP=$(date +%s)
+          BASE_VERSION=$(python3 -c "import re; print(re.search(r'\"(.+?)\"', open('plutus/__init__.py').read()).group(1))")
+          DEV_VERSION="${BASE_VERSION}.dev${TIMESTAMP}"
+          sed -i "s/__version__ = \".*\"/__version__ = \"${DEV_VERSION}\"/" plutus/__init__.py
+          echo "Stamped version: ${DEV_VERSION}"
+          cat plutus/__init__.py
+
       - uses: actions/upload-artifact@v4
         with:
           name: ui-dist
           path: ui/dist/
+
+      # Upload the (possibly version-stamped) source so all downstream jobs use it
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source
+          path: |
+            plutus/__init__.py
 
   # ── Step 2: Build compiled wheels per platform ──────────────────
   build-wheels:
@@ -73,6 +96,12 @@ jobs:
         with:
           name: ui-dist
           path: ui/dist/
+
+      # Overwrite with version-stamped __init__.py (for push builds)
+      - uses: actions/download-artifact@v4
+        with:
+          name: source
+          path: plutus/
 
       - uses: actions/setup-python@v5
         with:
@@ -127,6 +156,12 @@ jobs:
         with:
           name: ui-dist
           path: ui/dist/
+
+      # Overwrite with version-stamped __init__.py (for push builds)
+      - uses: actions/download-artifact@v4
+        with:
+          name: source
+          path: plutus/
 
       - uses: actions/setup-python@v5
         with:
