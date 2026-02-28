@@ -80,6 +80,9 @@ artifacts = ["plutus/**/*.so", "plutus/**/*.pyd"]
 [tool.hatch.build.targets.wheel.force-include]
 "ui/dist" = "plutus/ui_dist"
 
+# Force platform-specific wheel tags when compiled extensions are present
+[tool.hatch.build.hooks.custom]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
