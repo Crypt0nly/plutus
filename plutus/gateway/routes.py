@@ -1920,7 +1920,7 @@ def create_router() -> APIRouter:
 
         state = get_state()
         config = state.get("config")
-        repo = "plutus-ai/plutus"
+        repo = "Crypt0nly/plutus"
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
