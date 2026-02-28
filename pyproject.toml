@@ -76,6 +76,35 @@ path = "plutus/__init__.py"
 packages = ["plutus"]
 # Include compiled .so (Linux/macOS) and .pyd (Windows) in the wheel
 artifacts = ["plutus/**/*.so", "plutus/**/*.pyd"]
+# Exclude .py source for compiled/protected modules — only .so/.pyd ship in wheels.
+# The sdist still includes all .py files for building from source.
+exclude = [
+    "plutus/core/agent.py",
+    "plutus/core/conversation.py",
+    "plutus/core/heartbeat.py",
+    "plutus/core/model_router.py",
+    "plutus/core/planner.py",
+    "plutus/core/scheduler.py",
+    "plutus/core/subprocess_manager.py",
+    "plutus/core/summarizer.py",
+    "plutus/core/worker_pool.py",
+    "plutus/pc/browser_control.py",
+    "plutus/pc/computer_use.py",
+    "plutus/pc/context.py",
+    "plutus/pc/desktop_control.py",
+    "plutus/pc/smart_click.py",
+    "plutus/pc/workflow.py",
+    "plutus/tools/code_analysis.py",
+    "plutus/tools/code_editor.py",
+    "plutus/tools/pc_control.py",
+    "plutus/tools/tool_creator.py",
+    "plutus/skills/engine.py",
+    "plutus/skills/creator.py",
+    "plutus/workers/code_analysis_worker.py",
+    "plutus/workers/file_edit_worker.py",
+    "plutus/workers/shell_worker.py",
+    "plutus/workers/custom_worker.py",
+]
 
 [tool.hatch.build.targets.wheel.force-include]
 "ui/dist" = "plutus/ui_dist"
