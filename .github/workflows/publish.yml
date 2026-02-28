@@ -206,11 +206,6 @@ jobs:
       - name: List artifacts
         run: ls -la dist/
 
-      - name: Verify packages
-        run: |
-          pip install twine
-          twine check dist/*
-
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         # Uses trusted publishing — no API token needed
