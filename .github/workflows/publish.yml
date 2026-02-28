@@ -198,10 +198,17 @@ jobs:
     environment: pypi  # Create this environment in GitHub repo settings
 
     steps:
+      # Download only wheel and sdist artifacts (not ui-dist or source)
       - uses: actions/download-artifact@v4
         with:
           path: dist/
+          pattern: wheels-*
           merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist/
 
       - name: List artifacts
         run: ls -la dist/
