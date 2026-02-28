@@ -1912,7 +1912,7 @@ def create_router() -> APIRouter:
 
     @router.get("/updates/check")
     async def check_for_update() -> dict[str, Any]:
-        """Check GitHub releases for a newer version."""
+        """Check PyPI for a newer version, with optional GitHub release notes."""
         import httpx
 
         from plutus import __version__
@@ -1920,40 +1920,61 @@ def create_router() -> APIRouter:
 
         state = get_state()
         config = state.get("config")
+        pypi_package = "plutus-ai"
         repo = "Crypt0nly/plutus"
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"https://api.github.com/repos/{repo}/releases/latest",
-                    headers={"Accept": "application/vnd.github+json"},
+                # Primary: check PyPI for the latest published version
+                pypi_resp = await client.get(
+                    f"https://pypi.org/pypi/{pypi_package}/json",
                 )
-                if resp.status_code == 404:
-                    # No releases yet — treat as up-to-date
+                if pypi_resp.status_code == 404:
                     return {
                         "update_available": False,
                         "current_version": __version__,
                         "latest_version": __version__,
                     }
-                resp.raise_for_status()
-                data = resp.json()
+                pypi_resp.raise_for_status()
+                pypi_data = pypi_resp.json()
 
-            latest_tag = data.get("tag_name", "").lstrip("v")
-            release_name = data.get("name", latest_tag)
-            release_body = data.get("body", "")
-            release_url = data.get("html_url", "")
-            published_at = data.get("published_at", "")
+            latest_version = pypi_data.get("info", {}).get("version", __version__)
+            project_url = pypi_data.get("info", {}).get("project_url", "")
+            update_available = _version_newer(latest_version, __version__)
 
-            update_available = _version_newer(latest_tag, __version__)
+            # Try to fetch GitHub release notes (best-effort, non-blocking)
+            release_name = ""
+            release_body = ""
+            release_url = ""
+            published_at = ""
+            if update_available:
+                try:
+                    async with httpx.AsyncClient(timeout=5) as client:
+                        gh_resp = await client.get(
+                            f"https://api.github.com/repos/{repo}/releases/tags/v{latest_version}",
+                            headers={"Accept": "application/vnd.github+json"},
+                        )
+                        if gh_resp.status_code == 200:
+                            gh_data = gh_resp.json()
+                            release_name = gh_data.get("name", "")
+                            release_body = gh_data.get("body", "")
+                            release_url = gh_data.get("html_url", "")
+                            published_at = gh_data.get("published_at", "")
+                except Exception:
+                    pass  # GitHub notes are optional
+
+            if not release_url:
+                release_url = f"https://pypi.org/project/{pypi_package}/{latest_version}/"
+
             dismissed = (
-                config.updates.dismissed_version == latest_tag if config else False
+                config.updates.dismissed_version == latest_version if config else False
             )
 
             return {
                 "update_available": update_available,
                 "dismissed": dismissed,
                 "current_version": __version__,
-                "latest_version": latest_tag,
+                "latest_version": latest_version,
                 "release_name": release_name,
                 "release_notes": release_body,
                 "release_url": release_url,
