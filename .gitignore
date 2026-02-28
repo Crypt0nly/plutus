@@ -38,6 +38,12 @@ Thumbs.db
 .env
 .env.local
 
+# Cython build artifacts
+*.so
+*.pyd
+*.c
+!plutus/**/c  # don't ignore actual C source files in subdirs named 'c'
+
 # Testing
 .pytest_cache/
 htmlcov/
