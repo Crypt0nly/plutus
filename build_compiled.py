@@ -67,18 +67,23 @@ def make_extensions() -> list[Extension]:
     return extensions
 
 
-ext_modules = cythonize(
-    make_extensions(),
-    compiler_directives={
-        "language_level": "3",
-        "boundscheck": False,
-        "wraparound": False,
-    },
-    nthreads=4,
-)
+# Guard required for macOS which uses "spawn" (not "fork") for multiprocessing.
+# Without this, spawned Cython worker processes re-execute the entire script
+# and crash with "An attempt has been made to start a new process before the
+# current process has finished its bootstrapping phase."
+if __name__ == "__main__":
+    ext_modules = cythonize(
+        make_extensions(),
+        compiler_directives={
+            "language_level": "3",
+            "boundscheck": False,
+            "wraparound": False,
+        },
+        nthreads=4,
+    )
 
-setup(
-    name="plutus-ai",
-    ext_modules=ext_modules,
-    packages=["plutus"],
-)
+    setup(
+        name="plutus-ai",
+        ext_modules=ext_modules,
+        packages=["plutus"],
+    )
