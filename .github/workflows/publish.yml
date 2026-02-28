@@ -121,15 +121,20 @@ jobs:
           # Skip musllinux (Alpine) and 32-bit — not worth the build time
           CIBW_SKIP: "*-musllinux_* *-manylinux_i686 *-win32"
 
-          # Before building: install Cython and compile protected modules
-          # Pin setuptools<82 to avoid PEP 639 license field incompatibilities
+          # Before building: install Cython and compile protected modules.
+          # Do NOT run strip_sources.py here — it deletes .py files which
+          # breaks subsequent Python version builds. Instead, pyproject.toml
+          # excludes protected .py files from the wheel statically.
+          # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
           CIBW_BEFORE_BUILD: >
             pip install "cython>=3.0" "setuptools>=69.0,<82" &&
-            python build_compiled.py build_ext --inplace &&
-            python scripts/strip_sources.py --apply
+            python build_compiled.py build_ext --inplace
 
           # The actual wheel build
           CIBW_BUILD_FRONTEND: "build"
+
+          # Upgrade pip in test environment so pre-built wheels are found
+          CIBW_BEFORE_TEST: "pip install --upgrade pip"
 
           # Test that the compiled wheel actually imports correctly
           CIBW_TEST_COMMAND: >
