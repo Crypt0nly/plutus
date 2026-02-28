@@ -121,6 +121,11 @@ jobs:
           # Skip musllinux (Alpine) and 32-bit — not worth the build time
           CIBW_SKIP: "*-musllinux_* *-manylinux_i686 *-win32"
 
+          # Use manylinux_2_28 instead of the default manylinux_2014 so that
+          # pre-built wheels for dependencies like tiktoken are available
+          # (tiktoken only publishes manylinux_2_28 wheels, not _2014).
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+
           # Before building: install Cython and compile protected modules.
           # Do NOT run strip_sources.py here — it deletes .py files which
           # breaks subsequent Python version builds. Instead, pyproject.toml
