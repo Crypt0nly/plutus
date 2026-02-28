@@ -133,8 +133,10 @@ jobs:
           # The actual wheel build
           CIBW_BUILD_FRONTEND: "build"
 
-          # Upgrade pip in test environment so pre-built wheels are found
-          CIBW_BEFORE_TEST: "pip install --upgrade pip"
+          # Upgrade pip in test environment so pre-built wheels (e.g. tiktoken)
+          # are found. Must use "python -m pip" because Windows rejects bare
+          # "pip install --upgrade pip" when upgrading itself.
+          CIBW_BEFORE_TEST: "python -m pip install --upgrade pip"
 
           # Test that the compiled wheel actually imports correctly
           CIBW_TEST_COMMAND: >
