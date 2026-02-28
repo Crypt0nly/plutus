@@ -80,4 +80,5 @@ ext_modules = cythonize(
 setup(
     name="plutus-ai",
     ext_modules=ext_modules,
+    packages=["plutus"],
 )
