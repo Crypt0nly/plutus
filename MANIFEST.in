@@ -1,0 +1,20 @@
+# Include all Python source for sdist (source distribution)
+recursive-include plutus *.py
+recursive-include plutus *.pyi
+
+# Include compiled extension markers
+recursive-include plutus *.so
+recursive-include plutus *.pyd
+
+# Include build scripts
+include build_compiled.py
+recursive-include scripts *.py
+
+# Include UI dist
+recursive-include ui/dist *
+
+# Exclude dev/test artifacts
+recursive-exclude tests *
+recursive-exclude .github *
+exclude .gitignore
+exclude .ruff_cache

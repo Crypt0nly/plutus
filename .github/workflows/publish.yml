@@ -1,8 +1,18 @@
 name: Publish to PyPI
 
+# Build compiled platform wheels and publish to PyPI.
+#
+# Protected modules (core orchestration, PC control, workers) are compiled
+# to native .so/.pyd via Cython so the source is not distributed.
+# One wheel is built per platform (Linux, macOS, Windows) x Python version.
+
 on:
   release:
     types: [published]
+
+  # Auto-publish on every push to main
+  push:
+    branches: [main]
 
   # Allow manual trigger for testing
   workflow_dispatch:
@@ -11,6 +21,7 @@ permissions:
   id-token: write  # Required for trusted publishing
 
 jobs:
+  # ── Step 1: Build the React frontend ────────────────────────────
   build-ui:
     runs-on: ubuntu-latest
     steps:
@@ -28,35 +39,160 @@ jobs:
           npm ci
           npm run build
 
+      # On push-to-main builds, stamp a unique dev version so PyPI accepts it.
+      # Releases keep the version from __init__.py as-is.
+      - name: Stamp dev version (push builds only)
+        if: github.event_name == 'push'
+        run: |
+          TIMESTAMP=$(date +%s)
+          BASE_VERSION=$(python3 -c "import re; print(re.search(r'\"(.+?)\"', open('plutus/__init__.py').read()).group(1))")
+          DEV_VERSION="${BASE_VERSION}.dev${TIMESTAMP}"
+          sed -i "s/__version__ = \".*\"/__version__ = \"${DEV_VERSION}\"/" plutus/__init__.py
+          echo "Stamped version: ${DEV_VERSION}"
+          cat plutus/__init__.py
+
       - uses: actions/upload-artifact@v4
         with:
           name: ui-dist
           path: ui/dist/
 
-  publish:
+      # Upload the (possibly version-stamped) source so all downstream jobs use it
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source
+          path: |
+            plutus/__init__.py
+
+  # ── Step 2: Build compiled wheels per platform ──────────────────
+  build-wheels:
     needs: build-ui
-    runs-on: ubuntu-latest
-    environment: pypi   # Create this environment in GitHub repo settings
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            cibw_archs: x86_64
+            artifact_name: wheels-linux-x86_64
+          # macOS x86_64 (Intel)
+          - os: macos-13
+            cibw_archs: x86_64
+            artifact_name: wheels-macos-x86_64
+          # macOS arm64 (Apple Silicon)
+          - os: macos-14
+            cibw_archs: arm64
+            artifact_name: wheels-macos-arm64
+          # Windows x86_64
+          - os: windows-latest
+            cibw_archs: AMD64
+            artifact_name: wheels-windows-x86_64
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - uses: actions/download-artifact@v4
         with:
           name: ui-dist
           path: ui/dist/
 
-      - name: Install build tools
-        run: pip install build
+      # Overwrite with version-stamped __init__.py (for push builds)
+      - uses: actions/download-artifact@v4
+        with:
+          name: source
+          path: plutus/
 
-      - name: Build sdist and wheel
-        run: python -m build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Verify package
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.22.0
+
+      - name: Build wheels
+        run: cibuildwheel --output-dir wheelhouse
+        env:
+          # Build for Python 3.11, 3.12, 3.13
+          CIBW_BUILD: "cp311-* cp312-* cp313-*"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+
+          # Skip musllinux (Alpine) and 32-bit — not worth the build time
+          CIBW_SKIP: "*-musllinux_* *-manylinux_i686 *-win32"
+
+          # Before building: install Cython and compile protected modules
+          CIBW_BEFORE_BUILD: >
+            pip install "cython>=3.0" "setuptools>=69.0" &&
+            python build_compiled.py build_ext --inplace &&
+            python scripts/strip_sources.py --apply
+
+          # The actual wheel build
+          CIBW_BUILD_FRONTEND: "build"
+
+          # Test that the compiled wheel actually imports correctly
+          CIBW_TEST_COMMAND: >
+            python -c "from plutus.core.agent import AgentRuntime; print('OK: agent');
+            from plutus.core.planner import PlanManager; print('OK: planner');
+            from plutus.core.worker_pool import WorkerPool; print('OK: workers');
+            from plutus.tools.pc_control import PCControlTool; print('OK: pc_control');
+            print('All compiled imports OK')"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: wheelhouse/*.whl
+
+  # ── Step 3: Build source distribution (no compiled code) ────────
+  # The sdist is for users who want to build from source themselves.
+  # It includes all .py files. The compiled wheels are the primary
+  # distribution method.
+  build-sdist:
+    needs: build-ui
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist/
+
+      # Overwrite with version-stamped __init__.py (for push builds)
+      - uses: actions/download-artifact@v4
+        with:
+          name: source
+          path: plutus/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist
+        run: |
+          pip install build
+          python -m build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # ── Step 4: Publish everything to PyPI ──────────────────────────
+  publish:
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    environment: pypi  # Create this environment in GitHub repo settings
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Verify packages
         run: |
           pip install twine
           twine check dist/*
