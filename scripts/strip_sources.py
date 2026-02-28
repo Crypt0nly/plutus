@@ -56,9 +56,12 @@ def find_compiled(source_path: Path) -> Path | None:
     parent = source_path.parent
     stem = source_path.stem  # e.g. "agent"
 
-    # Cython produces files like: agent.cpython-311-x86_64-linux-gnu.so
+    # Cython produces files like:
+    #   Linux/macOS: agent.cpython-311-x86_64-linux-gnu.so
+    #   Windows:     agent.cp311-win_amd64.pyd
+    # Both start with "<stem>.cp" so we match on that prefix.
     for ext_file in parent.iterdir():
-        if ext_file.stem.startswith(stem + ".cpython") or ext_file.stem == stem:
+        if ext_file.stem.startswith(stem + ".cp") or ext_file.stem == stem:
             if ext_file.suffix in (".so", ".pyd"):
                 return ext_file
     return None
