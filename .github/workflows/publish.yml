@@ -46,7 +46,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           TIMESTAMP=$(date +%s)
-          BASE_VERSION=$(python3 -c "import re; print(re.search(r'\"(.+?)\"', open('plutus/__init__.py').read()).group(1))")
+          BASE_VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
           DEV_VERSION="${BASE_VERSION}.dev${TIMESTAMP}"
           sed -i "s/__version__ = \".*\"/__version__ = \"${DEV_VERSION}\"/" plutus/__init__.py
           echo "Stamped version: ${DEV_VERSION}"
