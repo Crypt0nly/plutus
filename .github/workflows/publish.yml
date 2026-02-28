@@ -2,29 +2,30 @@ name: Publish to PyPI
 
 # Build compiled platform wheels and publish to PyPI.
 #
+# Every push to main automatically:
+#   1. Builds compiled wheels for all platforms
+#   2. Publishes to PyPI as a stable release
+#   3. Creates a GitHub Release
+#   4. Bumps the patch version for the next release
+#
 # Protected modules (core orchestration, PC control, workers) are compiled
 # to native .so/.pyd via Cython so the source is not distributed.
-# One wheel is built per platform (Linux, macOS, Windows) x Python version.
 
 on:
-  release:
-    types: [published]
-
-  # Auto-publish on every push to main
   push:
     branches: [main]
-
-  # Allow manual trigger for testing
   workflow_dispatch:
 
 permissions:
-  contents: read   # Required for checkout on private repos
-  id-token: write  # Required for trusted publishing
+  contents: write   # Required for version bump commit + release creation
+  id-token: write   # Required for PyPI trusted publishing
 
 jobs:
   # ── Step 1: Build the React frontend ────────────────────────────
   build-ui:
     runs-on: ubuntu-latest
+    # Skip version-bump commits to prevent infinite loops
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     steps:
       - uses: actions/checkout@v4
 
@@ -40,29 +41,20 @@ jobs:
           npm ci
           npm run build
 
-      # On push-to-main builds, stamp a unique dev version so PyPI accepts it.
-      # Releases keep the version from __init__.py as-is.
-      - name: Stamp dev version (push builds only)
-        if: github.event_name == 'push'
+      - name: Show version to publish
         run: |
-          TIMESTAMP=$(date +%s)
-          BASE_VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
-          DEV_VERSION="${BASE_VERSION}.dev${TIMESTAMP}"
-          sed -i "s/__version__ = \".*\"/__version__ = \"${DEV_VERSION}\"/" plutus/__init__.py
-          echo "Stamped version: ${DEV_VERSION}"
-          cat plutus/__init__.py
+          VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
+          echo "Publishing version: ${VERSION}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ui-dist
           path: ui/dist/
 
-      # Upload the (possibly version-stamped) source so all downstream jobs use it
       - uses: actions/upload-artifact@v4
         with:
           name: source
-          path: |
-            plutus/__init__.py
+          path: plutus/__init__.py
 
   # ── Step 2: Build compiled wheels per platform ──────────────────
   build-wheels:
@@ -75,7 +67,7 @@ jobs:
           - os: ubuntu-latest
             cibw_archs: x86_64
             artifact_name: wheels-linux-x86_64
-          # macOS x86_64 (Intel) — macos-13 is deprecated, use macos-latest with cross-compile
+          # macOS x86_64 (Intel)
           - os: macos-latest
             cibw_archs: x86_64
             artifact_name: wheels-macos-x86_64
@@ -98,7 +90,6 @@ jobs:
           name: ui-dist
           path: ui/dist/
 
-      # Overwrite with version-stamped __init__.py (for push builds)
       - uses: actions/download-artifact@v4
         with:
           name: source
@@ -156,10 +147,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: wheelhouse/*.whl
 
-  # ── Step 3: Build source distribution (no compiled code) ────────
-  # The sdist is for users who want to build from source themselves.
-  # It includes all .py files. The compiled wheels are the primary
-  # distribution method.
+  # ── Step 3: Build source distribution ───────────────────────────
   build-sdist:
     needs: build-ui
     runs-on: ubuntu-latest
@@ -171,7 +159,6 @@ jobs:
           name: ui-dist
           path: ui/dist/
 
-      # Overwrite with version-stamped __init__.py (for push builds)
       - uses: actions/download-artifact@v4
         with:
           name: source
@@ -191,14 +178,13 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
-  # ── Step 4: Publish everything to PyPI ──────────────────────────
+  # ── Step 4: Publish to PyPI ─────────────────────────────────────
   publish:
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
-    environment: pypi  # Create this environment in GitHub repo settings
+    environment: pypi
 
     steps:
-      # Download only wheel and sdist artifacts (not ui-dist or source)
       - uses: actions/download-artifact@v4
         with:
           path: dist/
@@ -215,5 +201,37 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Uses trusted publishing — no API token needed
-        # Configure at: https://pypi.org/manage/account/publishing/
+
+  # ── Step 5: Create release and bump version for next time ───────
+  post-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        run: |
+          VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
+          echo "Creating release v${VERSION}"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump patch version for next release
+        run: |
+          VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          sed -i "s/__version__ = \".*\"/__version__ = \"${NEXT_VERSION}\"/" plutus/__init__.py
+          echo "Bumped: ${VERSION} → ${NEXT_VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add plutus/__init__.py
+          git commit -m "Bump version to ${NEXT_VERSION} [skip ci]"
+          git push
