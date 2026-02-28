@@ -128,7 +128,7 @@ class TestFilesystemTool:
         result = await tool.execute(
             operation="write", path=path, content="new content"
         )
-        assert "Written" in result
+        assert "written" in result.lower()
         assert Path(path).read_text() == "new content"
         os.unlink(path)
 
