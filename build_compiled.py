@@ -67,10 +67,10 @@ def make_extensions() -> list[Extension]:
     return extensions
 
 
-# Guard required for macOS which uses "spawn" (not "fork") for multiprocessing.
-# Without this, spawned Cython worker processes re-execute the entire script
-# and crash with "An attempt has been made to start a new process before the
-# current process has finished its bootstrapping phase."
+# nthreads=0 → single-threaded Cython compilation. This avoids the macOS
+# "spawn" multiprocessing crash entirely (macOS doesn't use "fork", so
+# nthreads>0 causes worker processes to re-execute this script and crash).
+# 25 modules compile fast enough serially in CI.
 if __name__ == "__main__":
     ext_modules = cythonize(
         make_extensions(),
@@ -79,7 +79,7 @@ if __name__ == "__main__":
             "boundscheck": False,
             "wraparound": False,
         },
-        nthreads=4,
+        nthreads=0,
     )
 
     setup(
