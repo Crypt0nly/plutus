@@ -7,7 +7,7 @@ name = "plutus-ai"
 dynamic = ["version"]
 description = "Autonomous AI agent with subprocess orchestration, dynamic tool creation, and a local-first web interface"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.11"
 authors = [{ name = "Plutus Contributors" }]
 keywords = ["ai", "agent", "autonomous", "guardrails", "local-first"]

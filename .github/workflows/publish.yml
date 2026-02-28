@@ -75,12 +75,12 @@ jobs:
           - os: ubuntu-latest
             cibw_archs: x86_64
             artifact_name: wheels-linux-x86_64
-          # macOS x86_64 (Intel)
-          - os: macos-13
+          # macOS x86_64 (Intel) — macos-13 is deprecated, use macos-latest with cross-compile
+          - os: macos-latest
             cibw_archs: x86_64
             artifact_name: wheels-macos-x86_64
           # macOS arm64 (Apple Silicon)
-          - os: macos-14
+          - os: macos-latest
             cibw_archs: arm64
             artifact_name: wheels-macos-arm64
           # Windows x86_64
@@ -122,8 +122,9 @@ jobs:
           CIBW_SKIP: "*-musllinux_* *-manylinux_i686 *-win32"
 
           # Before building: install Cython and compile protected modules
+          # Pin setuptools<82 to avoid PEP 639 license field incompatibilities
           CIBW_BEFORE_BUILD: >
-            pip install "cython>=3.0" "setuptools>=69.0" &&
+            pip install "cython>=3.0" "setuptools>=69.0,<82" &&
             python build_compiled.py build_ext --inplace &&
             python scripts/strip_sources.py --apply
 
