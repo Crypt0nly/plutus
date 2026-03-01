@@ -47,6 +47,11 @@ interface AppState {
   onboardingCompleted: boolean | null; // null = not yet loaded
   setOnboardingCompleted: (v: boolean) => void;
 
+  // Conversation history panel
+  historyPanelOpen: boolean;
+  setHistoryPanelOpen: (v: boolean) => void;
+  toggleHistoryPanel: () => void;
+
   // Theme
   theme: ThemeMode;
   setTheme: (t: ThemeMode) => void;
@@ -112,6 +117,11 @@ export const useAppStore = create<AppState>((set) => ({
   // Onboarding
   onboardingCompleted: null,
   setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
+
+  // Conversation history panel
+  historyPanelOpen: false,
+  setHistoryPanelOpen: (historyPanelOpen) => set({ historyPanelOpen }),
+  toggleHistoryPanel: () => set((s) => ({ historyPanelOpen: !s.historyPanelOpen })),
 
   // Theme
   theme: getStoredTheme(),
