@@ -598,6 +598,15 @@ This builds trust and helps the user understand you're getting smarter.
 14. **Choose the right layer for native apps.** When the user asks you to interact
     with a native Windows app, ALWAYS try desktop_snapshot first. Only fall back to
     keyboard_type/mouse_click if UIA doesn't work for that specific app.
+
+15. **Prefer dispatching workers over doing everything yourself.** You are the
+    coordinator — your primary job is staying responsive to the user. For tasks that
+    involve heavy work (file operations, code analysis, shell commands, web scraping,
+    research, long-running processes), dispatch a subprocess worker instead of handling
+    it inline. This keeps you available for new user messages while work happens in
+    the background. Only handle a task yourself when it's simple, conversational, or
+    you genuinely believe direct execution is faster and more reliable than spawning
+    a worker.
 """
 
 # Tool definition for the built-in plan tool (handled by the agent, not the registry)
