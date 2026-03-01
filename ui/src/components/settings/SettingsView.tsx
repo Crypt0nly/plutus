@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Bot, Server, Database, Info, Sun, Moon, Monitor } from "lucide-react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
@@ -11,6 +11,7 @@ export function SettingsView() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
+  const [keepAlive, setKeepAlive] = useState<{ enabled: boolean; active: boolean; platform: string | null } | null>(null);
 
   const fetchKeyStatus = useCallback(() => {
     api.getKeyStatus().then((data) => {
@@ -22,6 +23,7 @@ export function SettingsView() {
   useEffect(() => {
     api.getConfig().then(setConfig).catch(() => {});
     fetchKeyStatus();
+    api.getKeepAliveStatus().then((d) => setKeepAlive(d as any)).catch(() => {});
   }, [fetchKeyStatus]);
 
   const handleSave = async (patch: Record<string, any>) => {
@@ -151,6 +153,44 @@ export function SettingsView() {
               >
                 <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
                   config.scheduler?.enabled !== false ? "translate-x-6" : "translate-x-1"
+                }`} />
+              </button>
+            </div>
+
+            {/* Keep Alive toggle */}
+            <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <BatteryCharging className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-300">Keep Alive</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Prevent system sleep while Plutus is running
+                  </p>
+                  {keepAlive?.active && (
+                    <p className="text-[10px] text-emerald-400 mt-0.5">
+                      Active on {keepAlive.platform}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  const newEnabled = !(keepAlive?.enabled ?? false);
+                  try {
+                    const result = await api.setKeepAlive(newEnabled);
+                    setKeepAlive(result as any);
+                  } catch (e) {
+                    console.error("Failed to toggle keep-alive:", e);
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
+                  keepAlive?.enabled ? "bg-emerald-500" : "bg-gray-700"
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                  keepAlive?.enabled ? "translate-x-6" : "translate-x-1"
                 }`} />
               </button>
             </div>

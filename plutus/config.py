@@ -102,6 +102,10 @@ class UpdateConfig(BaseModel):
     dismissed_version: str = ""  # version the user dismissed (don't nag again for this one)
 
 
+class KeepAliveConfig(BaseModel):
+    enabled: bool = False  # prevent system sleep while Plutus is running
+
+
 class AgentConfig(BaseModel):
     max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
 
@@ -123,6 +127,7 @@ class PlutusConfig(BaseSettings):
     workers: WorkerConfig = Field(default_factory=WorkerConfig)
     model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    keep_alive: KeepAliveConfig = Field(default_factory=KeepAliveConfig)
     wsl: WSLConfig = Field(default_factory=WSLConfig)
     updates: UpdateConfig = Field(default_factory=UpdateConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
