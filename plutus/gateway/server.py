@@ -787,12 +787,20 @@ async def lifespan(app: FastAPI):
         f"scheduler_model={config.model_routing.default_scheduler_model}"
     )
 
+    # Initialize keep-alive (prevent system sleep)
+    from plutus.core.keep_alive import KeepAlive
+    keep_alive = KeepAlive()
+    if config.keep_alive.enabled:
+        keep_alive.enable()
+    _state["keep_alive"] = keep_alive
+
     # Auto-start connectors
     await _auto_start_connectors(connector_manager)
 
     yield
 
     # Shutdown
+    keep_alive.disable()
     if cleanup_task and not cleanup_task.done():
         cleanup_task.cancel()
         try:

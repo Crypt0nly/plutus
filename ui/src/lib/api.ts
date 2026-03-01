@@ -153,6 +153,14 @@ export const api = {
   stopHeartbeat: () =>
     request<Record<string, any>>("/heartbeat/stop", { method: "POST" }),
 
+  // Keep Alive
+  getKeepAliveStatus: () => request<Record<string, any>>("/keep-alive"),
+  setKeepAlive: (enabled: boolean) =>
+    request<Record<string, any>>("/keep-alive", {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+
   // Plans
   getPlans: (conversationId?: string, limit = 20) =>
     request<Record<string, any>[]>(
