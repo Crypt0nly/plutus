@@ -17,6 +17,7 @@ import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { UpdateBanner } from "./components/layout/UpdateBanner";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
+import { useTheme } from "./hooks/useTheme";
 
 export default function App() {
   const {
@@ -31,7 +32,10 @@ export default function App() {
     onboardingCompleted,
     setOnboardingCompleted,
     setUpdateInfo,
+    theme,
   } = useAppStore();
+
+  useTheme(theme);
 
   const handleWSMessage = useCallback(
     (msg: any) => {

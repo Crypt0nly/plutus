@@ -197,7 +197,7 @@ function SelfImprovementSection() {
       </div>
 
       {/* How it works */}
-      <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-4">
+      <div className="bg-surface border border-gray-800/60 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-white/70 mb-3">How Self-Improvement Works</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="flex items-start gap-2">
@@ -228,7 +228,7 @@ function SelfImprovementSection() {
       {Object.keys(categories).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {Object.entries(categories).map(([cat, count]) => (
-            <div key={cat} className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 flex items-center gap-2">
+            <div key={cat} className="bg-white/5 border border-gray-800/60 rounded-lg px-3 py-1.5 flex items-center gap-2">
               <span className="text-sm">{CATEGORY_ICONS[cat] || '📦'}</span>
               <span className="text-white/60 text-xs capitalize">{cat}</span>
               <span className="text-white/30 text-xs">{String(count)}</span>
@@ -424,7 +424,7 @@ export default function PCControlView() {
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               contextLive
                 ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
-                : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+                : "bg-white/5 text-white/40 border border-gray-800/60 hover:bg-white/10"
             }`}
           >
             {contextLive ? "⏸ Pause" : "▶ Resume"}
@@ -525,7 +525,7 @@ export default function PCControlView() {
       </div>
 
       {/* ── Hero Section ── */}
-      <div className="bg-gradient-to-r from-blue-600/20 via-purple-600/15 to-pink-600/20 border border-white/10 rounded-2xl p-8">
+      <div className="bg-gradient-to-r from-blue-600/20 via-purple-600/15 to-pink-600/20 border border-gray-800/60 rounded-2xl p-8">
         <div className="flex items-center gap-4 mb-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl shadow-lg">
             👻
@@ -626,7 +626,7 @@ export default function PCControlView() {
               </div>
 
               {expandedCap === key && cap.operations && (
-                <div className="mt-4 space-y-1.5 border-t border-white/10 pt-3">
+                <div className="mt-4 space-y-1.5 border-t border-gray-800/60 pt-3">
                   {cap.operations.map((op: string) => (
                     <div
                       key={op}
@@ -728,14 +728,14 @@ export default function PCControlView() {
         </div>
 
         {showShortcuts && (
-          <div className="bg-[#1a1a2e] border border-white/10 rounded-xl overflow-hidden">
-            <div className="p-3 border-b border-white/10">
+          <div className="bg-surface border border-gray-800/60 rounded-xl overflow-hidden">
+            <div className="p-3 border-b border-gray-800/60">
               <input
                 type="text"
                 placeholder="Search shortcuts..."
                 value={shortcutSearch}
                 onChange={(e) => setShortcutSearch(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50"
+                className="w-full bg-white/5 border border-gray-800/60 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50"
               />
             </div>
             <div className="max-h-80 overflow-y-auto">
@@ -759,7 +759,7 @@ export default function PCControlView() {
                         </code>
                       </td>
                       <td className="px-4 py-2">
-                        <kbd className="text-white/70 text-xs bg-white/10 px-2 py-0.5 rounded border border-white/10 font-mono">
+                        <kbd className="text-white/70 text-xs bg-white/10 px-2 py-0.5 rounded border border-gray-800/60 font-mono">
                           {s.keys}
                         </kbd>
                       </td>
@@ -783,7 +783,7 @@ export default function PCControlView() {
                 return (
                   <div
                     key={name}
-                    className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-center hover:bg-white/10 transition-colors"
+                    className="bg-white/5 border border-gray-800/60 rounded-lg p-2.5 text-center hover:bg-white/10 transition-colors"
                   >
                     <code className="text-xs font-mono text-blue-400">{name}</code>
                     {s && (
@@ -801,7 +801,7 @@ export default function PCControlView() {
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-white/90">Workflows</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-5">
+          <div className="bg-surface border border-gray-800/60 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-white/70 mb-3 flex items-center gap-2">
               <span className="text-amber-400">📋</span> Templates
             </h3>
@@ -825,7 +825,7 @@ export default function PCControlView() {
             )}
           </div>
 
-          <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-5">
+          <div className="bg-surface border border-gray-800/60 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-white/70 mb-3 flex items-center gap-2">
               <span className="text-emerald-400">💾</span> Saved Workflows
             </h3>
@@ -872,7 +872,7 @@ export default function PCControlView() {
               className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
                 selectedSkillCat === "all"
                   ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
-                  : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+                  : "bg-white/5 text-white/40 border border-gray-800/60 hover:bg-white/10"
               }`}
             >
               All
@@ -884,7 +884,7 @@ export default function PCControlView() {
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors capitalize ${
                   selectedSkillCat === cat
                     ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
-                    : "bg-white/5 text-white/40 border border-white/10 hover:bg-white/10"
+                    : "bg-white/5 text-white/40 border border-gray-800/60 hover:bg-white/10"
                 }`}
               >
                 {CATEGORY_ICONS[cat] || "📦"} {cat}
@@ -904,10 +904,10 @@ export default function PCControlView() {
             .map((skill) => (
               <div
                 key={skill.name}
-                className={`bg-[#1a1a2e] border rounded-xl overflow-hidden transition-all cursor-pointer ${
+                className={`bg-surface border rounded-xl overflow-hidden transition-all cursor-pointer ${
                   expandedSkill === skill.name
                     ? "border-violet-500/40 shadow-lg shadow-violet-500/10"
-                    : "border-white/10 hover:border-white/20"
+                    : "border-gray-800/60 hover:border-white/20"
                 }`}
                 onClick={() => setExpandedSkill(expandedSkill === skill.name ? null : skill.name)}
               >
@@ -930,7 +930,7 @@ export default function PCControlView() {
                 </div>
 
                 {expandedSkill === skill.name && (
-                  <div className="border-t border-white/10 p-4 bg-white/[0.02] space-y-3">
+                  <div className="border-t border-gray-800/60 p-4 bg-white/[0.02] space-y-3">
                     {skill.required_params.length > 0 && (
                       <div>
                         <div className="text-white/40 text-[10px] uppercase tracking-wider mb-1">Required</div>
@@ -992,7 +992,7 @@ export default function PCControlView() {
       <SelfImprovementSection />
 
       {/* ── How it works ── */}
-      <div className="bg-[#1a1a2e] border border-white/10 rounded-xl p-6">
+      <div className="bg-surface border border-gray-800/60 rounded-xl p-6">
         <h2 className="text-lg font-semibold text-white/90 mb-4">How It Works</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">

@@ -58,7 +58,7 @@ function StatCard({ icon: Icon, label, value, color }: {
     cyan:    "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
   };
   return (
-    <div className="bg-[#12122a] border border-gray-800/50 rounded-xl p-4 flex items-center gap-3.5">
+    <div className="bg-surface-alt border border-gray-800/50 rounded-xl p-4 flex items-center gap-3.5">
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${cm[color]}`}>
         <Icon className="w-5 h-5" />
       </div>
@@ -95,7 +95,7 @@ function SectionHeader({ icon: Icon, title, count, pulse, action }: {
 
 function EmptyState({ icon: Icon, text, sub }: { icon: React.ElementType; text: string; sub?: string }) {
   return (
-    <div className="bg-[#12122a] border border-gray-800/40 border-dashed rounded-xl text-center py-12">
+    <div className="bg-surface-alt border border-gray-800/40 border-dashed rounded-xl text-center py-12">
       <Icon className="w-8 h-8 text-gray-700 mx-auto mb-3" />
       <p className="text-sm text-gray-500">{text}</p>
       {sub && <p className="text-xs text-gray-600 mt-2 max-w-sm mx-auto leading-relaxed">{sub}</p>}
@@ -257,7 +257,7 @@ function WorkersTab() {
       </div>
 
       {/* Capacity Bar */}
-      <div className="bg-[#12122a] border border-gray-800/50 rounded-xl p-5">
+      <div className="bg-surface-alt border border-gray-800/50 rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm text-gray-300 flex items-center gap-2">
             <Layers className="w-4 h-4 text-blue-400" />
@@ -331,7 +331,7 @@ function WorkersTab() {
             </div>
 
             {/* Cost-Conscious Toggle */}
-            <div className="flex items-center justify-between bg-[#0e0e24] rounded-xl p-4 border border-gray-800/40">
+            <div className="flex items-center justify-between bg-surface-deep rounded-xl p-4 border border-gray-800/40">
               <div className="flex items-center gap-3">
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
                   routing.cost_conscious
@@ -369,7 +369,7 @@ function WorkersTab() {
       <div>
         <SectionHeader icon={Activity} title="Active Tasks" count={activeCount} pulse={activeCount > 0} />
         {running.length === 0 ? (
-          <div className="bg-[#12122a] border border-gray-800/40 border-dashed rounded-xl py-8 text-center">
+          <div className="bg-surface-alt border border-gray-800/40 border-dashed rounded-xl py-8 text-center">
             <Activity className="w-6 h-6 text-gray-700 mx-auto mb-2" />
             <p className="text-sm text-gray-500">No active tasks</p>
             <p className="text-[11px] text-gray-600 mt-1">Workers will appear here when Plutus assigns tasks</p>
@@ -387,7 +387,7 @@ function WorkersTab() {
       {queued.length > 0 && (
         <div>
           <SectionHeader icon={ListOrdered} title="Job Queue" count={queuedCount} />
-          <div className="bg-[#12122a] border border-amber-500/10 rounded-xl overflow-hidden divide-y divide-gray-800/40">
+          <div className="bg-surface-alt border border-amber-500/10 rounded-xl overflow-hidden divide-y divide-gray-800/40">
             {queued.map((w: any, i: number) => (
               <div key={w.task_id || w.id || i} className="flex items-center gap-3 py-3 px-4">
                 <span className="text-[11px] font-mono text-gray-600 w-6 text-center">{i + 1}</span>
@@ -429,7 +429,7 @@ function WorkersTab() {
             sub="Completed worker tasks will appear here with their results, model used, and duration"
           />
         ) : (
-          <div className="bg-[#12122a] border border-gray-800/50 rounded-xl overflow-hidden divide-y divide-gray-800/40">
+          <div className="bg-surface-alt border border-gray-800/50 rounded-xl overflow-hidden divide-y divide-gray-800/40">
             {completed.slice(0, 25).map((w: any, i: number) => (
               <HistoryRow key={w.task_id || i} task={w} />
             ))}
@@ -461,7 +461,7 @@ function ActiveTaskCard({ worker, onCancel }: { worker: any; onCancel: (id: stri
   const progress = worker.progress_pct || 0;
 
   return (
-    <div className="bg-[#12122a] border border-blue-500/20 rounded-xl p-4 shadow-lg shadow-blue-500/5">
+    <div className="bg-surface-alt border border-blue-500/20 rounded-xl p-4 shadow-lg shadow-blue-500/5">
       <div className="flex items-center gap-3">
         {/* Pulsing indicator */}
         <div className="relative shrink-0">
@@ -673,7 +673,7 @@ function SchedulerTab() {
           history.length === 0 ? (
             <EmptyState icon={History} text="No executions yet" sub="History will appear after scheduled jobs run" />
           ) : (
-            <div className="bg-[#12122a] border border-gray-800/50 rounded-xl overflow-hidden divide-y divide-gray-800/40">
+            <div className="bg-surface-alt border border-gray-800/50 rounded-xl overflow-hidden divide-y divide-gray-800/40">
               {history.map((ex: any, i: number) => (
                 <div key={i} className="flex items-center gap-3 py-3 px-4 hover:bg-gray-800/10 transition-colors">
                   <StatusBadge status={ex.status || "completed"} />
@@ -703,7 +703,7 @@ function JobCard({ job, onPause, onResume, onDelete }: {
   const isActive = job.status === "active";
 
   return (
-    <div className={`bg-[#12122a] border rounded-xl p-4 transition-colors ${
+    <div className={`bg-surface-alt border rounded-xl p-4 transition-colors ${
       isActive ? "border-emerald-500/20" : isPaused ? "border-amber-500/20 opacity-75" : "border-gray-800/50"
     }`}>
       <div className="flex items-center gap-3">

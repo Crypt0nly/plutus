@@ -3,6 +3,54 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── Theme color variables ─────────────────────────────────
+   * Gray scale is remapped so that semantic usage stays consistent:
+   *   bg-gray-950 = page background
+   *   bg-gray-900 = surface / cards
+   *   bg-gray-800 = elevated / inputs
+   *   border-gray-800/700 = borders
+   *   text-gray-100 = primary text
+   *   text-gray-400/500 = muted text
+   * Values are space-separated RGB for Tailwind alpha support.
+   */
+  :root {
+    /* Light mode */
+    --gray-50: 3 7 18;
+    --gray-100: 17 24 39;
+    --gray-200: 31 41 55;
+    --gray-300: 55 65 81;
+    --gray-400: 75 85 99;
+    --gray-500: 107 114 128;
+    --gray-600: 156 163 175;
+    --gray-700: 213 218 225;
+    --gray-800: 233 236 241;
+    --gray-900: 255 255 255;
+    --gray-950: 247 248 250;
+
+    --surface: 255 255 255;
+    --surface-alt: 247 248 252;
+    --surface-deep: 240 241 247;
+  }
+
+  .dark {
+    /* Dark mode — standard Tailwind gray scale */
+    --gray-50: 249 250 251;
+    --gray-100: 243 244 246;
+    --gray-200: 229 231 235;
+    --gray-300: 209 213 219;
+    --gray-400: 156 163 175;
+    --gray-500: 107 114 128;
+    --gray-600: 75 85 99;
+    --gray-700: 55 65 81;
+    --gray-800: 31 41 55;
+    --gray-900: 17 24 39;
+    --gray-950: 3 7 18;
+
+    --surface: 26 26 46;
+    --surface-alt: 18 18 42;
+    --surface-deep: 15 15 26;
+  }
+
   * {
     @apply border-gray-800;
   }
