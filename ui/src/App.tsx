@@ -269,6 +269,9 @@ export default function App() {
   useEffect(() => {
     const check = () => {
       api.checkForUpdate().then((res) => {
+        if (res.error) {
+          console.warn("[update-check] Backend error:", res.error);
+        }
         if (res.update_available) {
           setUpdateInfo({
             available: true,
@@ -281,10 +284,12 @@ export default function App() {
             publishedAt: res.published_at || "",
           });
         }
-      }).catch(() => {});
+      }).catch((e) => {
+        console.warn("[update-check] Failed:", e);
+      });
     };
     // Initial check after a short delay so the app loads fast
-    const initial = setTimeout(check, 5_000);
+    const initial = setTimeout(check, 2_000);
     const interval = setInterval(check, 6 * 60 * 60 * 1000);
     return () => {
       clearTimeout(initial);
