@@ -23,7 +23,7 @@ const colorMap: Record<string, { icon: string; glow: string }> = {
 export function StatusCard({ icon: Icon, label, value, sublabel, color, capitalize }: Props) {
   const colors = colorMap[color] || colorMap.gray;
   return (
-    <div className={`bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-4 ${colors.glow}`}>
+    <div className={`bg-surface rounded-xl border border-gray-800/60 p-4 ${colors.glow}`}>
       <div className="flex items-center justify-between mb-3">
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${colors.icon}`}>
           <Icon className="w-4.5 h-4.5" />

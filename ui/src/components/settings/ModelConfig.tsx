@@ -111,7 +111,7 @@ export function ModelConfig({ config, onSave, saving, keyStatus, onKeyStatusChan
   return (
     <div className="space-y-4">
       {/* Main Model Card */}
-      <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+      <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 rounded-lg bg-plutus-500/10 flex items-center justify-center">
             <Brain className="w-5 h-5 text-plutus-400" />
@@ -282,7 +282,7 @@ export function ModelConfig({ config, onSave, saving, keyStatus, onKeyStatusChan
 
       {/* API Key Card */}
       {needsKey && (
-        <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+        <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
               <Key className="w-5 h-5 text-amber-400" />

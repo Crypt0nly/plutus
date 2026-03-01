@@ -165,7 +165,7 @@ export function CommandCenter() {
 
       {/* Panel */}
       {open && config && (
-        <div className="absolute bottom-12 left-0 w-[380px] bg-[#12122a] border border-gray-800/80 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden z-50 animate-fade-in">
+        <div className="absolute bottom-12 left-0 w-[380px] bg-surface-alt border border-gray-800/80 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden z-50 animate-fade-in">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800/60">
             <div className="flex items-center gap-2">

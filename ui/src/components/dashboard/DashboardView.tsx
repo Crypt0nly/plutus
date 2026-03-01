@@ -165,7 +165,7 @@ export function DashboardView() {
           ].map(({ icon: Icon, label, value, color, bg }) => (
             <div
               key={label}
-              className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-3.5 flex items-center gap-3"
+              className="bg-surface rounded-xl border border-gray-800/60 p-3.5 flex items-center gap-3"
             >
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${bg}`}>
                 <Icon className={`w-4 h-4 ${color}`} />
@@ -181,7 +181,7 @@ export function DashboardView() {
         {/* Middle Section: Action Decisions + Heartbeat */}
         <div className="grid grid-cols-3 gap-4">
           {/* Action Decisions */}
-          <div className="col-span-2 bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+          <div className="col-span-2 bg-surface rounded-xl border border-gray-800/60 p-5">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
                 <BarChart3 className="w-5 h-5 text-blue-400" />
@@ -229,7 +229,7 @@ export function DashboardView() {
           {/* Heartbeat + Model Info */}
           <div className="space-y-4">
             {/* Heartbeat mini */}
-            <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-4">
+            <div className="bg-surface rounded-xl border border-gray-800/60 p-4">
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center">
                   <Heart className="w-4 h-4 text-rose-400" />
@@ -264,7 +264,7 @@ export function DashboardView() {
             </div>
 
             {/* Coordinator Model */}
-            <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-4">
+            <div className="bg-surface rounded-xl border border-gray-800/60 p-4">
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="w-8 h-8 rounded-lg bg-plutus-500/10 flex items-center justify-center">
                   <Brain className="w-4 h-4 text-plutus-400" />
@@ -289,7 +289,7 @@ export function DashboardView() {
 
         {/* Tool Usage */}
         {auditSummary?.by_tool && Object.keys(auditSummary.by_tool).length > 0 && (
-          <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+          <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
                 <Terminal className="w-5 h-5 text-emerald-400" />
