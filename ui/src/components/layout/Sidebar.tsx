@@ -12,9 +12,9 @@ import {
   Plug,
   ChevronDown,
   ChevronRight,
+  History,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
-import { ConversationHistory } from "../chat/ConversationHistory";
 
 interface NavSection {
   label: string;
@@ -57,7 +57,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ send }: SidebarProps) {
-  const { view, setView, connected, currentTier } = useAppStore();
+  const { view, setView, connected, currentTier, historyPanelOpen, toggleHistoryPanel } = useAppStore();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const toggleSection = (label: string) => {
@@ -108,11 +108,11 @@ export function Sidebar({ send }: SidebarProps) {
         </div>
       </div>
 
-      {/* New Chat */}
-      <div className="px-3 pb-5">
+      {/* New Chat + History Toggle */}
+      <div className="px-3 pb-4 flex items-center gap-2">
         <button
           onClick={handleNewChat}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl
                      bg-plutus-600 hover:bg-plutus-500 text-white text-sm font-medium
                      transition-all duration-200 shadow-md shadow-plutus-600/20
                      hover:shadow-lg hover:shadow-plutus-500/25 active:scale-[0.98]"
@@ -120,11 +120,19 @@ export function Sidebar({ send }: SidebarProps) {
           <Plus className="w-4 h-4" />
           New Chat
         </button>
-      </div>
-
-      {/* Conversation History — capped height, scrolls internally */}
-      <div className="max-h-[35vh] min-h-0 flex flex-col border-b border-gray-800/60 shrink-0">
-        {send && <ConversationHistory send={send} />}
+        {view === "chat" && (
+          <button
+            onClick={toggleHistoryPanel}
+            title={historyPanelOpen ? "Hide history" : "Show history"}
+            className={`p-2.5 rounded-xl transition-all duration-200 ${
+              historyPanelOpen
+                ? "bg-plutus-500/15 text-plutus-400 ring-1 ring-plutus-500/20"
+                : "bg-gray-800/60 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+            }`}
+          >
+            <History className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Navigation — takes remaining space */}

@@ -15,6 +15,7 @@ import { MemoryView } from "./components/memory/MemoryView";
 import ConnectorsView from "./components/connectors/ConnectorsView";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { UpdateBanner } from "./components/layout/UpdateBanner";
+import { ConversationPanel } from "./components/layout/ConversationPanel";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 import { useTheme } from "./hooks/useTheme";
@@ -332,6 +333,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar send={send} />
+      <ConversationPanel send={send} />
       <div className="flex-1 flex flex-col min-w-0">
         <UpdateBanner />
         <Header />
