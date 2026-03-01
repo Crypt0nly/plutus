@@ -881,6 +881,48 @@ def create_router() -> APIRouter:
         heartbeat.stop()
         return heartbeat.status()
 
+    # ── Keep Alive ─────────────────────────────────────────────
+
+    @router.get("/keep-alive")
+    async def get_keep_alive_status() -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        keep_alive = state.get("keep_alive")
+
+        return {
+            "enabled": config.keep_alive.enabled if config else False,
+            "active": keep_alive.active if keep_alive else False,
+            "platform": keep_alive._system if keep_alive else None,
+        }
+
+    @router.put("/keep-alive")
+    async def toggle_keep_alive(body: dict[str, Any]) -> dict[str, Any]:
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        config = state.get("config")
+        keep_alive = state.get("keep_alive")
+
+        if not config or not keep_alive:
+            raise HTTPException(500, "Keep-alive not initialized")
+
+        enabled = body.get("enabled", False)
+        config.keep_alive.enabled = enabled
+        config.save()
+
+        if enabled:
+            keep_alive.enable()
+        else:
+            keep_alive.disable()
+
+        return {
+            "enabled": config.keep_alive.enabled,
+            "active": keep_alive.active,
+            "platform": keep_alive._system,
+        }
+
     # ── Plans ────────────────────────────────────────────────
 
     @router.get("/plans")
