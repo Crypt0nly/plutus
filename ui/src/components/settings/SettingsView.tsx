@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { Bot, Server, Database, Info } from "lucide-react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
 import { useAppStore } from "../../stores/appStore";
+import { applyTheme, type ThemeMode } from "../../hooks/useTheme";
 
 export function SettingsView() {
   const [config, setConfig] = useState<Record<string, any> | null>(null);
@@ -71,6 +72,9 @@ export function SettingsView() {
           )}
         </div>
 
+        {/* Appearance */}
+        <AppearanceSection />
+
         {/* Coordinator Model + API Keys */}
         <ModelConfig
           config={config.model || {}}
@@ -88,7 +92,7 @@ export function SettingsView() {
         />
 
         {/* Agent Behavior */}
-        <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+        <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
           <div className="flex items-center gap-3 mb-5">
             <div className="w-9 h-9 rounded-lg bg-purple-500/10 flex items-center justify-center">
               <Bot className="w-5 h-5 text-purple-400" />
@@ -156,7 +160,7 @@ export function SettingsView() {
         {/* Network & Storage */}
         <div className="grid grid-cols-2 gap-4">
           {/* Gateway */}
-          <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+          <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
                 <Server className="w-5 h-5 text-blue-400" />
@@ -187,7 +191,7 @@ export function SettingsView() {
           </div>
 
           {/* Memory */}
-          <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+          <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
                 <Database className="w-5 h-5 text-amber-400" />
@@ -246,6 +250,61 @@ export function SettingsView() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const themeOptions: { value: ThemeMode; label: string; icon: React.ElementType; description: string }[] = [
+  { value: "light", label: "Light", icon: Sun, description: "Always use light theme" },
+  { value: "dark", label: "Dark", icon: Moon, description: "Always use dark theme" },
+  { value: "system", label: "System", icon: Monitor, description: "Follow your OS setting" },
+];
+
+function AppearanceSection() {
+  const { theme, setTheme } = useAppStore();
+
+  const handleChange = (mode: ThemeMode) => {
+    setTheme(mode);
+    applyTheme(mode);
+  };
+
+  return (
+    <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-9 h-9 rounded-lg bg-plutus-500/10 flex items-center justify-center">
+          <Sun className="w-5 h-5 text-plutus-400" />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-gray-200">Appearance</h3>
+          <p className="text-xs text-gray-500">Choose your preferred color theme</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {themeOptions.map((opt) => {
+          const Icon = opt.icon;
+          const active = theme === opt.value;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => handleChange(opt.value)}
+              className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all duration-150 ${
+                active
+                  ? "border-plutus-500/40 bg-plutus-500/10 ring-1 ring-plutus-500/20"
+                  : "border-gray-800/60 hover:border-gray-700 hover:bg-gray-800/40"
+              }`}
+            >
+              <Icon className={`w-5 h-5 ${active ? "text-plutus-400" : "text-gray-500"}`} />
+              <div className="text-center">
+                <span className={`text-xs font-medium block ${active ? "text-gray-100" : "text-gray-400"}`}>
+                  {opt.label}
+                </span>
+                <span className="text-[10px] text-gray-500 mt-0.5 block">{opt.description}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

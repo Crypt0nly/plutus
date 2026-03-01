@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import type { Message, Tier, ApprovalRequest } from "../lib/types";
+import type { ThemeMode } from "../hooks/useTheme";
+import { getStoredTheme } from "../hooks/useTheme";
 
 export type View = "chat" | "dashboard" | "guardrails" | "settings" | "tools" | "workers" | "tool-creator" | "skills" | "memory" | "connectors" | "onboarding";
 
@@ -44,6 +46,10 @@ interface AppState {
   // Onboarding
   onboardingCompleted: boolean | null; // null = not yet loaded
   setOnboardingCompleted: (v: boolean) => void;
+
+  // Theme
+  theme: ThemeMode;
+  setTheme: (t: ThemeMode) => void;
 
   // Updates
   updateInfo: {
@@ -106,6 +112,10 @@ export const useAppStore = create<AppState>((set) => ({
   // Onboarding
   onboardingCompleted: null,
   setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
+
+  // Theme
+  theme: getStoredTheme(),
+  setTheme: (theme) => set({ theme }),
 
   // Updates
   updateInfo: null,

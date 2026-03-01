@@ -92,7 +92,7 @@ export function WSLSetup() {
 
   if (loading || !status) {
     return (
-      <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+      <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
             <Terminal className="w-5 h-5 text-orange-400" />
@@ -109,7 +109,7 @@ export function WSLSetup() {
   // Not on Windows — show native info
   if (!status.is_windows) {
     return (
-      <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+      <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
             <Terminal className="w-5 h-5 text-emerald-400" />
@@ -134,7 +134,7 @@ export function WSLSetup() {
 
   // Windows — show toggle + setup
   return (
-    <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+    <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center">
           <Terminal className="w-5 h-5 text-orange-400" />

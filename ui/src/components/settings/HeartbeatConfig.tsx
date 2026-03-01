@@ -83,7 +83,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
   };
 
   return (
-    <div className="bg-[#1a1a2e] rounded-xl border border-gray-800/60 p-5">
+    <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
