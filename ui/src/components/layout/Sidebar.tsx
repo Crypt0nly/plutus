@@ -12,7 +12,6 @@ import {
   Plug,
   ChevronDown,
   ChevronRight,
-  ChevronsRight,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 
@@ -57,7 +56,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ send }: SidebarProps) {
-  const { view, setView, connected, currentTier, historyPanelOpen, toggleHistoryPanel } = useAppStore();
+  const { view, setView, connected, currentTier } = useAppStore();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const toggleSection = (label: string) => {
@@ -158,7 +157,6 @@ export function Sidebar({ send }: SidebarProps) {
                   {section.items.map((item) => {
                     const Icon = item.icon;
                     const active = view === item.id;
-                    const isChatItem = item.id === "chat";
                     return (
                       <div key={item.id} className="relative flex items-center">
                         <button
@@ -167,7 +165,7 @@ export function Sidebar({ send }: SidebarProps) {
                             active
                               ? "bg-gray-800/80 text-gray-100"
                               : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/40"
-                          } ${isChatItem ? "pr-9" : ""}`}
+                          }`}
                         >
                           {active && (
                             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-plutus-500" />
@@ -184,23 +182,6 @@ export function Sidebar({ send }: SidebarProps) {
                             </span>
                           )}
                         </button>
-                        {isChatItem && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleHistoryPanel();
-                              if (view !== "chat") setView("chat");
-                            }}
-                            title={historyPanelOpen ? "Hide conversations" : "Show conversations"}
-                            className={`absolute right-1.5 p-1 rounded-md transition-all duration-200 ${
-                              historyPanelOpen
-                                ? "text-plutus-400 bg-plutus-500/15 rotate-180"
-                                : "text-gray-600 hover:text-gray-400 hover:bg-gray-800/60"
-                            }`}
-                          >
-                            <ChevronsRight className="w-3.5 h-3.5" />
-                          </button>
-                        )}
                       </div>
                     );
                   })}
