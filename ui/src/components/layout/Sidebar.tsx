@@ -12,7 +12,7 @@ import {
   Plug,
   ChevronDown,
   ChevronRight,
-  History,
+  ChevronsRight,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 
@@ -108,11 +108,11 @@ export function Sidebar({ send }: SidebarProps) {
         </div>
       </div>
 
-      {/* New Chat + History Toggle */}
-      <div className="px-3 pb-4 flex items-center gap-2">
+      {/* New Chat */}
+      <div className="px-3 pb-4">
         <button
           onClick={handleNewChat}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl
                      bg-plutus-600 hover:bg-plutus-500 text-white text-sm font-medium
                      transition-all duration-200 shadow-md shadow-plutus-600/20
                      hover:shadow-lg hover:shadow-plutus-500/25 active:scale-[0.98]"
@@ -120,19 +120,6 @@ export function Sidebar({ send }: SidebarProps) {
           <Plus className="w-4 h-4" />
           New Chat
         </button>
-        {view === "chat" && (
-          <button
-            onClick={toggleHistoryPanel}
-            title={historyPanelOpen ? "Hide history" : "Show history"}
-            className={`p-2.5 rounded-xl transition-all duration-200 ${
-              historyPanelOpen
-                ? "bg-plutus-500/15 text-plutus-400 ring-1 ring-plutus-500/20"
-                : "bg-gray-800/60 text-gray-500 hover:text-gray-300 hover:bg-gray-800"
-            }`}
-          >
-            <History className="w-4 h-4" />
-          </button>
-        )}
       </div>
 
       {/* Navigation — takes remaining space */}
@@ -171,31 +158,50 @@ export function Sidebar({ send }: SidebarProps) {
                   {section.items.map((item) => {
                     const Icon = item.icon;
                     const active = view === item.id;
+                    const isChatItem = item.id === "chat";
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => setView(item.id)}
-                        className={`w-full relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                          active
-                            ? "bg-gray-800/80 text-gray-100"
-                            : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/40"
-                        }`}
-                      >
-                        {active && (
-                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-plutus-500" />
+                      <div key={item.id} className="relative flex items-center">
+                        <button
+                          onClick={() => setView(item.id)}
+                          className={`w-full relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                            active
+                              ? "bg-gray-800/80 text-gray-100"
+                              : "text-gray-500 hover:text-gray-300 hover:bg-gray-800/40"
+                          } ${isChatItem ? "pr-9" : ""}`}
+                        >
+                          {active && (
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-plutus-500" />
+                          )}
+                          <Icon
+                            className={`w-[18px] h-[18px] ${
+                              active ? "text-plutus-400" : ""
+                            }`}
+                          />
+                          <span className="flex-1 text-left">{item.label}</span>
+                          {item.badge && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-plutus-500/15 text-plutus-400 font-semibold ring-1 ring-plutus-500/20">
+                              {item.badge}
+                            </span>
+                          )}
+                        </button>
+                        {isChatItem && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleHistoryPanel();
+                              if (view !== "chat") setView("chat");
+                            }}
+                            title={historyPanelOpen ? "Hide conversations" : "Show conversations"}
+                            className={`absolute right-1.5 p-1 rounded-md transition-all duration-200 ${
+                              historyPanelOpen
+                                ? "text-plutus-400 bg-plutus-500/15 rotate-180"
+                                : "text-gray-600 hover:text-gray-400 hover:bg-gray-800/60"
+                            }`}
+                          >
+                            <ChevronsRight className="w-3.5 h-3.5" />
+                          </button>
                         )}
-                        <Icon
-                          className={`w-[18px] h-[18px] ${
-                            active ? "text-plutus-400" : ""
-                          }`}
-                        />
-                        <span className="flex-1 text-left">{item.label}</span>
-                        {item.badge && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-plutus-500/15 text-plutus-400 font-semibold ring-1 ring-plutus-500/20">
-                            {item.badge}
-                          </span>
-                        )}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
