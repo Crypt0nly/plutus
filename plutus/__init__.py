@@ -1,3 +1,4 @@
 """Plutus — Autonomous AI agent with subprocess orchestration."""
 
-__version__ = "0.3.11"
+claude/improve-chat-ui-nY3Kr
+__version__ = "0.3.12"
