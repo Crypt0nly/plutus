@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-dist/
+/dist/
 build/
 *.egg
 .eggs/
@@ -24,6 +24,7 @@ env/
 # Node.js / UI
 ui/node_modules/
 ui/.vite/
+ui/tsconfig.tsbuildinfo
 
 # Plutus runtime
 .plutus/
