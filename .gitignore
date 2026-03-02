@@ -24,6 +24,7 @@ env/
 # Node.js / UI
 ui/node_modules/
 ui/.vite/
+ui/tsconfig.tsbuildinfo
 
 # Plutus runtime
 .plutus/
