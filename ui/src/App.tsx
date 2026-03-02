@@ -16,9 +16,32 @@ import ConnectorsView from "./components/connectors/ConnectorsView";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { UpdateBanner } from "./components/layout/UpdateBanner";
 import { ConversationPanel } from "./components/layout/ConversationPanel";
+import { PanelLeft } from "lucide-react";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 import { useTheme } from "./hooks/useTheme";
+
+function HistoryPillToggle() {
+  const { historyPanelOpen, toggleHistoryPanel } = useAppStore();
+
+  return (
+    <button
+      onClick={toggleHistoryPanel}
+      title={historyPanelOpen ? "Hide conversations" : "Show conversations"}
+      className={`absolute left-0 top-1/2 -translate-y-1/2 z-20
+        w-5 h-12 flex items-center justify-center
+        rounded-r-full border border-l-0
+        transition-all duration-200
+        ${
+          historyPanelOpen
+            ? "bg-plutus-500/15 border-plutus-500/30 text-plutus-400"
+            : "bg-gray-900/80 border-gray-700/50 text-gray-500 hover:text-gray-300 hover:bg-gray-800/80"
+        }`}
+    >
+      <PanelLeft className="w-3.5 h-3.5" />
+    </button>
+  );
+}
 
 export default function App() {
   const {
@@ -334,7 +357,8 @@ export default function App() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar send={send} />
       <ConversationPanel send={send} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="relative flex-1 flex flex-col min-w-0">
+        {view === "chat" && <HistoryPillToggle />}
         <UpdateBanner />
         <Header />
         <main className={`flex-1 flex flex-col overflow-hidden ${view === "chat" ? "" : "p-6"}`}>
