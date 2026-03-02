@@ -9,6 +9,7 @@ Provides:
   - `plutus tools` — list available tools
   - `plutus set-tier` — change guardrail tier
   - `plutus audit` — show audit log
+  - `plutus update` — update to the latest version
 """
 
 from __future__ import annotations
@@ -631,6 +632,39 @@ def audit() -> None:
     console.print(table)
     console.print(f"\n  Total entries: {logger.count()}")
     console.print()
+
+
+@main.command()
+def update() -> None:
+    """Update Plutus to the latest version."""
+    import subprocess
+
+    console.print(f"\n  Current version: [bold]{__version__}[/bold]")
+    console.print("  Checking for updates...\n")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "plutus-ai"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        console.print(f"  [red bold]Update failed:[/red bold]\n  {result.stderr.strip()[:300]}")
+        return
+
+    # Read the new version from a fresh subprocess
+    ver_result = subprocess.run(
+        [sys.executable, "-c", "import plutus; print(plutus.__version__)"],
+        capture_output=True,
+        text=True,
+    )
+    new_version = ver_result.stdout.strip() if ver_result.returncode == 0 else "unknown"
+
+    if new_version == __version__:
+        console.print(f"  [green]Already on the latest version (v{__version__})[/green]\n")
+    else:
+        console.print(f"  [green bold]Updated to v{new_version}[/green bold]")
+        console.print("  Restart Plutus to use the new version.\n")
 
 
 @main.command()
