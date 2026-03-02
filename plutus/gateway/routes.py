@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -9,6 +11,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from plutus.guardrails.tiers import Tier, get_tier_info
+
+logger = logging.getLogger("plutus.gateway.routes")
 
 
 def _version_newer(latest: str, current: str) -> bool:
@@ -2045,114 +2049,115 @@ def create_router() -> APIRouter:
 
     @router.post("/updates/apply")
     async def apply_update() -> dict[str, Any]:
-        """Pull latest from GitHub and reinstall. Returns status."""
+        """Upgrade Plutus and restart. Works for both pip and git installs."""
         import asyncio
-        import shutil
         import sys
 
         from plutus import __version__
 
-        async def run(cmd: list[str], cwd: str | None = None) -> tuple[int, str, str]:
+        async def run(
+            cmd: list[str], cwd: str | None = None, timeout: float = 120,
+        ) -> tuple[int, str, str]:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
             )
-            stdout, stderr = await proc.communicate()
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(), timeout=timeout,
+                )
+            except TimeoutError:
+                proc.kill()
+                return (1, "", "Command timed out")
             return (
                 proc.returncode or 0,
                 stdout.decode(errors="replace"),
                 stderr.decode(errors="replace"),
             )
 
-        # Detect installation method
         from pathlib import Path
 
         import plutus as _pkg
 
-        pkg_dir = str(Path(_pkg.__file__).resolve().parent.parent)
-        git_dir = Path(pkg_dir) / ".git"
-
-        if not git_dir.is_dir():
-            return {
-                "success": False,
-                "error": (
-                    "Plutus was not installed from a git clone. "
-                    "Please update manually: pip install --upgrade plutus-ai"
-                ),
-                "previous_version": __version__,
-            }
+        pkg_dir = Path(_pkg.__file__).resolve().parent.parent
+        git_dir = pkg_dir / ".git"
+        is_git = git_dir.is_dir()
 
         steps: list[dict[str, Any]] = []
 
-        # Step 1: git pull
-        code, out, err = await run(
-            ["git", "pull", "--ff-only", "origin", "main"], cwd=pkg_dir
-        )
-        steps.append({
-            "step": "git_pull",
-            "success": code == 0,
-            "output": out.strip() or err.strip(),
-        })
-        if code != 0:
-            return {
-                "success": False,
-                "error": f"git pull failed: {err.strip()}",
-                "steps": steps,
-                "previous_version": __version__,
-            }
-
-        # Step 2: pip install -e .
-        pip = shutil.which("pip") or sys.executable + " -m pip"
-        pip_cmd = (
-            [pip, "install", "-e", "."]
-            if shutil.which("pip")
-            else [sys.executable, "-m", "pip", "install", "-e", "."]
-        )
-        code, out, err = await run(pip_cmd, cwd=pkg_dir)
-        steps.append({
-            "step": "pip_install",
-            "success": code == 0,
-            "output": (out.strip() or err.strip())[:500],
-        })
-        if code != 0:
-            return {
-                "success": False,
-                "error": f"pip install failed: {err.strip()[:300]}",
-                "steps": steps,
-                "previous_version": __version__,
-            }
-
-        # Step 3: rebuild UI (if npm is available)
-        ui_dir = Path(pkg_dir) / "ui"
-        npm = shutil.which("npm")
-        if npm and ui_dir.is_dir():
-            code, out, err = await run([npm, "install"], cwd=str(ui_dir))
+        if is_git:
+            # ── Git install: pull + editable reinstall ──
+            code, out, err = await run(
+                ["git", "pull", "--ff-only", "origin", "main"], cwd=str(pkg_dir),
+            )
             steps.append({
-                "step": "npm_install",
+                "step": "git_pull",
                 "success": code == 0,
-                "output": (out.strip() or err.strip())[:300],
+                "output": out.strip() or err.strip(),
             })
-            code, out, err = await run([npm, "run", "build"], cwd=str(ui_dir))
-            steps.append({
-                "step": "npm_build",
-                "success": code == 0,
-                "output": (out.strip() or err.strip())[:300],
-            })
+            if code != 0:
+                return {
+                    "success": False,
+                    "error": f"git pull failed: {err.strip()}",
+                    "steps": steps,
+                    "previous_version": __version__,
+                }
 
-        # Read new version
+            pip_cmd = [sys.executable, "-m", "pip", "install", "-e", "."]
+            code, out, err = await run(pip_cmd, cwd=str(pkg_dir))
+            steps.append({
+                "step": "pip_install",
+                "success": code == 0,
+                "output": (out.strip() or err.strip())[:500],
+            })
+            if code != 0:
+                return {
+                    "success": False,
+                    "error": f"pip install failed: {err.strip()[:300]}",
+                    "steps": steps,
+                    "previous_version": __version__,
+                }
+        else:
+            # ── Pip install: just upgrade from PyPI ──
+            pip_cmd = [
+                sys.executable, "-m", "pip", "install",
+                "--upgrade", "plutus-ai",
+            ]
+            code, out, err = await run(pip_cmd, timeout=180)
+            steps.append({
+                "step": "pip_upgrade",
+                "success": code == 0,
+                "output": (out.strip() or err.strip())[:500],
+            })
+            if code != 0:
+                return {
+                    "success": False,
+                    "error": f"pip upgrade failed: {err.strip()[:300]}",
+                    "steps": steps,
+                    "previous_version": __version__,
+                }
+
+        # Read new version from the freshly installed package
         new_version = __version__
         try:
-            # Re-read __init__.py since the import cache has the old version
-            init_path = Path(pkg_dir) / "plutus" / "__init__.py"
-            if init_path.exists():
-                for line in init_path.read_text().splitlines():
-                    if line.startswith("__version__"):
-                        new_version = line.split("=")[1].strip().strip('"').strip("'")
-                        break
+            code, out, _err = await run(
+                [sys.executable, "-c", "import plutus; print(plutus.__version__)"],
+            )
+            if code == 0 and out.strip():
+                new_version = out.strip()
         except Exception:
             pass
+
+        # Schedule a server restart so the new code is loaded
+        async def _restart_server() -> None:
+            await asyncio.sleep(1.5)  # let the response reach the client
+            logger.info("Restarting Plutus after update...")
+            # Re-exec with the original command line to preserve --host/--port/etc.
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        asyncio.get_event_loop().create_task(_restart_server())
 
         return {
             "success": True,
