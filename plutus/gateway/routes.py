@@ -2077,6 +2077,16 @@ def create_router() -> APIRouter:
                 stderr.decode(errors="replace"),
             )
 
+        def _clean_pip_stderr(stderr: str) -> str:
+            """Strip noisy pip warnings so real errors are visible."""
+            lines = stderr.splitlines()
+            filtered = [
+                ln for ln in lines
+                if not ln.strip().startswith("WARNING: Ignoring invalid distribution")
+                and not ln.strip().startswith("DEPRECATION:")
+            ]
+            return "\n".join(filtered).strip()
+
         from pathlib import Path
 
         import plutus as _pkg
@@ -2107,15 +2117,16 @@ def create_router() -> APIRouter:
 
             pip_cmd = [sys.executable, "-m", "pip", "install", "-e", "."]
             code, out, err = await run(pip_cmd, cwd=str(pkg_dir))
+            clean_err = _clean_pip_stderr(err)
             steps.append({
                 "step": "pip_install",
                 "success": code == 0,
-                "output": (out.strip() or err.strip())[:500],
+                "output": (out.strip() or clean_err)[:500],
             })
             if code != 0:
                 return {
                     "success": False,
-                    "error": f"pip install failed: {err.strip()[:300]}",
+                    "error": f"pip install failed: {clean_err[:300]}",
                     "steps": steps,
                     "previous_version": __version__,
                 }
@@ -2126,15 +2137,16 @@ def create_router() -> APIRouter:
                 "--upgrade", "plutus-ai",
             ]
             code, out, err = await run(pip_cmd, timeout=180)
+            clean_err = _clean_pip_stderr(err)
             steps.append({
                 "step": "pip_upgrade",
                 "success": code == 0,
-                "output": (out.strip() or err.strip())[:500],
+                "output": (out.strip() or clean_err)[:500],
             })
             if code != 0:
                 return {
                     "success": False,
-                    "error": f"pip upgrade failed: {err.strip()[:300]}",
+                    "error": f"pip upgrade failed: {clean_err[:300]}",
                     "steps": steps,
                     "previous_version": __version__,
                 }
