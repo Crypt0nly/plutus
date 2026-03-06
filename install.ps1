@@ -45,6 +45,7 @@ function Get-PythonCommand {
 }
 
 $pythonCmd = Get-PythonCommand
+$pythonFull = $null  # Will hold the absolute path to the chosen Python
 
 if (-not $pythonCmd) {
     Write-Host "[1/4] Python 3.11+ not found. Installing..." -ForegroundColor Yellow
@@ -80,13 +81,19 @@ if (-not $pythonCmd) {
     Write-Host "[1/4] $pyVer found." -ForegroundColor Green
 }
 
+# Resolve the absolute path to the Python interpreter so shortcuts and
+# verification always use the exact binary we installed into, even when
+# multiple Python versions are on PATH.
+$pythonFull = (Get-Command $pythonCmd -ErrorAction SilentlyContinue).Source
+if (-not $pythonFull) { $pythonFull = $pythonCmd }
+
 # ── Step 2: Install Plutus ────────────────────────────────
 
 Write-Host "[2/4] Installing Plutus..." -ForegroundColor Cyan
 
 try {
-    & $pythonCmd -m pip install --upgrade pip 2>&1 | Out-Null
-    & $pythonCmd -m pip install --upgrade "plutus-ai[all]" 2>&1 | Out-Null
+    & $pythonFull -m pip install --upgrade pip 2>&1 | Out-Null
+    & $pythonFull -m pip install --upgrade "plutus-ai[all]" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "pip install failed"
     }
@@ -102,6 +109,48 @@ try {
 # Refresh PATH so the plutus command is available in this session
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + `
              [System.Environment]::GetEnvironmentVariable("Path", "User")
+
+# Verify the `plutus` command works with the correct Python.
+# If another Python version has a stale plutus.exe on PATH, `plutus start`
+# will fail with "No module named 'plutus'".  Detect this and warn/fix.
+$plutusOk = $false
+try {
+    $verifyOut = & $pythonFull -m plutus --version 2>&1
+    if ($LASTEXITCODE -eq 0) { $plutusOk = $true }
+} catch {}
+
+if (-not $plutusOk) {
+    Write-Host ""
+    Write-Host "[WARN] Plutus installed but could not be verified." -ForegroundColor Yellow
+    Write-Host "       The shortcuts will use '$pythonFull -m plutus' directly." -ForegroundColor DarkGray
+}
+
+# Check if the bare `plutus` command resolves to a different Python version
+$stalePlutus = $false
+try {
+    $plutusExe = (Get-Command plutus -ErrorAction SilentlyContinue).Source
+    if ($plutusExe) {
+        # The entry-point exe lives in a Python version's Scripts/ dir.
+        # If that dir doesn't match our $pythonFull, it's stale.
+        $expectedScripts = Split-Path (Split-Path $pythonFull) -ErrorAction SilentlyContinue
+        $actualScripts   = Split-Path $plutusExe -ErrorAction SilentlyContinue
+        if ($expectedScripts -and $actualScripts -and
+            $expectedScripts.ToLower() -ne $actualScripts.ToLower()) {
+            $stalePlutus = $true
+            Write-Host ""
+            Write-Host "  [!] Found a stale 'plutus' command from a different Python:" -ForegroundColor Yellow
+            Write-Host "      $plutusExe" -ForegroundColor DarkGray
+            Write-Host "      Removing it so the correct version is used..." -ForegroundColor DarkGray
+            try {
+                Remove-Item $plutusExe -Force -ErrorAction Stop
+                Write-Host "      Removed successfully." -ForegroundColor Green
+            } catch {
+                Write-Host "      Could not remove automatically." -ForegroundColor Yellow
+                Write-Host "      You can delete it manually or use: $pythonFull -m plutus start" -ForegroundColor DarkGray
+            }
+        }
+    }
+} catch {}
 
 # ── Step 3: Create Shortcuts ─────────────────────────────
 
@@ -138,7 +187,8 @@ If alreadyRunning Then
     WshShell.Run "http://localhost:7777"
 Else
     ' Start Plutus in the background (hidden console window)
-    WshShell.Run "cmd /c $pythonCmd -m plutus start", 0, False
+    ' Uses the full Python path to avoid issues with multiple Python versions
+    WshShell.Run "cmd /c ""$pythonFull"" -m plutus start", 0, False
 End If
 "@
 Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII
@@ -191,7 +241,7 @@ if ($shortcutCreated) {
     Write-Host "    - Or search 'Plutus' in the Start Menu" -ForegroundColor DarkGray
 } else {
     Write-Host "  To start Plutus anytime, run:" -ForegroundColor White
-    Write-Host "    plutus start" -ForegroundColor DarkGray
+    Write-Host "    $pythonFull -m plutus start" -ForegroundColor DarkGray
 }
 
 Write-Host ""
