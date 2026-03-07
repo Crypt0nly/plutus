@@ -26,7 +26,6 @@ const navSections: NavSection[] = [
     label: "Main",
     items: [
       { id: "chat", label: "Chat", icon: MessageSquare },
-      { id: "skills", label: "Skills", icon: Brain, badge: "New" },
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },
@@ -38,6 +37,7 @@ const navSections: NavSection[] = [
       { id: "tools", label: "Tools", icon: Wrench },
       { id: "workers", label: "Workers", icon: Cpu },
       { id: "tool-creator", label: "Tool Creator", icon: Sparkles },
+      { id: "skills", label: "Skills", icon: Brain, badge: "New" },
     ],
   },
   {

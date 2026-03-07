@@ -361,7 +361,7 @@ export default function App() {
         {view === "chat" && <HistoryPillToggle />}
         <UpdateBanner />
         <Header />
-        <main className={`flex-1 flex flex-col overflow-hidden ${view === "chat" ? "" : "p-6"}`}>
+        <main className={`flex-1 flex flex-col ${view === "chat" ? "overflow-hidden" : "overflow-y-auto p-6"}`}>
           {viewComponents[view] || viewComponents.chat}
         </main>
       </div>
