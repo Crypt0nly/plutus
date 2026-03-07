@@ -1563,6 +1563,16 @@ def create_router() -> APIRouter:
                 "status": connector.status(),
                 "listening": True,
             }
+        elif name == "discord":
+            # Use the bridge for two-way Discord messaging
+            from plutus.connectors.discord_bridge import get_discord_bridge
+            bridge = get_discord_bridge()
+            await bridge.start()
+            return {
+                "message": f"{connector.display_name} two-way messaging started — you can now chat with Plutus via Discord",
+                "status": connector.status(),
+                "listening": True,
+            }
         else:
             await connector.start()
             return {"message": f"{connector.display_name} started", "status": connector.status()}
@@ -1588,6 +1598,15 @@ def create_router() -> APIRouter:
                 "status": connector.status(),
                 "listening": False,
             }
+        elif name == "discord":
+            from plutus.connectors.discord_bridge import get_discord_bridge
+            bridge = get_discord_bridge()
+            await bridge.stop()
+            return {
+                "message": f"{connector.display_name} two-way messaging stopped",
+                "status": connector.status(),
+                "listening": False,
+            }
         else:
             await connector.stop()
             return {"message": f"{connector.display_name} stopped", "status": connector.status()}
@@ -1604,6 +1623,14 @@ def create_router() -> APIRouter:
         if name == "telegram":
             from plutus.connectors.telegram_bridge import get_telegram_bridge
             bridge = get_telegram_bridge()
+            return {
+                "listening": bridge.is_running,
+                "processing": bridge._processing,
+                "auto_start": auto_start,
+            }
+        elif name == "discord":
+            from plutus.connectors.discord_bridge import get_discord_bridge
+            bridge = get_discord_bridge()
             return {
                 "listening": bridge.is_running,
                 "processing": bridge._processing,
