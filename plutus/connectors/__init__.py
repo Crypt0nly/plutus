@@ -1,8 +1,9 @@
 """Plutus Connectors — link Plutus with external messaging services."""
 
 from plutus.connectors.base import BaseConnector, ConnectorManager
-from plutus.connectors.telegram import TelegramConnector
+from plutus.connectors.discord import DiscordConnector
 from plutus.connectors.email import EmailConnector
+from plutus.connectors.telegram import TelegramConnector
 from plutus.connectors.whatsapp import WhatsAppConnector
 
 
@@ -12,6 +13,7 @@ def create_connector_manager() -> ConnectorManager:
     mgr.register(TelegramConnector())
     mgr.register(EmailConnector())
     mgr.register(WhatsAppConnector())
+    mgr.register(DiscordConnector())
     return mgr
 
 
@@ -21,5 +23,6 @@ __all__ = [
     "TelegramConnector",
     "EmailConnector",
     "WhatsAppConnector",
+    "DiscordConnector",
     "create_connector_manager",
 ]
