@@ -109,6 +109,10 @@ jobs:
           CIBW_BUILD: "cp311-* cp312-* cp313-*"
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
+          # Use latest virtualenv from PyPI instead of downloading .pyz from
+          # GitHub, which frequently fails with HTTP 429 rate limiting.
+          CIBW_DEPENDENCY_VERSIONS: latest
+
           # Skip musllinux (Alpine) and 32-bit — not worth the build time
           CIBW_SKIP: "*-musllinux_* *-manylinux_i686 *-win32"
 
