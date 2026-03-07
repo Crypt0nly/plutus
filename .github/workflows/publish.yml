@@ -100,7 +100,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install cibuildwheel
-        run: pip install cibuildwheel==2.22.0
+        run: pip install cibuildwheel==3.4.0
 
       - name: Build wheels
         run: cibuildwheel --output-dir wheelhouse
@@ -109,28 +109,20 @@ jobs:
           CIBW_BUILD: "cp311-* cp312-* cp313-*"
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
-          # Use latest virtualenv from PyPI instead of downloading .pyz from
-          # GitHub, which frequently fails with HTTP 429 rate limiting.
-          CIBW_DEPENDENCY_VERSIONS: latest
-
           # Skip musllinux (Alpine) and 32-bit — not worth the build time
           CIBW_SKIP: "*-musllinux_* *-manylinux_i686 *-win32"
 
-          # Use manylinux_2_28 instead of the default manylinux_2014 so that
-          # pre-built wheels for dependencies like tiktoken are available
-          # (tiktoken only publishes manylinux_2_28 wheels, not _2014).
+          # Use manylinux_2_28 (default in v3, but explicit for clarity)
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
           # Before building: install Cython and compile protected modules.
-          # Do NOT run strip_sources.py here — it deletes .py files which
-          # breaks subsequent Python version builds. Instead, pyproject.toml
-          # excludes protected .py files from the wheel statically.
+          # v3 no longer preinstalls setuptools/wheel, so we must install them.
           # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
           CIBW_BEFORE_BUILD: >
             pip install "cython>=3.0" "setuptools>=69.0,<82" &&
             python build_compiled.py build_ext --inplace
 
-          # The actual wheel build
+          # The actual wheel build (default in v3, but explicit for clarity)
           CIBW_BUILD_FRONTEND: "build"
 
           # Upgrade pip in test environment so pre-built wheels (e.g. tiktoken)
