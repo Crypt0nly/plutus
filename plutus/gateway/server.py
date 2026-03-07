@@ -620,6 +620,11 @@ async def _auto_start_connectors(connector_manager) -> None:
                 bridge = get_telegram_bridge()
                 await bridge.start()
                 logger.info("Telegram bridge auto-started")
+            elif connector.name == "discord":
+                from plutus.connectors.discord_bridge import get_discord_bridge
+                bridge = get_discord_bridge()
+                await bridge.start()
+                logger.info("Discord bridge auto-started")
             else:
                 await connector.start()
                 logger.info(f"Connector auto-started: {connector.name}")

@@ -43,13 +43,17 @@ class ConnectorTool(Tool):
     def description(self) -> str:
         return (
             "Send messages or files to the user through external services like "
-            "Telegram, Email, or WhatsApp. "
+            "Telegram, Email, WhatsApp, or Discord. "
             "Use action='list' to see available connectors. "
             "Use action='send' with service='telegram' to send a Telegram message. "
-            "Use action='send_file' with service='telegram' and file_path to send "
-            "a screenshot or file (images are displayed inline in Telegram). "
+            "Use action='send_file' with service='telegram' or service='discord' "
+            "and file_path to send a screenshot or file. "
             "Use action='send' with service='email' to send an email "
             "(requires 'to' and 'subject' params). "
+            "Use action='send' with service='discord' to send a Discord message "
+            "(optional 'channel_id' param). "
+            "Use action='manage' with service='discord' to manage the Discord server "
+            "(channels, roles, members). "
             "The user configures connectors in the Connectors tab — you just "
             "send messages and files through them."
         )
@@ -61,21 +65,22 @@ class ConnectorTool(Tool):
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["send", "send_file", "list", "status"],
+                    "enum": ["send", "send_file", "list", "status", "manage"],
                     "description": (
                         "Action to perform. "
                         "'send' = send a text message. "
                         "'send_file' = send a file or screenshot. "
                         "'list' = list all connectors and their status. "
-                        "'status' = check if a specific connector is configured."
+                        "'status' = check if a specific connector is configured. "
+                        "'manage' = manage Discord server (channels, roles, members)."
                     ),
                 },
                 "service": {
                     "type": "string",
-                    "enum": ["telegram", "email", "whatsapp"],
+                    "enum": ["telegram", "email", "whatsapp", "discord"],
                     "description": (
                         "Which connector to use. Required for 'send', "
-                        "'send_file', and 'status' actions."
+                        "'send_file', 'manage', and 'status' actions."
                     ),
                 },
                 "message": {
@@ -120,6 +125,45 @@ class ConnectorTool(Tool):
                     "enum": ["HTML", "Markdown", "plain"],
                     "description": "Message formatting for Telegram. Default: HTML.",
                 },
+                "channel_id": {
+                    "type": "string",
+                    "description": (
+                        "Discord channel ID to send message to. "
+                        "If not specified, uses the default channel."
+                    ),
+                },
+                "discord_action": {
+                    "type": "string",
+                    "enum": [
+                        "list_channels", "create_channel", "delete_channel", "edit_channel",
+                        "list_members", "kick_member", "ban_member", "unban_member",
+                        "list_roles", "create_role", "delete_role",
+                        "assign_role", "remove_role",
+                        "delete_message", "purge_messages", "guild_info",
+                    ],
+                    "description": (
+                        "Discord management action. Required when action='manage'."
+                    ),
+                },
+                "target_id": {
+                    "type": "string",
+                    "description": (
+                        "Target ID for Discord management actions "
+                        "(user_id, role_id, channel_id, message_id depending on action)."
+                    ),
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name for creating channels or roles.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Reason for moderation actions (kick, ban).",
+                },
+                "role_id": {
+                    "type": "string",
+                    "description": "Role ID for assign_role/remove_role actions.",
+                },
             },
             "required": ["action"],
         }
@@ -157,12 +201,18 @@ class ConnectorTool(Tool):
             if not file_path:
                 return "Error: 'file_path' parameter is required for send_file action"
 
-            return await self._send_file(service, file_path, caption)
+            return await self._send_file(service, file_path, caption, **kwargs)
+
+        elif action == "manage":
+            service = kwargs.get("service", "")
+            if service != "discord":
+                return "Error: 'manage' action is only supported for Discord"
+            return await self._manage_discord(**kwargs)
 
         else:
             return (
                 f"Error: Unknown action '{action}'. "
-                "Use 'send', 'send_file', 'list', or 'status'."
+                "Use 'send', 'send_file', 'list', 'status', or 'manage'."
             )
 
     def _list_connectors(self) -> str:
@@ -185,7 +235,7 @@ class ConnectorTool(Tool):
             lines.append(
                 "\nNo connectors configured yet. "
                 "Tell the user to go to the Connectors tab in the UI "
-                "to set up Telegram, Email, or WhatsApp."
+                "to set up Telegram, Email, WhatsApp, or Discord."
             )
 
         return "\n".join(lines)
@@ -195,7 +245,7 @@ class ConnectorTool(Tool):
         if not connector:
             return (
                 f"Error: Unknown connector '{service}'. "
-                "Available: telegram, email, whatsapp"
+                "Available: telegram, email, whatsapp, discord"
             )
 
         if connector.is_configured:
@@ -209,6 +259,11 @@ class ConnectorTool(Tool):
             elif service == "email":
                 if config.get("email"):
                     details.append(f"From: {config['email']}")
+            elif service == "discord":
+                if config.get("bot_username"):
+                    details.append(f"Bot: {config['bot_username']}")
+                if config.get("guild_name"):
+                    details.append(f"Server: {config['guild_name']}")
             detail_str = f" ({', '.join(details)})" if details else ""
             return (
                 f"{connector.display_name} is configured and ready{detail_str}"
@@ -225,7 +280,7 @@ class ConnectorTool(Tool):
         if not connector:
             return (
                 f"Error: Unknown connector '{service}'. "
-                "Available: telegram, email, whatsapp"
+                "Available: telegram, email, whatsapp, discord"
             )
 
         if not connector.is_configured:
@@ -259,6 +314,10 @@ class ConnectorTool(Tool):
                 parse_mode = ""
             send_kwargs["parse_mode"] = parse_mode
 
+        elif service == "discord":
+            if kwargs.get("channel_id"):
+                send_kwargs["channel_id"] = kwargs["channel_id"]
+
         result = await connector.send_message(message, **send_kwargs)
 
         if result.get("success"):
@@ -273,14 +332,14 @@ class ConnectorTool(Tool):
             )
 
     async def _send_file(
-        self, service: str, file_path: str, caption: str = ""
+        self, service: str, file_path: str, caption: str = "", **kwargs: Any
     ) -> str:
         """Send a file through a connector and broadcast an attachment event."""
         connector = self._manager.get(service)
         if not connector:
             return (
                 f"Error: Unknown connector '{service}'. "
-                "Available: telegram, email, whatsapp"
+                "Available: telegram, email, whatsapp, discord"
             )
 
         if not connector.is_configured:
@@ -311,10 +370,15 @@ class ConnectorTool(Tool):
                 result = await connector.send_document(
                     file_path, caption=caption
                 )
+        elif service == "discord":
+            channel_id = kwargs.get("channel_id")
+            result = await connector.send_file(
+                file_path, caption=caption, channel_id=channel_id
+            )
         else:
             return (
                 f"Error: send_file is not yet supported for {service}. "
-                "Currently only Telegram supports file sending."
+                "Currently only Telegram and Discord support file sending."
             )
 
         if not result.get("success"):
@@ -336,6 +400,121 @@ class ConnectorTool(Tool):
             f"{'Photo' if is_image else 'File'} sent via "
             f"{connector.display_name}: {result.get('message', 'OK')}"
         )
+
+    async def _manage_discord(self, **kwargs: Any) -> str:
+        """Execute a Discord server management action."""
+        connector = self._manager.get("discord")
+        if not connector:
+            return "Error: Discord connector not available"
+        if not connector.is_configured:
+            return (
+                "Error: Discord is not configured. "
+                "The user needs to set it up in the Connectors tab first."
+            )
+
+        discord_action = kwargs.get("discord_action", "")
+        if not discord_action:
+            return (
+                "Error: 'discord_action' is required. Options: "
+                "list_channels, create_channel, delete_channel, edit_channel, "
+                "list_members, kick_member, ban_member, unban_member, "
+                "list_roles, create_role, delete_role, assign_role, remove_role, "
+                "delete_message, purge_messages, guild_info"
+            )
+
+        target_id = kwargs.get("target_id", "")
+        name = kwargs.get("name", "")
+        reason = kwargs.get("reason", "")
+        role_id = kwargs.get("role_id", "")
+        channel_id = kwargs.get("channel_id", "")
+
+        try:
+            if discord_action == "guild_info":
+                result = await connector.get_guild_info()
+            elif discord_action == "list_channels":
+                result = await connector.list_channels()
+            elif discord_action == "create_channel":
+                if not name:
+                    return "Error: 'name' is required to create a channel"
+                result = await connector.create_channel(name, **kwargs)
+            elif discord_action == "delete_channel":
+                if not target_id:
+                    return "Error: 'target_id' (channel_id) is required"
+                result = await connector.delete_channel(int(target_id))
+            elif discord_action == "edit_channel":
+                if not target_id:
+                    return "Error: 'target_id' (channel_id) is required"
+                result = await connector.edit_channel(int(target_id), **kwargs)
+            elif discord_action == "list_members":
+                result = await connector.list_members()
+            elif discord_action == "kick_member":
+                if not target_id:
+                    return "Error: 'target_id' (user_id) is required"
+                result = await connector.kick_member(int(target_id), reason=reason)
+            elif discord_action == "ban_member":
+                if not target_id:
+                    return "Error: 'target_id' (user_id) is required"
+                result = await connector.ban_member(int(target_id), reason=reason)
+            elif discord_action == "unban_member":
+                if not target_id:
+                    return "Error: 'target_id' (user_id) is required"
+                result = await connector.unban_member(int(target_id))
+            elif discord_action == "list_roles":
+                result = await connector.list_roles()
+            elif discord_action == "create_role":
+                if not name:
+                    return "Error: 'name' is required to create a role"
+                result = await connector.create_role(name, **kwargs)
+            elif discord_action == "delete_role":
+                if not target_id:
+                    return "Error: 'target_id' (role_id) is required"
+                result = await connector.delete_role(int(target_id))
+            elif discord_action == "assign_role":
+                if not target_id:
+                    return "Error: 'target_id' (user_id) is required"
+                if not role_id:
+                    return "Error: 'role_id' is required"
+                result = await connector.assign_role(int(target_id), int(role_id))
+            elif discord_action == "remove_role":
+                if not target_id:
+                    return "Error: 'target_id' (user_id) is required"
+                if not role_id:
+                    return "Error: 'role_id' is required"
+                result = await connector.remove_role(int(target_id), int(role_id))
+            elif discord_action == "delete_message":
+                if not channel_id:
+                    return "Error: 'channel_id' is required"
+                if not target_id:
+                    return "Error: 'target_id' (message_id) is required"
+                result = await connector.delete_message(int(channel_id), int(target_id))
+            elif discord_action == "purge_messages":
+                if not channel_id:
+                    return "Error: 'channel_id' is required"
+                limit = int(kwargs.get("limit", 10))
+                result = await connector.purge_messages(int(channel_id), limit=limit)
+            else:
+                return f"Error: Unknown discord_action '{discord_action}'"
+
+            if result.get("success"):
+                # Format the result nicely
+                import json
+                display = {k: v for k, v in result.items() if k != "success"}
+                if display.get("message") and len(display) == 1:
+                    return f"Discord: {display['message']}"
+                dumped = json.dumps(display, indent=2, default=str)
+                return (
+                    f"Discord action '{discord_action}' "
+                    f"succeeded:\n{dumped}"
+                )
+            else:
+                err = result.get("message", "Unknown error")
+                return (
+                    f"Discord action '{discord_action}' "
+                    f"failed: {err}"
+                )
+
+        except Exception as e:
+            return f"Error executing Discord action '{discord_action}': {str(e)}"
 
     async def _broadcast_attachment(
         self,

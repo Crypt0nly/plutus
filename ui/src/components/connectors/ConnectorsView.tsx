@@ -3,6 +3,7 @@ import {
   Send,
   Mail,
   MessageCircle,
+  MessageSquare,
   Plug,
   CheckCircle2,
   XCircle,
@@ -48,6 +49,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Send: Send,
   Mail: Mail,
   MessageCircle: MessageCircle,
+  MessageSquare: MessageSquare,
 };
 
 /* ─── Connector Card (grid item) ─── */
@@ -60,7 +62,7 @@ function ConnectorCard({
 }) {
   const Icon = ICON_MAP[connector.icon] || Plug;
   const isListening =
-    connector.name === "telegram" && connector.configured && connector.connected;
+    (connector.name === "telegram" || connector.name === "discord") && connector.configured && connector.connected;
 
   return (
     <div
@@ -173,7 +175,7 @@ function ConfigureModal({
   const [togglingAutoStart, setTogglingAutoStart] = useState(false);
 
   const Icon = ICON_MAP[connector.icon] || Plug;
-  const supportsTwoWay = connector.name === "telegram";
+  const supportsTwoWay = connector.name === "telegram" || connector.name === "discord";
 
   // Initialize form data
   useEffect(() => {
