@@ -192,6 +192,7 @@ function WorkersTab() {
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [maxWorkers, setMaxWorkers] = useState(5);
+  const [maxToolRounds, setMaxToolRounds] = useState(15);
   const [showSettings, setShowSettings] = useState(false);
 
   const fetch_ = useCallback(async () => {
@@ -203,6 +204,7 @@ function WorkersTab() {
       setData(w);
       setModelData(m);
       if (w?.stats?.max_workers) setMaxWorkers(w.stats.max_workers);
+      if (w?.stats?.max_tool_rounds) setMaxToolRounds(w.stats.max_tool_rounds);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -222,6 +224,14 @@ function WorkersTab() {
     setMaxWorkers(val);
     try {
       await api.updateWorkerConfig({ max_concurrent_workers: val });
+      fetch_();
+    } catch { /* ignore */ }
+  };
+
+  const handleMaxToolRoundsChange = async (val: number) => {
+    setMaxToolRounds(val);
+    try {
+      await api.updateWorkerConfig({ max_tool_rounds: val });
       fetch_();
     } catch { /* ignore */ }
   };
@@ -327,6 +337,39 @@ function WorkersTab() {
               </div>
               <p className="text-[11px] text-gray-600 mt-2">
                 Controls the maximum number of workers that can run simultaneously. Tasks beyond this limit are automatically queued.
+              </p>
+            </div>
+
+            {/* Max Tool Rounds Slider */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm text-gray-300">Max Tool Rounds per Worker</label>
+                <span className="text-sm font-mono font-bold text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-lg">
+                  {maxToolRounds}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={50}
+                value={maxToolRounds}
+                onChange={(e) => handleMaxToolRoundsChange(Number(e.target.value))}
+                className="w-full h-2 bg-gray-800 rounded-full appearance-none cursor-pointer
+                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5
+                  [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500
+                  [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-purple-500/30
+                  [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-all
+                  [&::-webkit-slider-thumb]:hover:bg-purple-400 [&::-webkit-slider-thumb]:hover:scale-110"
+              />
+              <div className="flex justify-between text-[10px] text-gray-600 mt-1.5 px-0.5">
+                <span>1</span>
+                <span>10</span>
+                <span>25</span>
+                <span>40</span>
+                <span>50</span>
+              </div>
+              <p className="text-[11px] text-gray-600 mt-2">
+                Maximum number of LLM tool-call rounds each worker can perform. Higher values let workers handle more complex tasks but use more tokens.
               </p>
             </div>
 

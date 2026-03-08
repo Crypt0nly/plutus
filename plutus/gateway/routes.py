@@ -345,17 +345,22 @@ def create_router() -> APIRouter:
         from plutus.gateway.server import get_state
 
         state = get_state()
+        config = state.get("config")
         pool = state.get("worker_pool")
 
         if not pool:
             return {"workers": [], "stats": {}}
+
+        stats = pool.stats()
+        if config:
+            stats["max_tool_rounds"] = config.workers.max_tool_rounds
 
         return {
             "running": pool.list_running(),
             "queued": pool.list_queued(),
             "completed": pool.list_completed(30),
             "workers": pool.list_all(),  # backward compat
-            "stats": pool.stats(),
+            "stats": stats,
         }
 
     @router.get("/workers/{task_id}")
@@ -404,9 +409,16 @@ def create_router() -> APIRouter:
             new_max = max(1, min(int(body.patch["max_concurrent_workers"]), 20))
             config.workers.max_concurrent_workers = new_max
             pool.max_workers = new_max
-            config.save()
 
-        return {"message": "Worker config updated", "stats": pool.stats()}
+        if "max_tool_rounds" in body.patch:
+            new_rounds = max(1, min(int(body.patch["max_tool_rounds"]), 50))
+            config.workers.max_tool_rounds = new_rounds
+
+        config.save()
+
+        stats = pool.stats()
+        stats["max_tool_rounds"] = config.workers.max_tool_rounds
+        return {"message": "Worker config updated", "stats": stats}
 
     # ── Scheduler ──────────────────────────────────────────────
 
