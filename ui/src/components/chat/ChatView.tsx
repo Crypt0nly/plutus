@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { MessageBubble } from "./MessageBubble";
-import { ChatInput } from "./ChatInput";
+import { ChatInput, Attachment } from "./ChatInput";
 import { Globe, MousePointer, AppWindow, KeyRound, Zap, Brain, ArrowRight } from "lucide-react";
 
 interface Props {
@@ -19,9 +19,23 @@ export function ChatView({ send }: Props) {
     }
   }, [messages]);
 
-  const handleSend = (content: string) => {
-    useAppStore.getState().addMessage({ role: "user", content });
-    send({ type: "chat", content });
+  const handleSend = (content: string, attachments?: Attachment[]) => {
+    // Build display content for the UI message
+    const displayParts: string[] = [content];
+    if (attachments?.length) {
+      const names = attachments.map((a) => a.name).join(", ");
+      displayParts.push(`\n[Attached: ${names}]`);
+    }
+    useAppStore.getState().addMessage({ role: "user", content: displayParts.join("") });
+
+    // Send via WebSocket with attachments (name, type, base64 data)
+    const wsPayload: Record<string, unknown> = { type: "chat", content };
+    if (attachments?.length) {
+      wsPayload.attachments = attachments.map(({ name, type, data }) => ({
+        name, type, data,
+      }));
+    }
+    send(wsPayload);
   };
 
   const handleStop = () => {

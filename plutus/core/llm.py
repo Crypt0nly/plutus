@@ -76,6 +76,13 @@ _ANTHROPIC_WEB_FETCH_TOOL = {
 }
 
 
+# Supported image MIME types for multimodal messages
+_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+# MIME type for PDF documents (Anthropic-specific support)
+_PDF_TYPE = "application/pdf"
+
+
 class LLMClient:
     """Unified LLM client with tool-calling support."""
 
@@ -148,6 +155,76 @@ class LLMClient:
             kwargs["api_base"] = self._config.base_url
         kwargs.update(overrides)
         return kwargs
+
+    def _expand_attachments(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert messages with 'attachments' into multimodal content blocks.
+
+        Handles both Anthropic and OpenAI formats:
+        - Images: Use OpenAI-style image_url blocks (LiteLLM translates for Anthropic)
+        - PDFs (Anthropic only): Use document source blocks
+        """
+        result = []
+        for msg in messages:
+            attachments = msg.pop("attachments", None)
+            if not attachments or msg.get("role") != "user":
+                result.append(msg)
+                continue
+
+            # Build multimodal content array
+            content_blocks: list[dict[str, Any]] = []
+
+            # Add text block first (if any)
+            text = msg.get("content", "")
+            if text:
+                content_blocks.append({"type": "text", "text": text})
+
+            for att in attachments:
+                mime = att.get("type", "")
+                data = att.get("data", "")  # base64-encoded
+                name = att.get("name", "file")
+
+                if mime in _IMAGE_TYPES:
+                    # OpenAI-style image_url — LiteLLM translates for Anthropic
+                    content_blocks.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime};base64,{data}",
+                        },
+                    })
+                elif mime == _PDF_TYPE and self.is_anthropic:
+                    # Anthropic document source block for PDFs
+                    content_blocks.append({
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": _PDF_TYPE,
+                            "data": data,
+                        },
+                    })
+                elif mime == _PDF_TYPE:
+                    # Non-Anthropic providers don't natively support PDF
+                    # Include a text note so the user knows
+                    content_blocks.append({
+                        "type": "text",
+                        "text": (
+                            f"[Attached PDF: {name} — PDF preview is only "
+                            f"supported with Anthropic models. The file was "
+                            f"uploaded but cannot be processed by the current model.]"
+                        ),
+                    })
+                else:
+                    # Unsupported file type — add a text note
+                    content_blocks.append({
+                        "type": "text",
+                        "text": f"[Attached file: {name} ({mime})]",
+                    })
+
+            # Replace content with multimodal blocks
+            new_msg = {k: v for k, v in msg.items() if k != "content"}
+            new_msg["content"] = content_blocks
+            result.append(new_msg)
+
+        return result
 
     @staticmethod
     def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -291,7 +368,8 @@ class LLMClient:
     ) -> LLMResponse:
         """Send a completion request to the LLM."""
         call_kwargs = self._build_kwargs(**kwargs)
-        call_kwargs["messages"] = self._sanitize_messages(messages)
+        expanded = self._expand_attachments(messages)
+        call_kwargs["messages"] = self._sanitize_messages(expanded)
 
         built_tools = self._build_tools_list(tools)
         if built_tools:

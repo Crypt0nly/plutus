@@ -79,6 +79,9 @@ class ConversationManager:
         # Track how many messages have been summarized
         self._summarized_up_to: int = 0  # message ID up to which we've summarized
 
+        # Transient attachments for the current message (not persisted in DB)
+        self.pending_attachments: list[dict[str, str]] = []
+
     @property
     def conversation_id(self) -> str | None:
         return self._active_conversation_id
@@ -322,6 +325,19 @@ class ConversationManager:
                     elif len(paired) < len(entry["tool_calls"]):
                         entry["tool_calls"] = paired
                 messages.append(entry)
+
+        # Attach pending file attachments to the last user message.
+        # Attachments are transient (not persisted) and only apply to the
+        # current message.  The LLM client handles provider-specific
+        # formatting (Anthropic vs OpenAI) in _format_multimodal_content().
+        if self.pending_attachments:
+            # Find the last user message in the list
+            for i in range(len(messages) - 1, -1, -1):
+                if messages[i].get("role") == "user":
+                    messages[i]["attachments"] = self.pending_attachments
+                    break
+            # Clear after use — attachments are single-shot
+            self.pending_attachments = []
 
         return messages
 
