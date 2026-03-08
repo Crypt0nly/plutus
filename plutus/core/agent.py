@@ -867,7 +867,11 @@ class AgentRuntime:
         except Exception as e:
             logger.warning(f"Auto-checkpoint failed: {e}")
 
-    async def process_message(self, user_message: str) -> AsyncIterator[AgentEvent]:
+    async def process_message(
+        self,
+        user_message: str,
+        attachments: list[dict[str, str]] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
         """Process a user message and yield events for the UI.
 
         Events:
@@ -897,6 +901,9 @@ class AgentRuntime:
             await self._conversation.start_conversation(title=user_message[:50])
 
         await self._conversation.add_user_message(user_message)
+
+        # Store attachments for the current message (transient, not persisted)
+        self._conversation.pending_attachments = attachments or []
 
         # Drain any pending worker results into the conversation.
         # These are queued by background workers to avoid injecting

@@ -141,6 +141,9 @@ async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
     if not user_text:
         return
 
+    # Extract file attachments (base64-encoded)
+    attachments = message.get("attachments")  # list of {name, type, data}
+
     # Real user message — reset the heartbeat consecutive counter
     if heartbeat:
         heartbeat.reset_consecutive()
@@ -155,7 +158,7 @@ async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
     if use_cu and cu_agent:
         await _handle_computer_use_chat(ws, cu_agent, user_text)
     elif agent:
-        await _handle_standard_chat(ws, agent, user_text)
+        await _handle_standard_chat(ws, agent, user_text, attachments=attachments)
     else:
         await ws.send_json({"type": "error", "message": "No suitable agent available"})
 
@@ -260,7 +263,12 @@ async def _handle_computer_use_chat(ws: WebSocket, cu_agent: Any, user_text: str
         })
 
 
-async def _handle_standard_chat(ws: WebSocket, agent: Any, user_text: str) -> None:
+async def _handle_standard_chat(
+    ws: WebSocket,
+    agent: Any,
+    user_text: str,
+    attachments: list[dict[str, str]] | None = None,
+) -> None:
     """Process a message through the standard LiteLLM agent."""
     logger.info(f"Standard agent handling: {user_text[:80]}")
 
@@ -271,7 +279,7 @@ async def _handle_standard_chat(ws: WebSocket, agent: Any, user_text: str) -> No
         "message": "🖥️ Computer Use mode — I can see and control your screen",
     })
 
-    async for event in agent.process_message(user_text):
+    async for event in agent.process_message(user_text, attachments=attachments):
         await ws.send_json(event.to_dict())
 
         if event.type == "tool_approval_needed":
