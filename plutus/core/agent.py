@@ -734,6 +734,9 @@ class AgentRuntime:
         self._rounds_since_checkpoint = 0
         self._checkpoint_interval = 10  # Auto-checkpoint every N tool rounds
 
+        # Cancellation flag — set by cancel() to stop the current process_message loop
+        self._cancelled = False
+
     @property
     def conversation(self) -> ConversationManager:
         return self._conversation
@@ -753,6 +756,10 @@ class AgentRuntime:
     def reload_key(self) -> bool:
         """Re-check API key after user configures one via the UI."""
         return self._llm.reload_key()
+
+    def cancel(self) -> None:
+        """Cancel the currently running process_message loop."""
+        self._cancelled = True
 
     def on_event(self, handler: Callable[[AgentEvent], Any]) -> None:
         """Register an event handler for agent events."""
@@ -902,6 +909,7 @@ class AgentRuntime:
             logger.info(f"Drained {len(self._pending_worker_results)} pending worker results into conversation")
             self._pending_worker_results.clear()
 
+        self._cancelled = False
         yield AgentEvent("thinking", {"message": "Processing your request..."})
 
         tool_defs = self._get_tool_definitions()
@@ -911,6 +919,9 @@ class AgentRuntime:
         max_rounds = self._max_tool_rounds or self.DEFAULT_MAX_TOOL_ROUNDS
 
         for round_num in range(max_rounds):
+            if self._cancelled:
+                yield AgentEvent("cancelled", {"message": "Task stopped by user"})
+                return
             messages = await self._conversation.build_messages()
 
             # Inject system prompt
@@ -924,6 +935,10 @@ class AgentRuntime:
                 response = await self._llm.complete(messages, tools=tool_defs or None)
             except Exception as e:
                 yield AgentEvent("error", {"message": f"LLM error: {e}"})
+                return
+
+            if self._cancelled:
+                yield AgentEvent("cancelled", {"message": "Task stopped by user"})
                 return
 
             # Handle truncated responses (finish_reason=length)
