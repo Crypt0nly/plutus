@@ -338,14 +338,23 @@ async def _handle_resume_conversation(ws: WebSocket, message: dict[str, Any]) ->
 
 
 async def _handle_stop_task(ws: WebSocket) -> None:
-    """Stop the currently running computer use task."""
+    """Stop the currently running agent task (standard or computer use)."""
     from plutus.gateway.server import get_state
 
     state = get_state()
+    agent = state.get("agent")
     cu_agent = state.get("cu_agent")
+    stopped = False
 
     if cu_agent and cu_agent.is_running:
         cu_agent.stop()
+        stopped = True
+
+    if agent:
+        agent.cancel()
+        stopped = True
+
+    if stopped:
         await ws.send_json({"type": "task_stopped", "message": "Task stopped"})
     else:
         await ws.send_json({"type": "info", "message": "No task is currently running"})
