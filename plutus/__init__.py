@@ -6,17 +6,16 @@ __version__ = "0.3.26"
 def _detect_build_tag() -> str:
     """Detect whether we're running compiled (production) or raw source (dev).
 
-    Checks if any of the protected Cython-compiled modules exist as native
-    extensions (.so on Linux/macOS, .pyd on Windows). If they do, this is a
-    production wheel build. Otherwise, it's a dev/source install.
+    Checks if a compiled .so/.pyd binary exists for a core module on disk.
+    Uses glob on the filesystem to avoid triggering imports (which would
+    fail in environments without dependencies installed, e.g. CI test steps).
     """
-    import importlib.util
+    from pathlib import Path
 
-    # Just check one core module — if it's compiled, they all are
-    spec = importlib.util.find_spec("plutus.core.agent")
-    if spec and spec.origin:
-        if spec.origin.endswith((".so", ".pyd")):
-            return ""  # production — no tag needed
+    core_dir = Path(__file__).parent / "core"
+    # Look for any compiled agent binary: agent.cpython-*.so or agent.*.pyd
+    if any(core_dir.glob("agent*.so")) or any(core_dir.glob("agent*.pyd")):
+        return ""  # production — no tag needed
     return " (dev)"
 
 
