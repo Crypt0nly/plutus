@@ -26,14 +26,18 @@ from setuptools import Extension, setup
 PROTECTED_MODULES = [
     # Core orchestration
     "plutus/core/agent.py",
+    "plutus/core/computer_use_agent.py",
     "plutus/core/conversation.py",
     "plutus/core/heartbeat.py",
+    "plutus/core/llm.py",
     "plutus/core/model_router.py",
     "plutus/core/planner.py",
     "plutus/core/scheduler.py",
     "plutus/core/subprocess_manager.py",
     "plutus/core/summarizer.py",
     "plutus/core/worker_pool.py",
+    # Gateway (WebSocket orchestration)
+    "plutus/gateway/ws.py",
     # PC control
     "plutus/pc/browser_control.py",
     "plutus/pc/computer_use.py",
@@ -49,11 +53,16 @@ PROTECTED_MODULES = [
     # Skills engine
     "plutus/skills/engine.py",
     "plutus/skills/creator.py",
+    "plutus/skills/loader.py",
+    "plutus/skills/python_runner.py",
     # Workers
     "plutus/workers/code_analysis_worker.py",
     "plutus/workers/file_edit_worker.py",
     "plutus/workers/shell_worker.py",
     "plutus/workers/custom_worker.py",
+    # Connector bridges (agent ↔ external app orchestration)
+    "plutus/connectors/discord_bridge.py",
+    "plutus/connectors/telegram_bridge.py",
 ]
 
 
