@@ -71,11 +71,12 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
       - Have their OWN conversation context (no pollution)
       - Run independently (no self-await deadlocks)
       - Bypass guardrails (the coordinator already approved the spawn)
-      - Have a max of 15 tool rounds to prevent runaway workers
+      - Have a configurable max tool rounds to prevent runaway workers
     """
     import json as _json
     import litellm
 
+    config = _state.get("config")
     model_router: ModelRouter | None = _state.get("model_router")
     tool_registry = _state.get("tool_registry")
 
@@ -193,7 +194,7 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
         {"role": "user", "content": task.prompt},
     ]
 
-    MAX_WORKER_ROUNDS = 15
+    MAX_WORKER_ROUNDS = config.workers.max_tool_rounds if config else 15
     FORCE_SUMMARY_AT = MAX_WORKER_ROUNDS - 1  # Last round: no tools, force text
     result = "Task completed (no output)."
     final_texts: list[str] = []       # Only the FINAL text-only response
