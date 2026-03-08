@@ -289,18 +289,38 @@ class ConversationManager:
                     entry["tool_call_id"] = msg["tool_call_id"]
                 raw.append(entry)
 
-            # Remove orphaned tool results that lost their assistant tool_call
-            # (can happen when context window truncation cuts mid-pair)
-            tool_call_ids: set[str] = set()
+            # Remove orphaned tool messages that lost their pair due to
+            # context window truncation cutting mid-pair.
+            # 1. Collect all tool_call IDs from assistant messages
+            # 2. Collect all tool_call IDs from tool result messages
+            # 3. Strip orphaned tool results (no matching tool_use)
+            # 4. Strip tool_calls from assistant messages (no matching tool_result)
+            tool_use_ids: set[str] = set()
+            tool_result_ids: set[str] = set()
             for entry in raw:
                 if entry.get("tool_calls"):
                     for tc in entry["tool_calls"]:
-                        tool_call_ids.add(tc["id"])
+                        tool_use_ids.add(tc["id"])
+                if entry["role"] == "tool" and entry.get("tool_call_id"):
+                    tool_result_ids.add(entry["tool_call_id"])
 
             for entry in raw:
+                # Skip orphaned tool results (no matching assistant tool_use)
                 if entry["role"] == "tool" and entry.get("tool_call_id"):
-                    if entry["tool_call_id"] not in tool_call_ids:
-                        continue  # skip orphaned tool result
+                    if entry["tool_call_id"] not in tool_use_ids:
+                        continue
+                # Strip orphaned tool_calls from assistant messages
+                # (tool_results were summarized away or truncated)
+                if entry.get("tool_calls"):
+                    paired = [
+                        tc for tc in entry["tool_calls"]
+                        if tc["id"] in tool_result_ids
+                    ]
+                    if not paired:
+                        # All tool_calls are orphaned — drop them entirely
+                        entry.pop("tool_calls", None)
+                    elif len(paired) < len(entry["tool_calls"]):
+                        entry["tool_calls"] = paired
                 messages.append(entry)
 
         return messages
