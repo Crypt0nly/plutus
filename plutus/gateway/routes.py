@@ -110,7 +110,7 @@ def create_router() -> APIRouter:
 
     @router.get("/status")
     async def get_status() -> dict[str, Any]:
-        from plutus import __version__
+        from plutus import __version__, build_tag
         from plutus.gateway.server import get_state
 
         state = get_state()
@@ -125,7 +125,7 @@ def create_router() -> APIRouter:
 
         config = state.get("config")
         return {
-            "version": __version__,
+            "version": __version__ + build_tag,
             "status": "running",
             "key_configured": agent.key_configured if agent else False,
             "onboarding_completed": config.onboarding_completed if config else False,
