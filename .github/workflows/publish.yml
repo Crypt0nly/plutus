@@ -143,40 +143,13 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: wheelhouse/*.whl
 
-  # ── Step 3: Build source distribution ───────────────────────────
-  build-sdist:
-    needs: build-ui
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: ui-dist
-          path: ui/dist/
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: source
-          path: plutus/
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Build sdist
-        run: |
-          pip install build
-          python -m build --sdist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sdist
-          path: dist/*.tar.gz
-
-  # ── Step 4: Publish to PyPI ─────────────────────────────────────
+  # ── Step 3: Publish wheels to PyPI (no sdist — open-core protection) ──
+  #
+  # Only compiled platform wheels are published. No source distribution
+  # is uploaded so that unsupported platforms cannot fall back to raw
+  # Python source, which would expose protected open-core modules.
   publish:
-    needs: [build-wheels, build-sdist]
+    needs: [build-wheels]
     runs-on: ubuntu-latest
     environment: pypi
 
@@ -187,18 +160,13 @@ jobs:
           pattern: wheels-*
           merge-multiple: true
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: sdist
-          path: dist/
-
       - name: List artifacts
         run: ls -la dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  # ── Step 5: Create release and bump version for next time ───────
+  # ── Step 4: Create release and bump version for next time ───────
   post-release:
     needs: publish
     runs-on: ubuntu-latest
