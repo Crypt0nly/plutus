@@ -10,12 +10,15 @@ def _detect_build_tag() -> str:
     Uses glob on the filesystem to avoid triggering imports (which would
     fail in environments without dependencies installed, e.g. CI test steps).
     """
-    from pathlib import Path
+    try:
+        from pathlib import Path
 
-    core_dir = Path(__file__).parent / "core"
-    # Look for any compiled agent binary: agent.cpython-*.so or agent.*.pyd
-    if any(core_dir.glob("agent*.so")) or any(core_dir.glob("agent*.pyd")):
-        return ""  # production — no tag needed
+        core_dir = Path(__file__).parent / "core"
+        if any(core_dir.glob("agent*.so")) or any(core_dir.glob("agent*.pyd")):
+            return ""  # production — no tag needed
+    except (NameError, OSError):
+        # __file__ is undefined when run via exec() (e.g. version bump scripts)
+        pass
     return " (dev)"
 
 
