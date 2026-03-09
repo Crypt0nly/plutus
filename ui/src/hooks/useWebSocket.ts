@@ -12,18 +12,24 @@ export function useWebSocket(onMessage: MessageHandler) {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${protocol}//${window.location.host}/ws`;
+    let reconnectDelay = 1000; // Start at 1s, back off on repeated failures
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let destroyed = false;
 
     function connect() {
+      if (destroyed) return;
       const ws = new WebSocket(url);
 
       ws.onopen = () => {
         setConnected(true);
-        // Send ping every 30s to keep alive
+        reconnectDelay = 1000; // Reset backoff on successful connect
+
+        // Application-level ping every 15s (supplements protocol-level ping)
         const interval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "ping" }));
           }
-        }, 30000);
+        }, 15000);
         ws.addEventListener("close", () => clearInterval(interval));
       };
 
@@ -38,8 +44,11 @@ export function useWebSocket(onMessage: MessageHandler) {
 
       ws.onclose = () => {
         setConnected(false);
-        // Auto-reconnect after 2s
-        setTimeout(connect, 2000);
+        if (!destroyed) {
+          // Reconnect with exponential backoff (1s → 2s → 4s → max 8s)
+          reconnectTimer = setTimeout(connect, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+        }
       };
 
       ws.onerror = () => {
@@ -52,6 +61,8 @@ export function useWebSocket(onMessage: MessageHandler) {
     connect();
 
     return () => {
+      destroyed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
   }, []);
