@@ -786,6 +786,11 @@ class AgentRuntime:
         """Build the system prompt with tool awareness and current context."""
         parts = [SYSTEM_PROMPT]
 
+        # Append user-defined custom system prompt if configured
+        custom_prompt = self._config.agent.system_prompt.strip()
+        if custom_prompt:
+            parts.append(f"\n## User Instructions\n{custom_prompt}")
+
         # Add available tools summary — pc tool highlighted as primary
         if self._tool_registry:
             tool_names = self._tool_registry.list_tools()

@@ -109,6 +109,7 @@ class KeepAliveConfig(BaseModel):
 
 class AgentConfig(BaseModel):
     max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
+    system_prompt: str = ""  # custom system prompt; empty = use default
 
 
 class PlannerConfig(BaseModel):
