@@ -113,6 +113,8 @@ def start(host: str | None, port: int | None, dev: bool, no_browser: bool) -> No
         reload=dev,
         factory=True,
         log_level="info",
+        ws_ping_interval=20,   # Send WS ping frame every 20s
+        ws_ping_timeout=20,    # Close if no pong within 20s
     )
 
 
