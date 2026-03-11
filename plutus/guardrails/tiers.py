@@ -99,6 +99,9 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
             permission=ToolPermission.ALLOWED,
             allowed_operations=["list_windows"],
         ),
+        "openai_computer": ToolPolicy(
+            tool_name="openai_computer", permission=ToolPermission.DENIED
+        ),
     },
     Tier.ASSISTANT: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.REQUIRES_APPROVAL),
@@ -113,6 +116,9 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "desktop": ToolPolicy(tool_name="desktop", permission=ToolPermission.REQUIRES_APPROVAL),
         "app_manager": ToolPolicy(
             tool_name="app_manager", permission=ToolPermission.REQUIRES_APPROVAL
+        ),
+        "openai_computer": ToolPolicy(
+            tool_name="openai_computer", permission=ToolPermission.REQUIRES_APPROVAL
         ),
     },
     Tier.OPERATOR: {
@@ -141,6 +147,9 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
             permission=ToolPermission.ALLOWED,
             allowed_operations=["launch", "list_windows", "focus_window", "minimize_window", "maximize_window"],
         ),
+        "openai_computer": ToolPolicy(
+            tool_name="openai_computer", permission=ToolPermission.ALLOWED
+        ),
     },
     Tier.AUTONOMOUS: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.ALLOWED),
@@ -152,6 +161,9 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "clipboard": ToolPolicy(tool_name="clipboard", permission=ToolPermission.ALLOWED),
         "desktop": ToolPolicy(tool_name="desktop", permission=ToolPermission.ALLOWED),
         "app_manager": ToolPolicy(tool_name="app_manager", permission=ToolPermission.ALLOWED),
+        "openai_computer": ToolPolicy(
+            tool_name="openai_computer", permission=ToolPermission.ALLOWED
+        ),
     },
 }
 
