@@ -121,6 +121,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.code_editor import CodeEditorTool
     from plutus.tools.desktop import DesktopTool
     from plutus.tools.filesystem import FilesystemTool
+    from plutus.tools.openai_computer import OpenAIComputerTool
     from plutus.tools.pc_control import PCControlTool
     from plutus.tools.process import ProcessTool
     from plutus.tools.shell import ShellTool
@@ -164,6 +165,11 @@ def create_default_registry() -> ToolRegistry:
     # WEB TOOLS — internet access and search
     # ═══════════════════════════════════════════════════════════
     registry.register(WebSearchTool())
+
+    # ═══════════════════════════════════════════════════════════
+    # OPENAI COMPUTER USE — GPT-5.4 desktop control bridge
+    # ═══════════════════════════════════════════════════════════
+    registry.register(OpenAIComputerTool())
 
     # ═══════════════════════════════════════════════════════════
     # LEGACY TOOLS — kept for backward compatibility

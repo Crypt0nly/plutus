@@ -14,6 +14,7 @@ Available models:
   - Claude Sonnet: Balanced — good for most tasks
   - Claude Haiku:  Fast & cheap — summaries, lookups, simple tasks
   - GPT-5.2:       OpenAI alternative for complex tasks
+  - GPT-5.4:       OpenAI latest — supports native computer use
 """
 
 from __future__ import annotations
@@ -98,6 +99,18 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         cost_per_1k_input=0.005,
         cost_per_1k_output=0.015,
     ),
+    "gpt-5.4": ModelSpec(
+        id="gpt-5.4",
+        provider="openai",
+        display_name="GPT-5.4",
+        complexity_tier=Complexity.COMPLEX,
+        description="OpenAI's latest. Native computer use for desktop control.",
+        max_tokens=4096,
+        supports_tools=True,
+        supports_vision=True,
+        cost_per_1k_input=0.005,
+        cost_per_1k_output=0.015,
+    ),
 }
 
 
@@ -164,7 +177,7 @@ class ModelRoutingConfig:
     (ModelConfig component). This config is only for worker/scheduler defaults.
     """
     enabled_models: list[str] = field(default_factory=lambda: [
-        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2"
+        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2", "gpt-5.4"
     ])
     cost_conscious: bool = False                 # Prefer cheaper worker models
     default_worker_model: str = "auto"           # "auto" or a specific model key
@@ -348,8 +361,8 @@ class ModelRouter:
         """Select the best available model for a given complexity tier."""
         # Normal preference order
         preference_map = {
-            Complexity.COMPLEX: ["claude-opus", "claude-sonnet", "gpt-5.2"],
-            Complexity.MODERATE: ["claude-sonnet", "claude-haiku", "gpt-5.2"],
+            Complexity.COMPLEX: ["claude-opus", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
+            Complexity.MODERATE: ["claude-sonnet", "claude-haiku", "gpt-5.4", "gpt-5.2"],
             Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.2"],
         }
 

@@ -26,24 +26,26 @@ export function ConversationHistory({ send }: Props) {
   const editInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { conversationId, setConversationId, clearMessages, setView } =
+  const { conversationId, setConversationId, clearMessages, setView, connected } =
     useAppStore();
 
   const fetchConversations = useCallback(() => {
+    if (!connected) return; // Don't poll when backend is down
     api
       .getConversations(50)
       .then((data) => setConversations(data as unknown as Conversation[]))
       .catch(() => {});
-  }, []);
+  }, [connected]);
 
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations, conversationId]);
 
   useEffect(() => {
+    if (!connected) return; // Don't start poll timer when disconnected
     const interval = setInterval(fetchConversations, 30000);
     return () => clearInterval(interval);
-  }, [fetchConversations]);
+  }, [fetchConversations, connected]);
 
   useEffect(() => {
     if (editingId && editInputRef.current) {

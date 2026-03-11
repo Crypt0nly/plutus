@@ -80,7 +80,7 @@ class WorkerConfig(BaseModel):
 
 class ModelRoutingConfig(BaseModel):
     enabled_models: list[str] = Field(default_factory=lambda: [
-        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2"
+        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2", "gpt-5.4"
     ])
     cost_conscious: bool = False  # prefer cheaper worker models
     default_worker_model: str = "auto"  # "auto" or a specific model key
@@ -109,6 +109,7 @@ class KeepAliveConfig(BaseModel):
 
 class AgentConfig(BaseModel):
     max_tool_rounds: int = 25  # max external tool rounds per message (plan calls don't count)
+    system_prompt: str = ""  # custom system prompt; empty = use default
 
 
 class PlannerConfig(BaseModel):
