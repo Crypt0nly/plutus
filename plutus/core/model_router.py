@@ -363,15 +363,15 @@ class ModelRouter:
         preference_map = {
             Complexity.COMPLEX: ["claude-opus", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
             Complexity.MODERATE: ["claude-sonnet", "claude-haiku", "gpt-5.4", "gpt-5.2"],
-            Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.2"],
+            Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
         }
 
         # Cost-conscious: always prefer cheaper
         if self._config.cost_conscious:
             preference_map = {
-                Complexity.COMPLEX: ["claude-sonnet", "claude-haiku", "gpt-5.2"],
-                Complexity.MODERATE: ["claude-haiku", "claude-sonnet", "gpt-5.2"],
-                Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.2"],
+                Complexity.COMPLEX: ["claude-sonnet", "claude-haiku", "gpt-5.4", "gpt-5.2"],
+                Complexity.MODERATE: ["claude-haiku", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
+                Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
             }
 
         for model_key in preference_map.get(complexity, ["claude-sonnet"]):
