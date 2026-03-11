@@ -33,6 +33,7 @@ export function DashboardView() {
   const [memoryStats, setMemoryStats] = useState<Record<string, any> | null>(null);
 
   const fetchAll = useCallback(() => {
+    if (!connected) return; // Don't poll when backend is down
     api.getStatus().then(setStatus).catch(() => {});
     api.getAudit(20).then((d) => {
       if (d && !Array.isArray(d.entries)) d.entries = [];
@@ -42,13 +43,14 @@ export function DashboardView() {
     api.getConnectors().then(setConnectors).catch(() => {});
     api.getSkills().then(setSkills).catch(() => {});
     api.getMemoryStats().then(setMemoryStats).catch(() => {});
-  }, []);
+  }, [connected]);
 
   useEffect(() => {
     fetchAll();
+    if (!connected) return; // Don't start poll timer when disconnected
     const timer = setInterval(fetchAll, 15000);
     return () => clearInterval(timer);
-  }, [fetchAll]);
+  }, [fetchAll, connected]);
 
   const auditSummary = status?.guardrails?.audit_summary;
   const workerPool = status?.worker_pool;

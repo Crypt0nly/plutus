@@ -12,7 +12,7 @@ export function useWebSocket(onMessage: MessageHandler) {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${protocol}//${window.location.host}/ws`;
-    let reconnectDelay = 1000; // Start at 1s, back off on repeated failures
+    let reconnectDelay = 1000;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let destroyed = false;
 
@@ -45,9 +45,9 @@ export function useWebSocket(onMessage: MessageHandler) {
       ws.onclose = () => {
         setConnected(false);
         if (!destroyed) {
-          // Reconnect with exponential backoff (1s → 2s → 4s → max 8s)
+          // Reconnect with exponential backoff (1s → 2s → 4s → … → max 30s)
           reconnectTimer = setTimeout(connect, reconnectDelay);
-          reconnectDelay = Math.min(reconnectDelay * 2, 8000);
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
         }
       };
 
