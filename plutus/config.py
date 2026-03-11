@@ -80,7 +80,7 @@ class WorkerConfig(BaseModel):
 
 class ModelRoutingConfig(BaseModel):
     enabled_models: list[str] = Field(default_factory=lambda: [
-        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2"
+        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2", "gpt-5.4"
     ])
     cost_conscious: bool = False  # prefer cheaper worker models
     default_worker_model: str = "auto"  # "auto" or a specific model key
