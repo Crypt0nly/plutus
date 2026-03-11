@@ -62,19 +62,17 @@ class ComputerUseExecutor:
         result = executor.execute_action(action="screenshot")
         result = executor.execute_action(action="left_click", coordinate=[500, 300])
 
-    For OpenAI computer use, pass a target resolution to bypass Anthropic's scaling:
-        executor = ComputerUseExecutor(target_width=1440, target_height=900)
+    For OpenAI computer use, disable Anthropic scaling to send native resolution:
+        executor = ComputerUseExecutor(native_resolution=True)
     """
 
     def __init__(
         self,
         display_number: int | None = None,
-        target_width: int | None = None,
-        target_height: int | None = None,
+        native_resolution: bool = False,
     ):
         self._display_number = display_number
-        self._target_width = target_width
-        self._target_height = target_height
+        self._native_resolution = native_resolution
         self._screen_width: int = 0
         self._screen_height: int = 0
         self._scale_factor: float = 1.0
@@ -148,17 +146,15 @@ class ComputerUseExecutor:
     def _compute_scale(self) -> None:
         """Compute the scale factor and API dimensions.
 
-        When target_width / target_height are set (e.g. for OpenAI computer use),
-        scale to that exact resolution instead of using Anthropic's constraints.
+        When native_resolution is True (e.g. for OpenAI computer use), skip
+        Anthropic's scaling and send screenshots at the screen's native
+        resolution. OpenAI supports up to 10.24M pixels with detail="original".
         """
-        if self._target_width and self._target_height:
-            # Custom target resolution — scale to fit exactly
-            self._api_width = self._target_width
-            self._api_height = self._target_height
-            self._scale_factor = min(
-                self._target_width / self._screen_width,
-                self._target_height / self._screen_height,
-            )
+        if self._native_resolution:
+            # No scaling — 1:1 mapping between API and screen coordinates
+            self._scale_factor = 1.0
+            self._api_width = self._screen_width
+            self._api_height = self._screen_height
         else:
             # Default: Anthropic's image constraints
             self._scale_factor = _get_scale_factor(self._screen_width, self._screen_height)
