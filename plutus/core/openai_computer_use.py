@@ -174,7 +174,7 @@ class OpenAIComputerUseAgent:
         yield OpenAIComputerUseEvent("thinking", {"message": f"Starting task: {user_message}"})
 
         try:
-            from openai import OpenAI
+            from openai import AsyncOpenAI
         except ImportError:
             yield OpenAIComputerUseEvent("error", {
                 "message": "The 'openai' package is required for OpenAI computer use. "
@@ -182,12 +182,12 @@ class OpenAIComputerUseAgent:
             })
             return
 
-        client = OpenAI(api_key=self._api_key)
+        client = AsyncOpenAI(api_key=self._api_key)
         previous_response_id = None
 
         # Initial request
         try:
-            response = client.responses.create(
+            response = await client.responses.create(
                 model=self._model,
                 tools=[{"type": "computer"}],
                 input=user_message,
@@ -254,7 +254,9 @@ class OpenAIComputerUseAgent:
                 else:
                     action = {"type": getattr(action_obj, "type", "unknown")}
 
-                result = self._execute_action(action)
+                # Run synchronous desktop action in a thread to avoid blocking
+                # the event loop (PyAutoGUI / screenshot capture is blocking I/O).
+                result = await asyncio.to_thread(self._execute_action, action)
 
                 yield OpenAIComputerUseEvent("tool_result", {
                     "id": call_id,
@@ -266,7 +268,7 @@ class OpenAIComputerUseAgent:
                 await asyncio.sleep(self.ACTION_DELAY)
 
             # Capture screenshot after executing actions
-            screenshot_url = self._capture_screenshot_b64()
+            screenshot_url = await asyncio.to_thread(self._capture_screenshot_b64)
             if not screenshot_url:
                 yield OpenAIComputerUseEvent("error", {
                     "message": "Failed to capture screenshot after actions"
@@ -277,7 +279,7 @@ class OpenAIComputerUseAgent:
             previous_response_id = response.id
 
             try:
-                response = client.responses.create(
+                response = await client.responses.create(
                     model=self._model,
                     tools=[{"type": "computer"}],
                     previous_response_id=previous_response_id,

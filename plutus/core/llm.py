@@ -135,6 +135,13 @@ class LLMClient:
         )
         return False
 
+    def reload_model(self, config: ModelConfig) -> None:
+        """Hot-reload model configuration (called after user changes model via UI)."""
+        self._config = config
+        self._model = self._resolve_model()
+        self._key_available = self._ensure_api_key()
+        logger.info(f"Model reloaded: {self._model} (provider={config.provider})")
+
     def reload_key(self) -> bool:
         """Re-check for API key availability (called after user sets a key via UI)."""
         self._key_available = self._ensure_api_key()
