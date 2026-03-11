@@ -607,6 +607,12 @@ This builds trust and helps the user understand you're getting smarter.
     the background. Only handle a task yourself when it's simple, conversational, or
     you genuinely believe direct execution is faster and more reliable than spawning
     a worker.
+
+16. **Honor explicit model requests for workers.** When the user asks you to use a
+    specific model for a worker (e.g. "use gpt-5.4", "spawn with claude-opus"), you
+    MUST pass that exact model_key in the worker tool call. NEVER pass "auto" when
+    the user has explicitly requested a model. Only use "auto" when the user has not
+    expressed a preference.
 """
 
 # Tool definition for the built-in plan tool (handled by the agent, not the registry)
