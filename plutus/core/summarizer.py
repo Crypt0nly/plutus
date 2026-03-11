@@ -94,7 +94,6 @@ class ConversationSummarizer:
                     {"role": "system", "content": "\n".join(prompt_parts)},
                     {"role": "user", "content": "Summarize the conversation above. Return ONLY the JSON object."},
                 ],
-                temperature=0.2,  # Low temperature for factual summarization
                 max_tokens=2048,
             )
 
