@@ -20,6 +20,11 @@ logger = logging.getLogger("plutus.llm")
 # Suppress litellm's verbose logging
 litellm.suppress_debug_info = True
 
+# Drop unsupported params instead of raising errors.
+# Some models (e.g. GPT-5) only accept temperature=1; rather than
+# crashing, let litellm silently strip the unsupported kwarg.
+litellm.drop_params = True
+
 # Suppress Pydantic serialization warning for ServerToolUse.
 # LiteLLM passes a plain dict where Pydantic expects a model instance when
 # reporting server-side tool usage (web_search, web_fetch).  Harmless.
