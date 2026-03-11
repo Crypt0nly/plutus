@@ -347,7 +347,11 @@ class SubprocessManager:
 
         script_path = self.WORKER_SCRIPTS_DIR / script_name
         if not script_path.exists():
-            logger.error(f"Worker script not found: {script_path}")
+            logger.error(
+                f"Worker script not found: {script_path}. "
+                f"Workers dir exists: {self.WORKER_SCRIPTS_DIR.exists()}. "
+                f"Contents: {list(self.WORKER_SCRIPTS_DIR.iterdir()) if self.WORKER_SCRIPTS_DIR.exists() else 'N/A'}"
+            )
             return None
         return script_path
 

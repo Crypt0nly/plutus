@@ -281,17 +281,23 @@ class MemoryStore:
 
         cursor = await self._db.execute(query, params)
         rows = await cursor.fetchall()
-        return [
-            {
+        results = []
+        for r in rows:
+            tool_calls = None
+            if r[3]:
+                try:
+                    tool_calls = json.loads(r[3])
+                except (json.JSONDecodeError, ValueError):
+                    logger.warning(f"Corrupt tool_calls JSON in message {r[0]}, skipping")
+            results.append({
                 "id": r[0],
                 "role": r[1],
                 "content": r[2],
-                "tool_calls": json.loads(r[3]) if r[3] else None,
+                "tool_calls": tool_calls,
                 "tool_call_id": r[4],
                 "created_at": r[5],
-            }
-            for r in rows
-        ]
+            })
+        return results
 
     async def get_message_count(self, conversation_id: str) -> int:
         """Get the total number of messages in a conversation."""

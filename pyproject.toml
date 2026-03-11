@@ -112,11 +112,8 @@ exclude = [
     "plutus/skills/creator.py",
     "plutus/skills/loader.py",
     "plutus/skills/python_runner.py",
-    # Workers
-    "plutus/workers/code_analysis_worker.py",
-    "plutus/workers/file_edit_worker.py",
-    "plutus/workers/shell_worker.py",
-    "plutus/workers/custom_worker.py",
+    # Workers — NOT excluded: these are subprocess scripts that must ship as .py
+    # (they are executed via subprocess, not imported, so .so/.pyd won't work)
     # Connector bridges
     "plutus/connectors/discord_bridge.py",
     "plutus/connectors/telegram_bridge.py",
