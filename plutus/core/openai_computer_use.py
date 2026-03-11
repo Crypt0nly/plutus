@@ -63,11 +63,10 @@ class OpenAIComputerUseAgent:
 
         if executor is None:
             from plutus.pc.computer_use import ComputerUseExecutor
-            # OpenAI docs recommend 1440x900 or 1600x900 for best click accuracy.
-            # Pass a custom target resolution so we don't use Anthropic's scaling.
-            self._executor = ComputerUseExecutor(
-                target_width=1440, target_height=900,
-            )
+            # OpenAI supports up to 10.24M px with detail="original".
+            # Use native resolution (no Anthropic-style downscaling) so
+            # coordinates map 1:1 and click accuracy is maximized.
+            self._executor = ComputerUseExecutor(native_resolution=True)
         else:
             self._executor = executor
 
@@ -281,7 +280,11 @@ class OpenAIComputerUseAgent:
 
                 # Run synchronous desktop action in a thread to avoid blocking
                 # the event loop (PyAutoGUI / screenshot capture is blocking I/O).
-                result = await asyncio.to_thread(self._execute_action, action)
+                try:
+                    result = await asyncio.to_thread(self._execute_action, action)
+                except Exception as e:
+                    logger.exception(f"Action execution failed: {action.get('type')}")
+                    result = {"type": "error", "error": str(e)}
 
                 yield OpenAIComputerUseEvent("tool_result", {
                     "id": call_id,
@@ -293,7 +296,14 @@ class OpenAIComputerUseAgent:
                 await asyncio.sleep(self.ACTION_DELAY)
 
             # Capture screenshot after executing actions
-            screenshot_url = await asyncio.to_thread(self._capture_screenshot_b64)
+            try:
+                screenshot_url = await asyncio.to_thread(self._capture_screenshot_b64)
+            except Exception as e:
+                logger.exception("Screenshot capture failed")
+                yield OpenAIComputerUseEvent("error", {
+                    "message": f"Screenshot capture failed: {e}"
+                })
+                return
             if not screenshot_url:
                 yield OpenAIComputerUseEvent("error", {
                     "message": "Failed to capture screenshot after actions"
