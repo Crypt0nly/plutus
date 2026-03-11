@@ -63,7 +63,11 @@ class OpenAIComputerUseAgent:
 
         if executor is None:
             from plutus.pc.computer_use import ComputerUseExecutor
-            self._executor = ComputerUseExecutor()
+            # OpenAI docs recommend 1440x900 or 1600x900 for best click accuracy.
+            # Pass a custom target resolution so we don't use Anthropic's scaling.
+            self._executor = ComputerUseExecutor(
+                target_width=1440, target_height=900,
+            )
         else:
             self._executor = executor
 
@@ -107,20 +111,27 @@ class OpenAIComputerUseAgent:
             return self._executor.execute_action("double_click", coordinate=[x, y])
 
         elif action_type == "scroll":
-            scroll_x = action.get("scrollX", 0)
-            scroll_y = action.get("scrollY", 0)
-            if scroll_y != 0:
-                direction = "up" if scroll_y > 0 else "down"
-                amount = abs(scroll_y)
-                return self._executor.execute_action(
-                    "scroll", direction=direction, amount=amount
-                )
-            elif scroll_x != 0:
-                direction = "right" if scroll_x > 0 else "left"
-                amount = abs(scroll_x)
-                return self._executor.execute_action(
-                    "scroll", direction=direction, amount=amount
-                )
+            # OpenAI uses delta_x/delta_y (or deltaX/deltaY/scroll_y variants)
+            delta_x = action.get("delta_x") or action.get("deltaX") or 0
+            delta_y = action.get("delta_y") or action.get("deltaY") or action.get("scroll_y") or 0
+            # Optional scroll position
+            coord = None
+            if action.get("x") is not None and action.get("y") is not None:
+                coord = [action["x"], action["y"]]
+            if delta_y != 0:
+                direction = "up" if delta_y < 0 else "down"
+                amount = abs(delta_y)
+                kwargs = {"direction": direction, "amount": amount}
+                if coord:
+                    kwargs["coordinate"] = coord
+                return self._executor.execute_action("scroll", **kwargs)
+            elif delta_x != 0:
+                direction = "left" if delta_x < 0 else "right"
+                amount = abs(delta_x)
+                kwargs = {"direction": direction, "amount": amount}
+                if coord:
+                    kwargs["coordinate"] = coord
+                return self._executor.execute_action("scroll", **kwargs)
             return {"type": "text", "text": "No scroll amount specified"}
 
         elif action_type == "type":
@@ -128,7 +139,11 @@ class OpenAIComputerUseAgent:
             return self._executor.execute_action("type", text=text)
 
         elif action_type == "keypress":
-            keys = action.get("keys", [])
+            # OpenAI uses keys (array) or key (single string)
+            keys = action.get("keys") or []
+            if not keys:
+                single = action.get("key", "")
+                keys = [single] if single else []
             if len(keys) == 1:
                 return self._executor.execute_action("key", text=keys[0])
             elif len(keys) > 1:
@@ -137,14 +152,23 @@ class OpenAIComputerUseAgent:
             return {"type": "text", "text": "No keys specified"}
 
         elif action_type == "wait":
-            duration = action.get("duration", 1.0)
-            return self._executor.execute_action("wait", duration=duration)
+            # OpenAI uses ms/duration_ms (milliseconds); convert to seconds
+            ms = action.get("ms") or action.get("duration_ms") or 1000
+            return self._executor.execute_action("wait", duration=ms / 1000.0)
 
         elif action_type == "drag":
-            start_x = action.get("startX", 0)
-            start_y = action.get("startY", 0)
-            end_x = action.get("endX", 0)
-            end_y = action.get("endY", 0)
+            # OpenAI drag uses path: [{x, y}, ...] for the drag trajectory.
+            # Start position is (x, y), path contains intermediate/end points.
+            start_x = action.get("x", 0)
+            start_y = action.get("y", 0)
+            path = action.get("path", [])
+            if path:
+                # Use the last point in the path as the end coordinate
+                end = path[-1]
+                end_x = end.get("x", start_x)
+                end_y = end.get("y", start_y)
+            else:
+                end_x, end_y = start_x, start_y
             return self._executor.execute_action(
                 "left_click_drag",
                 start_coordinate=[start_x, start_y],
@@ -190,6 +214,7 @@ class OpenAIComputerUseAgent:
             response = await client.responses.create(
                 model=self._model,
                 tools=[{"type": "computer"}],
+                truncation="auto",
                 input=user_message,
             )
         except Exception as e:
@@ -282,6 +307,7 @@ class OpenAIComputerUseAgent:
                 response = await client.responses.create(
                     model=self._model,
                     tools=[{"type": "computer"}],
+                    truncation="auto",
                     previous_response_id=previous_response_id,
                     input=[{
                         "type": "computer_call_output",
