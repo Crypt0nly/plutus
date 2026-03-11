@@ -24,6 +24,114 @@ from typing import Any, AsyncIterator, Callable
 logger = logging.getLogger("plutus.agent.openai_computer_use")
 
 
+def execute_openai_computer_action(
+    executor: Any, action: dict[str, Any]
+) -> dict[str, Any]:
+    """Translate an OpenAI computer_call action to executor calls.
+
+    Standalone function so it can be reused by both the dedicated
+    OpenAIComputerUseAgent and the main agent loop (native computer use).
+
+    OpenAI action types:
+      screenshot, click, double_click, scroll, type, keypress,
+      wait, drag, move
+    """
+    action_type = action.get("type", "")
+
+    if action_type == "screenshot":
+        return executor.execute_action("screenshot")
+
+    elif action_type == "click":
+        x, y = action.get("x", 0), action.get("y", 0)
+        button = action.get("button", "left")
+        action_name = {
+            "left": "left_click",
+            "right": "right_click",
+            "middle": "middle_click",
+        }.get(button, "left_click")
+        return executor.execute_action(action_name, coordinate=[x, y])
+
+    elif action_type == "double_click":
+        x, y = action.get("x", 0), action.get("y", 0)
+        return executor.execute_action("double_click", coordinate=[x, y])
+
+    elif action_type == "scroll":
+        delta_x = action.get("delta_x") or action.get("deltaX") or 0
+        delta_y = (
+            action.get("delta_y") or action.get("deltaY") or action.get("scroll_y") or 0
+        )
+        coord = None
+        if action.get("x") is not None and action.get("y") is not None:
+            coord = [action["x"], action["y"]]
+        if delta_y != 0:
+            direction = "up" if delta_y < 0 else "down"
+            amount = abs(delta_y)
+            kwargs: dict[str, Any] = {"direction": direction, "amount": amount}
+            if coord:
+                kwargs["coordinate"] = coord
+            return executor.execute_action("scroll", **kwargs)
+        elif delta_x != 0:
+            direction = "left" if delta_x < 0 else "right"
+            amount = abs(delta_x)
+            kwargs = {"direction": direction, "amount": amount}
+            if coord:
+                kwargs["coordinate"] = coord
+            return executor.execute_action("scroll", **kwargs)
+        return {"type": "text", "text": "No scroll amount specified"}
+
+    elif action_type == "type":
+        text = action.get("text", "")
+        return executor.execute_action("type", text=text)
+
+    elif action_type == "keypress":
+        keys = action.get("keys") or []
+        if not keys:
+            single = action.get("key", "")
+            keys = [single] if single else []
+        if len(keys) == 1:
+            return executor.execute_action("key", text=keys[0])
+        elif len(keys) > 1:
+            combo = "+".join(keys)
+            return executor.execute_action("key", text=combo)
+        return {"type": "text", "text": "No keys specified"}
+
+    elif action_type == "wait":
+        ms = action.get("ms") or action.get("duration_ms") or 1000
+        return executor.execute_action("wait", duration=ms / 1000.0)
+
+    elif action_type == "drag":
+        start_x = action.get("x", 0)
+        start_y = action.get("y", 0)
+        path = action.get("path", [])
+        if path:
+            end = path[-1]
+            end_x = end.get("x", start_x)
+            end_y = end.get("y", start_y)
+        else:
+            end_x, end_y = start_x, start_y
+        return executor.execute_action(
+            "left_click_drag",
+            start_coordinate=[start_x, start_y],
+            coordinate=[end_x, end_y],
+        )
+
+    elif action_type == "move":
+        x, y = action.get("x", 0), action.get("y", 0)
+        return executor.execute_action("mouse_move", coordinate=[x, y])
+
+    else:
+        return {"type": "error", "error": f"Unknown action type: {action_type}"}
+
+
+def capture_screenshot_data_uri(executor: Any) -> str | None:
+    """Capture a screenshot and return as a data URI string."""
+    result = executor.execute_action("screenshot")
+    if result.get("type") == "image" and result.get("base64"):
+        media = result.get("media_type", "image/png")
+        return f"data:{media};base64,{result['base64']}"
+    return None
+
+
 class OpenAIComputerUseEvent:
     """Events emitted by the OpenAI computer use agent for the UI."""
 
@@ -84,110 +192,12 @@ class OpenAIComputerUseAgent:
                 await result
 
     def _execute_action(self, action: dict[str, Any]) -> dict[str, Any]:
-        """Translate an OpenAI computer_call action to executor calls.
-
-        OpenAI action types:
-          screenshot, click, double_click, scroll, type, keypress,
-          wait, drag, move
-        """
-        action_type = action.get("type", "")
-
-        if action_type == "screenshot":
-            return self._executor.execute_action("screenshot")
-
-        elif action_type == "click":
-            x, y = action.get("x", 0), action.get("y", 0)
-            button = action.get("button", "left")
-            action_name = {
-                "left": "left_click",
-                "right": "right_click",
-                "middle": "middle_click",
-            }.get(button, "left_click")
-            return self._executor.execute_action(action_name, coordinate=[x, y])
-
-        elif action_type == "double_click":
-            x, y = action.get("x", 0), action.get("y", 0)
-            return self._executor.execute_action("double_click", coordinate=[x, y])
-
-        elif action_type == "scroll":
-            # OpenAI uses delta_x/delta_y (or deltaX/deltaY/scroll_y variants)
-            delta_x = action.get("delta_x") or action.get("deltaX") or 0
-            delta_y = action.get("delta_y") or action.get("deltaY") or action.get("scroll_y") or 0
-            # Optional scroll position
-            coord = None
-            if action.get("x") is not None and action.get("y") is not None:
-                coord = [action["x"], action["y"]]
-            if delta_y != 0:
-                direction = "up" if delta_y < 0 else "down"
-                amount = abs(delta_y)
-                kwargs = {"direction": direction, "amount": amount}
-                if coord:
-                    kwargs["coordinate"] = coord
-                return self._executor.execute_action("scroll", **kwargs)
-            elif delta_x != 0:
-                direction = "left" if delta_x < 0 else "right"
-                amount = abs(delta_x)
-                kwargs = {"direction": direction, "amount": amount}
-                if coord:
-                    kwargs["coordinate"] = coord
-                return self._executor.execute_action("scroll", **kwargs)
-            return {"type": "text", "text": "No scroll amount specified"}
-
-        elif action_type == "type":
-            text = action.get("text", "")
-            return self._executor.execute_action("type", text=text)
-
-        elif action_type == "keypress":
-            # OpenAI uses keys (array) or key (single string)
-            keys = action.get("keys") or []
-            if not keys:
-                single = action.get("key", "")
-                keys = [single] if single else []
-            if len(keys) == 1:
-                return self._executor.execute_action("key", text=keys[0])
-            elif len(keys) > 1:
-                combo = "+".join(keys)
-                return self._executor.execute_action("key", text=combo)
-            return {"type": "text", "text": "No keys specified"}
-
-        elif action_type == "wait":
-            # OpenAI uses ms/duration_ms (milliseconds); convert to seconds
-            ms = action.get("ms") or action.get("duration_ms") or 1000
-            return self._executor.execute_action("wait", duration=ms / 1000.0)
-
-        elif action_type == "drag":
-            # OpenAI drag uses path: [{x, y}, ...] for the drag trajectory.
-            # Start position is (x, y), path contains intermediate/end points.
-            start_x = action.get("x", 0)
-            start_y = action.get("y", 0)
-            path = action.get("path", [])
-            if path:
-                # Use the last point in the path as the end coordinate
-                end = path[-1]
-                end_x = end.get("x", start_x)
-                end_y = end.get("y", start_y)
-            else:
-                end_x, end_y = start_x, start_y
-            return self._executor.execute_action(
-                "left_click_drag",
-                start_coordinate=[start_x, start_y],
-                coordinate=[end_x, end_y],
-            )
-
-        elif action_type == "move":
-            x, y = action.get("x", 0), action.get("y", 0)
-            return self._executor.execute_action("mouse_move", coordinate=[x, y])
-
-        else:
-            return {"type": "error", "error": f"Unknown action type: {action_type}"}
+        """Translate an OpenAI computer_call action to executor calls."""
+        return execute_openai_computer_action(self._executor, action)
 
     def _capture_screenshot_b64(self) -> str | None:
         """Capture a screenshot and return as a data URI string."""
-        result = self._executor.execute_action("screenshot")
-        if result.get("type") == "image" and result.get("base64"):
-            media = result.get("media_type", "image/png")
-            return f"data:{media};base64,{result['base64']}"
-        return None
+        return capture_screenshot_data_uri(self._executor)
 
     async def run_task(self, user_message: str) -> AsyncIterator[OpenAIComputerUseEvent]:
         """Run a computer use task, yielding events for the UI."""
