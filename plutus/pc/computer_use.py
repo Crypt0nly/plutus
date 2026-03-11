@@ -45,9 +45,9 @@ def _get_scale_factor(width: int, height: int) -> float:
 
 
 class ComputerUseExecutor:
-    """Executes desktop actions requested by Claude's Computer Use Tool.
+    """Executes desktop actions requested by an LLM's Computer Use Tool.
 
-    This class is the bridge between Claude's abstract actions and the real desktop.
+    This class is the bridge between the model's abstract actions and the real desktop.
     It handles:
       - Screenshot capture (returns base64 PNG at API-appropriate resolution)
       - Mouse actions (click, move, drag, scroll) with coordinate scaling
@@ -58,13 +58,23 @@ class ComputerUseExecutor:
         executor = ComputerUseExecutor()
         # Get tool definition for the API
         tool_def = executor.get_tool_definition()
-        # Execute an action from Claude
+        # Execute an action
         result = executor.execute_action(action="screenshot")
         result = executor.execute_action(action="left_click", coordinate=[500, 300])
+
+    For OpenAI computer use, pass a target resolution to bypass Anthropic's scaling:
+        executor = ComputerUseExecutor(target_width=1440, target_height=900)
     """
 
-    def __init__(self, display_number: int | None = None):
+    def __init__(
+        self,
+        display_number: int | None = None,
+        target_width: int | None = None,
+        target_height: int | None = None,
+    ):
         self._display_number = display_number
+        self._target_width = target_width
+        self._target_height = target_height
         self._screen_width: int = 0
         self._screen_height: int = 0
         self._scale_factor: float = 1.0
@@ -136,10 +146,24 @@ class ComputerUseExecutor:
         self._compute_scale()
 
     def _compute_scale(self) -> None:
-        """Compute the scale factor and API dimensions."""
-        self._scale_factor = _get_scale_factor(self._screen_width, self._screen_height)
-        self._api_width = int(self._screen_width * self._scale_factor)
-        self._api_height = int(self._screen_height * self._scale_factor)
+        """Compute the scale factor and API dimensions.
+
+        When target_width / target_height are set (e.g. for OpenAI computer use),
+        scale to that exact resolution instead of using Anthropic's constraints.
+        """
+        if self._target_width and self._target_height:
+            # Custom target resolution — scale to fit exactly
+            self._api_width = self._target_width
+            self._api_height = self._target_height
+            self._scale_factor = min(
+                self._target_width / self._screen_width,
+                self._target_height / self._screen_height,
+            )
+        else:
+            # Default: Anthropic's image constraints
+            self._scale_factor = _get_scale_factor(self._screen_width, self._screen_height)
+            self._api_width = int(self._screen_width * self._scale_factor)
+            self._api_height = int(self._screen_height * self._scale_factor)
         logger.info(
             f"Screen: {self._screen_width}x{self._screen_height}, "
             f"API: {self._api_width}x{self._api_height}, "

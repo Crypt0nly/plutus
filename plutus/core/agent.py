@@ -759,6 +759,14 @@ class AgentRuntime:
     def key_configured(self) -> bool:
         return self._llm.key_configured
 
+    def reload_model(self) -> None:
+        """Re-read model config and hot-swap the LLM client settings.
+
+        Called by the config update route when model.* fields change so the
+        agent immediately uses the new provider/model without a restart.
+        """
+        self._llm.reload_model(self._config.model)
+
     def reload_key(self) -> bool:
         """Re-check API key after user configures one via the UI."""
         return self._llm.reload_key()
