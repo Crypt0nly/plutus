@@ -144,17 +144,18 @@ class ConversationManager:
         if not self._summarizer or not self._active_conversation_id:
             return
 
-        # Get total message count
-        all_messages = await self._memory.get_messages(self._active_conversation_id)
-        total = len(all_messages)
+        # Quick count check — avoids loading all messages just to see if we should summarize
+        total = await self._memory.get_message_count(self._active_conversation_id)
 
         # Only summarize when we have significantly more messages than the window
         threshold = int(self._context_window * 1.5)
         if total <= threshold:
             return
 
-        # Messages to summarize: everything except the most recent context_window
+        # Now load the messages we actually need to summarize
+        # (everything except the most recent context_window)
         keep_count = self._context_window
+        all_messages = await self._memory.get_messages(self._active_conversation_id)
         messages_to_summarize = all_messages[:-keep_count]
 
         # Only summarize messages we haven't already summarized
