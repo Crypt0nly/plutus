@@ -28,6 +28,7 @@ const defaultModels: Record<string, { id: string; label: string }[]> = {
     { id: "claude-haiku-4-5", label: "Haiku 4-5" },
   ],
   openai: [
+    { id: "gpt-5.4", label: "GPT-5.4" },
     { id: "gpt-5.2", label: "GPT-5.2" },
     { id: "gpt-5", label: "GPT-5" },
     { id: "gpt-4.1", label: "GPT-4.1" },

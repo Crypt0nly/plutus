@@ -801,6 +801,14 @@ def create_router() -> APIRouter:
         state = get_state()
         config = state.get("config")
         config.update(body.patch)
+
+        # Hot-reload the agent's LLM client when model settings change so the
+        # user doesn't need to restart the server after switching models.
+        if "model" in body.patch:
+            agent = state.get("agent")
+            if agent is not None:
+                agent.reload_model()
+
         return {"message": "Config updated"}
 
     # ── Setup / Onboarding ────────────────────────────────────
