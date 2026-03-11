@@ -245,13 +245,8 @@ class PlutusContext:
 
     def _create_llm_client(self):
         """Create an OpenAI-compatible LLM client."""
-        try:
-            from openai import AsyncOpenAI
-            return AsyncOpenAI()  # Uses OPENAI_API_KEY env var
-        except ImportError:
-            raise RuntimeError(
-                "openai package not installed. Run: pip install openai"
-            )
+        from openai import AsyncOpenAI
+        return AsyncOpenAI()  # Uses OPENAI_API_KEY env var
 
     # ── File I/O ───────────────────────────────────────────
 
