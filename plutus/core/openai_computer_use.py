@@ -196,14 +196,7 @@ class OpenAIComputerUseAgent:
 
         yield OpenAIComputerUseEvent("thinking", {"message": f"Starting task: {user_message}"})
 
-        try:
-            from openai import AsyncOpenAI
-        except ImportError:
-            yield OpenAIComputerUseEvent("error", {
-                "message": "The 'openai' package is required for OpenAI computer use. "
-                           "Install it with: pip install openai"
-            })
-            return
+        from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=self._api_key)
         previous_response_id = None
