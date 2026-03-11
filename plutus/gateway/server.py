@@ -53,8 +53,15 @@ async def _heartbeat_on_beat(prompt: str) -> None:
     agent: AgentRuntime | None = _state.get("agent")
     if not agent:
         return
-    async for event in agent.process_message(prompt):
-        await ws_manager.broadcast(event.to_dict())
+    try:
+        async for event in agent.process_message(prompt):
+            await ws_manager.broadcast(event.to_dict())
+    except Exception as e:
+        logger.exception("Heartbeat agent processing failed")
+        await ws_manager.broadcast({
+            "type": "error",
+            "message": f"Heartbeat error: {e}",
+        })
 
 
 async def _heartbeat_on_event(event_data: dict[str, Any]) -> None:
@@ -556,12 +563,16 @@ async def _scheduler_on_fire(job: ScheduledJob) -> str:
     elif agent:
         # Run on main agent
         result_parts = []
-        async for event in agent.process_message(
-            f"[SCHEDULED JOB: {job.name}]\n{job.prompt}"
-        ):
-            await ws_manager.broadcast(event.to_dict())
-            if hasattr(event, "content") and event.content:
-                result_parts.append(event.content)
+        try:
+            async for event in agent.process_message(
+                f"[SCHEDULED JOB: {job.name}]\n{job.prompt}"
+            ):
+                await ws_manager.broadcast(event.to_dict())
+                if hasattr(event, "content") and event.content:
+                    result_parts.append(event.content)
+        except Exception as e:
+            logger.exception(f"Scheduled job '{job.name}' failed")
+            return f"Job failed: {e}"
         return "\n".join(result_parts) if result_parts else "Job completed."
     else:
         raise RuntimeError("No agent or worker pool available")
