@@ -5,6 +5,7 @@ Supports Anthropic, OpenAI, local models (Ollama), and any OpenAI-compatible end
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import warnings
@@ -87,6 +88,14 @@ _IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 # MIME type for PDF documents (Anthropic-specific support)
 _PDF_TYPE = "application/pdf"
 
+# OpenAI models that support native computer use via the Responses API
+_OPENAI_COMPUTER_USE_MODELS = {"gpt-5.4", "computer-use-preview"}
+
+# Special tool call name used when the model natively returns a computer_call.
+# The agent loop checks for this name to execute via ComputerUseExecutor
+# instead of the normal tool registry.
+NATIVE_COMPUTER_USE_TOOL = "__computer_use__"
+
 
 class LLMClient:
     """Unified LLM client with tool-calling support."""
@@ -156,6 +165,23 @@ class LLMClient:
     def is_anthropic(self) -> bool:
         """Whether the current model is an Anthropic model."""
         return self._config.provider == "anthropic" or self._model.startswith("anthropic/")
+
+    @property
+    def is_openai(self) -> bool:
+        """Whether the current model is an OpenAI model."""
+        return self._config.provider == "openai" or self._model.startswith("openai/")
+
+    @property
+    def supports_native_computer_use(self) -> bool:
+        """Whether the current model supports OpenAI's native computer use tool.
+
+        When True, the agent loop should handle ``__computer_use__`` tool calls
+        by executing actions via ComputerUseExecutor instead of delegating to
+        the ``openai_computer`` wrapper tool.
+        """
+        if not self.is_openai:
+            return False
+        return self._config.model.lower() in _OPENAI_COMPUTER_USE_MODELS
 
     def _build_kwargs(self, **overrides: Any) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
@@ -378,7 +404,15 @@ class LLMClient:
         tools: list[ToolDefinition] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        """Send a completion request to the LLM."""
+        """Send a completion request to the LLM.
+
+        When the model supports native computer use (e.g. GPT-5.4), this
+        routes through the OpenAI Responses API instead of LiteLLM so that
+        the ``{"type": "computer"}`` tool is available natively.
+        """
+        if self.supports_native_computer_use:
+            return await self._complete_openai_native(messages, tools, **kwargs)
+
         call_kwargs = self._build_kwargs(**kwargs)
         expanded = self._expand_attachments(messages)
         call_kwargs["messages"] = self._sanitize_messages(expanded)
@@ -410,14 +444,214 @@ class LLMClient:
             if delta.content:
                 yield delta.content
 
+    async def _complete_openai_native(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[ToolDefinition] | None = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        """Send a completion via the OpenAI Responses API with native computer use.
+
+        This bypasses LiteLLM and uses the OpenAI SDK directly so we can
+        include ``{"type": "computer"}`` alongside regular function tools.
+        """
+        from openai import AsyncOpenAI
+
+        api_key = os.environ.get(self._config.api_key_env)
+        client = AsyncOpenAI(api_key=api_key)
+
+        # Convert our message format to Responses API input items
+        instructions = None
+        input_items: list[dict[str, Any]] = []
+
+        # Track which tool_call IDs were computer calls so we can format
+        # their results as computer_call_output instead of function_call_output.
+        computer_call_ids: set[str] = set()
+
+        for msg in messages:
+            role = msg.get("role")
+
+            if role == "system":
+                instructions = msg.get("content", "")
+
+            elif role == "user":
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    input_items.append({"role": "user", "content": content})
+                else:
+                    # Multimodal content blocks — pass through
+                    input_items.append({"role": "user", "content": content})
+
+            elif role == "assistant":
+                content = msg.get("content")
+                tool_calls = msg.get("tool_calls") or []
+
+                # Emit text content as an assistant message
+                if content:
+                    input_items.append({
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": content}],
+                    })
+
+                # Emit tool calls in their native format
+                for tc in tool_calls:
+                    tc_id = tc.get("id", "")
+                    tc_name = tc.get("name", "")
+                    tc_args = tc.get("arguments", {})
+
+                    if tc_name == NATIVE_COMPUTER_USE_TOOL:
+                        # Reconstruct the computer_call item
+                        computer_call_ids.add(tc_id)
+                        input_items.append({
+                            "type": "computer_call",
+                            "call_id": tc_id,
+                            "actions": tc_args.get("actions", []),
+                        })
+                    else:
+                        # Regular function call
+                        args_str = json.dumps(tc_args) if isinstance(tc_args, dict) else tc_args
+                        input_items.append({
+                            "type": "function_call",
+                            "call_id": tc_id,
+                            "name": tc_name,
+                            "arguments": args_str,
+                        })
+
+            elif role == "tool":
+                tc_id = msg.get("tool_call_id", "")
+                content = msg.get("content", "")
+
+                if tc_id in computer_call_ids:
+                    # Extract screenshot URL from the JSON result
+                    screenshot_url = ""
+                    try:
+                        data = json.loads(content)
+                        screenshot_url = data.get("screenshot_url", "")
+                    except (json.JSONDecodeError, ValueError):
+                        screenshot_url = content
+
+                    input_items.append({
+                        "type": "computer_call_output",
+                        "call_id": tc_id,
+                        "output": {
+                            "type": "computer_screenshot",
+                            "image_url": screenshot_url,
+                        },
+                    })
+                else:
+                    input_items.append({
+                        "type": "function_call_output",
+                        "call_id": tc_id,
+                        "output": content,
+                    })
+
+        # Build tools: native computer + function tools
+        api_tools: list[dict[str, Any]] = [{"type": "computer"}]
+        if tools:
+            for t in tools:
+                api_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    },
+                })
+
+        create_kwargs: dict[str, Any] = {
+            "model": self._config.model,
+            "tools": api_tools,
+            "input": input_items,
+            "truncation": "auto",
+        }
+        if instructions:
+            create_kwargs["instructions"] = instructions
+
+        response = await client.responses.create(**create_kwargs)
+        return self._parse_openai_native_response(response)
+
+    def _parse_openai_native_response(self, response: Any) -> LLMResponse:
+        """Parse an OpenAI Responses API response into our LLMResponse format."""
+        content_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+
+        for item in response.output:
+            item_type = getattr(item, "type", None)
+
+            if item_type == "message":
+                for block in getattr(item, "content", []):
+                    if getattr(block, "type", None) == "output_text":
+                        content_parts.append(block.text)
+
+            elif item_type == "computer_call":
+                # Convert to a ToolCall with our special name so the agent
+                # loop knows to execute via ComputerUseExecutor.
+                actions_raw = getattr(item, "actions", []) or []
+                actions = []
+                for a in actions_raw:
+                    if hasattr(a, "model_dump"):
+                        actions.append(a.model_dump())
+                    elif hasattr(a, "__dict__"):
+                        actions.append(
+                            {k: v for k, v in a.__dict__.items() if not k.startswith("_")}
+                        )
+                    else:
+                        actions.append({"type": getattr(a, "type", "unknown")})
+
+                tool_calls.append(ToolCall(
+                    id=item.call_id,
+                    name=NATIVE_COMPUTER_USE_TOOL,
+                    arguments={"actions": actions},
+                ))
+
+            elif item_type == "function_call":
+                args = getattr(item, "arguments", "{}")
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(
+                            f"Failed to parse args for {item.name}: {e}. "
+                            f"Raw args (first 300 chars): {repr(args[:300])}"
+                        )
+                        args = {"__parse_error": str(e), "__raw_preview": args[:500]}
+                tool_calls.append(ToolCall(
+                    id=item.call_id,
+                    name=item.name,
+                    arguments=args,
+                ))
+
+        content = "\n".join(content_parts) if content_parts else None
+
+        usage: dict[str, int] = {}
+        if hasattr(response, "usage") and response.usage:
+            input_t = getattr(response.usage, "input_tokens", 0) or 0
+            output_t = getattr(response.usage, "output_tokens", 0) or 0
+            usage = {
+                "prompt_tokens": input_t,
+                "completion_tokens": output_t,
+                "total_tokens": input_t + output_t,
+            }
+
+        finish_reason = "stop"
+        if tool_calls:
+            finish_reason = "tool_calls"
+        if getattr(response, "status", None) == "incomplete":
+            finish_reason = "length"
+
+        return LLMResponse(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            usage=usage,
+        )
+
     def _parse_response(self, response: Any) -> LLMResponse:
         choice = response.choices[0]
         message = choice.message
 
         tool_calls = []
         if message.tool_calls:
-            import json
-
             for tc in message.tool_calls:
                 # Skip server-side tool calls (srvtoolu_*).  These are
                 # Anthropic server-executed tools (web_search, web_fetch)

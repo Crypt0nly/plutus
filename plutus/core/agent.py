@@ -21,7 +21,7 @@ from typing import Any, AsyncIterator, Callable
 
 from plutus.config import PlutusConfig, SecretsStore
 from plutus.core.conversation import ConversationManager
-from plutus.core.llm import LLMClient, LLMResponse, ToolDefinition
+from plutus.core.llm import NATIVE_COMPUTER_USE_TOOL, LLMClient, LLMResponse, ToolDefinition
 from plutus.core.memory import MemoryStore
 from plutus.core.planner import PlanManager
 from plutus.core.summarizer import ConversationSummarizer
@@ -1042,9 +1042,14 @@ class AgentRuntime:
                 _INTERNAL_TOOLS = {"plan", "memory"}
 
                 if tc.name not in _INTERNAL_TOOLS:
-                    # Check guardrails for external tools
+                    # Check guardrails for external tools.
+                    # Native computer use maps to the same guardrail rules
+                    # as the openai_computer wrapper tool.
+                    guardrail_name = (
+                        "openai_computer" if tc.name == NATIVE_COMPUTER_USE_TOOL else tc.name
+                    )
                     operation = tc.arguments.get("operation")
-                    decision = self._guardrails.check(tc.name, operation, tc.arguments)
+                    decision = self._guardrails.check(guardrail_name, operation, tc.arguments)
 
                     if not decision.allowed:
                         result_text = f"[DENIED] {decision.reason}"
@@ -1087,13 +1092,15 @@ class AgentRuntime:
                         await self._conversation.add_tool_result(tc.id, result_text)
                         continue
 
-                # Execute the tool (plan tool handled internally)
+                # Execute the tool (plan and native computer use handled internally)
                 try:
                     if tc.name == "plan":
                         result = await self._handle_plan_tool(tc.arguments)
                         result_text = str(result)
                         # Emit plan update event for UI
                         await self._emit(AgentEvent("plan_update", {"result": result_text}))
+                    elif tc.name == NATIVE_COMPUTER_USE_TOOL:
+                        result_text = await self._execute_native_computer_use(tc.arguments)
                     else:
                         result = await self._execute_tool(tc.name, tc.arguments)
                         result_text = str(result)
@@ -1119,6 +1126,45 @@ class AgentRuntime:
             {"message": f"Reached maximum tool rounds ({max_rounds}). Stopping."},
         )
         yield AgentEvent("done", {})
+
+    async def _execute_native_computer_use(self, arguments: dict[str, Any]) -> str:
+        """Execute OpenAI native computer use actions and return screenshot result.
+
+        Called when the coordinator model (e.g. GPT-5.4) returns a ``computer_call``
+        directly. Executes each action via ``ComputerUseExecutor`` and captures a
+        screenshot to feed back to the model.
+        """
+        from plutus.core.openai_computer_use import (
+            capture_screenshot_data_uri,
+            execute_openai_computer_action,
+        )
+        from plutus.pc.computer_use import ComputerUseExecutor
+
+        if not hasattr(self, "_computer_executor"):
+            self._computer_executor = ComputerUseExecutor(native_resolution=True)
+
+        executor = self._computer_executor
+        actions = arguments.get("actions", [])
+
+        for action in actions:
+            try:
+                await asyncio.to_thread(execute_openai_computer_action, executor, action)
+            except Exception as e:
+                logger.exception(f"Computer use action failed: {action.get('type')}")
+                return json.dumps({"error": str(e)})
+            await asyncio.sleep(0.5)
+
+        # Capture screenshot after all actions
+        try:
+            screenshot_url = await asyncio.to_thread(capture_screenshot_data_uri, executor)
+        except Exception as e:
+            logger.exception("Screenshot capture failed after computer use actions")
+            return json.dumps({"error": f"Screenshot capture failed: {e}"})
+
+        if not screenshot_url:
+            return json.dumps({"error": "Failed to capture screenshot"})
+
+        return json.dumps({"screenshot_url": screenshot_url})
 
     async def _execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         """Execute a tool via the registry."""
@@ -1209,11 +1255,21 @@ class AgentRuntime:
           2. plan (task tracking — high priority)
           3. memory (persistent facts and goals)
           4. everything else
+
+        When the model supports native computer use (e.g. GPT-5.4), the
+        ``openai_computer`` wrapper tool is excluded — the model uses its
+        built-in computer use capability directly via the Responses API.
         """
         defs: list[ToolDefinition] = []
 
+        # When the model handles computer use natively, exclude the wrapper
+        # tool so the model doesn't try to delegate to itself.
+        native_cu = self._llm.supports_native_computer_use
+        _excluded = {"openai_computer"} if native_cu else set()
+
         if self._tool_registry:
             all_defs = self._tool_registry.get_definitions()
+            all_defs = [d for d in all_defs if d.name not in _excluded]
             pc_defs = [d for d in all_defs if d.name == "pc"]
             memory_defs = [d for d in all_defs if d.name == "memory"]
             other_defs = [d for d in all_defs if d.name not in ("pc", "memory")]
