@@ -11,6 +11,7 @@ YOU decide which model each worker uses based on what the task requires:
   - "claude-sonnet": Balanced. Use for standard tasks that need some reasoning.
   - "claude-opus":   Smartest. Use for complex analysis, writing, architecture.
   - "gpt-5.2":      OpenAI alternative for complex tasks.
+  - "gpt-5.4":      OpenAI latest — supports native computer use.
   - "auto":          Let the system auto-select based on task complexity.
 
 Operations:
@@ -58,6 +59,7 @@ class WorkerTool(Tool):
             "- 'claude-sonnet': Balanced — standard tasks needing some reasoning\n"
             "- 'claude-opus': Smartest — complex analysis, writing, deep research\n"
             "- 'gpt-5.2': OpenAI alternative for complex tasks\n"
+            "- 'gpt-5.4': OpenAI latest — supports native computer use\n"
             "- 'auto': Let the system pick based on task complexity\n\n"
             "Operations:\n"
             "- spawn: Create a new background worker. Set model_key to choose its brain.\n"
@@ -93,13 +95,14 @@ class WorkerTool(Tool):
                 },
                 "model_key": {
                     "type": "string",
-                    "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "auto"],
+                    "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "gpt-5.4", "auto"],
                     "description": (
                         "Which model the worker should use. YOU decide based on the task:\n"
                         "- 'claude-haiku': Simple tasks (fetching, summarizing, lookups)\n"
                         "- 'claude-sonnet': Medium tasks (browsing, standard work)\n"
                         "- 'claude-opus': Hard tasks (analysis, writing, research)\n"
                         "- 'gpt-5.2': OpenAI alternative\n"
+                        "- 'gpt-5.4': OpenAI latest — native computer use\n"
                         "- 'auto': System picks based on task complexity"
                     ),
                 },
@@ -112,7 +115,7 @@ class WorkerTool(Tool):
                             "prompt": {"type": "string", "description": "Task instruction"},
                             "model_key": {
                                 "type": "string",
-                                "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "auto"],
+                                "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "gpt-5.4", "auto"],
                                 "description": "Model for this worker",
                             },
                         },

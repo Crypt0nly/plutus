@@ -15,6 +15,7 @@ import { MemoryView } from "./components/memory/MemoryView";
 import ConnectorsView from "./components/connectors/ConnectorsView";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { UpdateBanner } from "./components/layout/UpdateBanner";
+import { ConnectionBanner } from "./components/layout/ConnectionBanner";
 import { ConversationPanel } from "./components/layout/ConversationPanel";
 import { PanelLeft } from "lucide-react";
 import type { WSMessage } from "./lib/types";
@@ -359,6 +360,7 @@ export default function App() {
       <ConversationPanel send={send} />
       <div className="relative flex-1 flex flex-col min-w-0">
         {view === "chat" && <HistoryPillToggle />}
+        <ConnectionBanner />
         <UpdateBanner />
         <Header />
         <main className={`flex-1 flex flex-col ${view === "chat" ? "overflow-hidden" : "overflow-y-auto p-6"}`}>

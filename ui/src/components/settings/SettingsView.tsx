@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging } from "lucide-react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
@@ -84,6 +84,13 @@ export function SettingsView() {
           saving={saving}
           keyStatus={keyStatus}
           onKeyStatusChange={fetchKeyStatus}
+        />
+
+        {/* System Prompt */}
+        <SystemPromptEditor
+          value={config.agent?.system_prompt || ""}
+          onSave={(value) => handleSave({ agent: { system_prompt: value } })}
+          saving={saving}
         />
 
         {/* Heartbeat */}
@@ -289,6 +296,98 @@ export function SettingsView() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SystemPromptEditor({
+  value,
+  onSave,
+  saving,
+}: {
+  value: string;
+  onSave: (value: string) => void;
+  saving: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setDraft(value);
+    setDirty(false);
+  }, [value]);
+
+  const handleChange = (text: string) => {
+    setDraft(text);
+    setDirty(text !== value);
+  };
+
+  const handleSave = () => {
+    onSave(draft);
+    setDirty(false);
+  };
+
+  const handleClear = () => {
+    setDraft("");
+    onSave("");
+    setDirty(false);
+  };
+
+  return (
+    <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
+            <FileText className="w-5 h-5 text-rose-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-200">System Prompt</h3>
+            <p className="text-xs text-gray-500">
+              Custom instructions appended to the default system prompt
+            </p>
+          </div>
+        </div>
+        {dirty && (
+          <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+            Unsaved
+          </span>
+        )}
+      </div>
+
+      <textarea
+        rows={8}
+        placeholder="e.g. Always respond in Spanish. Prefer Python over JavaScript. Never delete files without asking first..."
+        value={draft}
+        onChange={(e) => handleChange(e.target.value)}
+        className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2.5 text-sm text-gray-300 placeholder-gray-600 font-mono leading-relaxed resize-y focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20 min-h-[120px]"
+      />
+
+      <div className="flex items-center justify-between mt-3">
+        <p className="text-[10px] text-gray-600">
+          These instructions are added under a "User Instructions" section in every conversation.
+        </p>
+        <div className="flex items-center gap-2">
+          {draft && (
+            <button
+              onClick={handleClear}
+              className="text-xs text-gray-500 hover:text-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-800/50 transition-colors"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={!dirty || saving}
+            className={`text-xs font-medium px-4 py-1.5 rounded-lg transition-colors ${
+              dirty && !saving
+                ? "bg-plutus-500 text-white hover:bg-plutus-600"
+                : "bg-gray-800/50 text-gray-600 cursor-not-allowed"
+            }`}
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
         </div>
       </div>
     </div>
