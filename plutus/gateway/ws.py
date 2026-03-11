@@ -279,11 +279,18 @@ async def _handle_standard_chat(
         "message": "🖥️ Computer Use mode — I can see and control your screen",
     })
 
-    async for event in agent.process_message(user_text, attachments=attachments):
-        await ws.send_json(event.to_dict())
+    try:
+        async for event in agent.process_message(user_text, attachments=attachments):
+            await ws.send_json(event.to_dict())
 
-        if event.type == "tool_approval_needed":
-            await manager.broadcast(event.to_dict())
+            if event.type == "tool_approval_needed":
+                await manager.broadcast(event.to_dict())
+    except Exception as e:
+        logger.exception("Standard agent error")
+        await ws.send_json({
+            "type": "error",
+            "message": f"Agent error: {str(e)}",
+        })
 
 
 async def _handle_approval(ws: WebSocket, message: dict[str, Any]) -> None:
