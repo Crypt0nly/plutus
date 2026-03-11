@@ -32,7 +32,8 @@ const defaultModels: Record<string, { id: string; label: string; desc: string }[
     { id: "claude-haiku-4-5", label: "Claude Haiku 4-5", desc: "Fast & efficient — simple tasks" },
   ],
   openai: [
-    { id: "gpt-5.2", label: "GPT-5.2", desc: "Latest flagship model" },
+    { id: "gpt-5.4", label: "GPT-5.4", desc: "Latest — native computer use support" },
+    { id: "gpt-5.2", label: "GPT-5.2", desc: "Flagship model" },
     { id: "gpt-5", label: "GPT-5", desc: "Previous generation flagship" },
     { id: "gpt-4.1", label: "GPT-4.1", desc: "Reliable general purpose" },
     { id: "gpt-4.1-mini", label: "GPT-4.1 Mini", desc: "Fast & affordable" },
