@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from plutus.config import plutus_dir
+
+# Maximum audit log file size before rotation (10 MB)
+_MAX_AUDIT_SIZE = 10 * 1024 * 1024
 
 
 @dataclass
@@ -37,26 +41,49 @@ class AuditLogger:
     def log(self, entry: AuditEntry) -> None:
         with open(self._path, "a") as f:
             f.write(json.dumps(entry.to_dict()) + "\n")
+        # Rotate if file exceeds size limit
+        self._maybe_rotate()
+
+    def _maybe_rotate(self) -> None:
+        """Rotate audit log if it exceeds the max size."""
+        try:
+            if self._path.exists() and self._path.stat().st_size > _MAX_AUDIT_SIZE:
+                rotated = self._path.with_suffix(".jsonl.old")
+                # Remove previous rotation if it exists
+                if rotated.exists():
+                    rotated.unlink()
+                self._path.rename(rotated)
+        except OSError:
+            pass
 
     def recent(self, limit: int = 50, offset: int = 0) -> list[AuditEntry]:
-        """Read the most recent audit entries."""
+        """Read the most recent audit entries without loading the entire file."""
         if not self._path.exists():
             return []
 
-        lines = self._path.read_text().strip().split("\n")
-        lines = [l for l in lines if l]  # skip blanks
+        lines = _tail_lines(self._path, limit + offset)
         lines.reverse()  # newest first
 
         entries = []
         for line in lines[offset : offset + limit]:
-            data = json.loads(line)
-            entries.append(AuditEntry(**data))
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+                entries.append(AuditEntry(**data))
+            except (json.JSONDecodeError, TypeError):
+                continue
         return entries
 
     def count(self) -> int:
         if not self._path.exists():
             return 0
-        return sum(1 for line in self._path.read_text().strip().split("\n") if line)
+        count = 0
+        with open(self._path) as f:
+            for line in f:
+                if line.strip():
+                    count += 1
+        return count
 
     def clear(self) -> None:
         """Wipe the audit log."""
@@ -81,3 +108,34 @@ class AuditLogger:
             "by_tool": by_tool,
             "latest": entries[0].to_dict() if entries else None,
         }
+
+
+def _tail_lines(path: Path, n: int) -> list[str]:
+    """Read the last n lines from a file efficiently without loading the whole file."""
+    if n <= 0:
+        return []
+    try:
+        file_size = path.stat().st_size
+        if file_size == 0:
+            return []
+        # For small files, just read the whole thing
+        if file_size < 1024 * 1024:  # < 1 MB
+            with open(path) as f:
+                lines = f.readlines()
+            return [line.rstrip("\n") for line in lines[-n:]]
+        # For large files, read from the end in chunks
+        chunk_size = 8192
+        lines: list[str] = []
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            remaining = f.tell()
+            buffer = b""
+            while remaining > 0 and len(lines) <= n:
+                read_size = min(chunk_size, remaining)
+                remaining -= read_size
+                f.seek(remaining)
+                buffer = f.read(read_size) + buffer
+                lines = buffer.decode(errors="replace").splitlines()
+            return lines[-n:]
+    except OSError:
+        return []

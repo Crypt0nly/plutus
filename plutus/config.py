@@ -137,11 +137,22 @@ class PlutusConfig(BaseSettings):
 
     @classmethod
     def load(cls) -> PlutusConfig:
-        """Load config from disk, or return defaults."""
+        """Load config from disk, or return defaults.
+
+        If the config file is corrupted or contains invalid data,
+        falls back to defaults and logs a warning.
+        """
         path = config_path()
         if path.exists():
-            data = json.loads(path.read_text())
-            return cls(**data)
+            try:
+                data = json.loads(path.read_text())
+                return cls(**data)
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                import logging
+                logging.getLogger("plutus.config").warning(
+                    f"Corrupted config file ({e}), using defaults. "
+                    f"Fix or delete {path} to silence this warning."
+                )
         return cls()
 
     def save(self) -> None:
