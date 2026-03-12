@@ -92,8 +92,18 @@ if (-not $pythonFull) { $pythonFull = $pythonCmd }
 Write-Host "[2/4] Installing Plutus..." -ForegroundColor Cyan
 
 try {
+    # pip writes progress/warnings to stderr. With $ErrorActionPreference = "Stop",
+    # PowerShell converts stderr lines into terminating ErrorRecords when merged via
+    # 2>&1, causing a spurious failure. Temporarily relax the preference so that
+    # only genuine failures (non-zero exit code) are treated as errors.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
     & $pythonFull -m pip install --upgrade pip 2>&1 | Out-Null
     & $pythonFull -m pip install --upgrade "plutus-ai[all]" 2>&1 | Out-Null
+
+    $ErrorActionPreference = $prevEAP
+
     if ($LASTEXITCODE -ne 0) {
         throw "pip install failed"
     }
