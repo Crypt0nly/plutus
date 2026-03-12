@@ -370,24 +370,44 @@ class LLMClient:
     def _build_tools_list(
         self, tools: list[ToolDefinition] | None
     ) -> list[dict[str, Any]] | None:
-        """Build the tools list, injecting Anthropic server-side tools when applicable."""
+        """Build the tools list, injecting Anthropic server-side tools when applicable.
+
+        OpenAI models use the flat format (Responses API compatible):
+            {"type": "function", "name": ..., "description": ..., "parameters": ...}
+        Other providers use the nested Chat Completions format:
+            {"type": "function", "function": {"name": ..., ...}}
+        """
         if not tools:
             # Even with no function tools, inject server-side tools for Anthropic
             if self.is_anthropic and self._config.web_search:
                 return [_ANTHROPIC_WEB_SEARCH_TOOL, _ANTHROPIC_WEB_FETCH_TOOL]
             return None
 
-        tool_list: list[dict[str, Any]] = [
-            {
-                "type": "function",
-                "function": {
+        if self.is_openai:
+            # OpenAI Responses API flat format — also accepted by Chat
+            # Completions via LiteLLM translation
+            tool_list: list[dict[str, Any]] = [
+                {
+                    "type": "function",
                     "name": t.name,
                     "description": t.description,
                     "parameters": t.parameters,
-                },
-            }
-            for t in tools
-        ]
+                }
+                for t in tools
+            ]
+        else:
+            # Chat Completions nested format (Anthropic, Ollama, etc.)
+            tool_list = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    },
+                }
+                for t in tools
+            ]
 
         # Inject Anthropic server-side web search/fetch tools.
         # These are executed by Anthropic's servers — the client never
@@ -546,16 +566,15 @@ class LLMClient:
                     })
 
         # Build tools: native computer + function tools
+        # Responses API uses flat format (no nested "function" key)
         api_tools: list[dict[str, Any]] = [{"type": "computer"}]
         if tools:
             for t in tools:
                 api_tools.append({
                     "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters,
-                    },
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
                 })
 
         create_kwargs: dict[str, Any] = {
