@@ -91,9 +91,34 @@ class MemoryStore:
         self._db: aiosqlite.Connection | None = None
 
     async def initialize(self) -> None:
-        self._db = await aiosqlite.connect(self._db_path)
-        await self._db.executescript(_SCHEMA)
-        await self._db.commit()
+        try:
+            self._db = await aiosqlite.connect(self._db_path)
+            await self._db.executescript(_SCHEMA)
+            await self._db.commit()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger("plutus.memory")
+            logger.error(
+                f"Failed to open database at {self._db_path}: {e}. "
+                f"Attempting fresh database."
+            )
+            # Try to recover by removing the corrupted file and starting fresh
+            import os
+            try:
+                if self._db:
+                    await self._db.close()
+            except Exception:
+                pass
+            self._db = None
+            backup_path = self._db_path + ".corrupt"
+            try:
+                os.rename(self._db_path, backup_path)
+                logger.warning(f"Corrupted database moved to {backup_path}")
+            except OSError:
+                pass
+            self._db = await aiosqlite.connect(self._db_path)
+            await self._db.executescript(_SCHEMA)
+            await self._db.commit()
         # Migrate: add last_activity column if missing (for existing databases)
         await self._migrate_last_activity()
         # Create index after migration ensures column exists

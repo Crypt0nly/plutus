@@ -41,6 +41,10 @@ logger = logging.getLogger("plutus.gateway")
 # Shared application state
 _state: dict[str, Any] = {}
 
+# Lock to prevent concurrent agent.process_message() calls
+# (e.g. heartbeat firing while user message is being processed)
+_agent_lock = asyncio.Lock()
+
 
 def get_state() -> dict[str, Any]:
     return _state
@@ -53,9 +57,15 @@ async def _heartbeat_on_beat(prompt: str) -> None:
     agent: AgentRuntime | None = _state.get("agent")
     if not agent:
         return
+    # Use the lock to prevent concurrent process_message calls
+    # (e.g. heartbeat firing while a user message is being processed)
+    if _agent_lock.locked():
+        logger.debug("Skipping heartbeat — agent is busy processing")
+        return
     try:
-        async for event in agent.process_message(prompt):
-            await ws_manager.broadcast(event.to_dict())
+        async with _agent_lock:
+            async for event in agent.process_message(prompt):
+                await ws_manager.broadcast(event.to_dict())
     except Exception as e:
         logger.exception("Heartbeat agent processing failed")
         await ws_manager.broadcast({
@@ -514,6 +524,9 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 if not hasattr(agent, '_pending_worker_results'):
                     agent._pending_worker_results = []
                 agent._pending_worker_results.append(worker_context_msg)
+                # Cap pending results to prevent unbounded memory growth
+                if len(agent._pending_worker_results) > 100:
+                    agent._pending_worker_results = agent._pending_worker_results[-50:]
                 logger.info(f"Worker {task.id} result queued for coordinator (queue size: {len(agent._pending_worker_results)})")
             else:
                 logger.warning(f"Worker {task.id} could not queue result — no agent in state")
@@ -680,156 +693,227 @@ async def _conversation_cleanup_loop(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
-    config = PlutusConfig.load()
+    # Pre-declare resources so cleanup runs even if startup fails partway
+    memory: MemoryStore | None = None
+    scheduler: Scheduler | None = None
+    heartbeat: HeartbeatRunner | None = None
+    worker_pool: WorkerPool | None = None
+    cleanup_task: asyncio.Task | None = None
+    connector_manager = None
+    keep_alive = None
+    agent: AgentRuntime | None = None
 
-    # Initialize secrets store and inject stored keys into environment
-    secrets = SecretsStore()
-    secrets.inject_all()
+    try:
+        config = PlutusConfig.load()
 
-    # Initialize model router
-    routing_config = ModelRoutingConfig(
-        enabled_models=config.model_routing.enabled_models,
-        cost_conscious=config.model_routing.cost_conscious,
-        default_worker_model=config.model_routing.default_worker_model,
-        default_scheduler_model=config.model_routing.default_scheduler_model,
-    )
-    model_router = ModelRouter(config=routing_config, secrets=secrets)
+        # Initialize secrets store and inject stored keys into environment
+        secrets = SecretsStore()
+        secrets.inject_all()
 
-    # Initialize memory
-    memory = MemoryStore(config.resolve_memory_db())
-    await memory.initialize()
-
-    # Initialize guardrails
-    guardrails = GuardrailEngine(config)
-
-    # Initialize tool registry
-    tool_registry = create_default_registry()
-
-    # Initialize standard agent
-    agent = AgentRuntime(
-        config=config,
-        guardrails=guardrails,
-        memory=memory,
-        tool_registry=tool_registry,
-        secrets=secrets,
-    )
-    await agent.initialize()
-
-    # Register memory tool
-    from plutus.tools.memory_tool import MemoryTool
-    memory_tool = MemoryTool(memory, agent.conversation)
-    tool_registry.register(memory_tool)
-
-    # Initialize worker pool
-    worker_pool = WorkerPool(
-        max_workers=config.workers.max_concurrent_workers,
-        executor=_worker_executor,
-        on_status_change=_worker_status_change,
-    )
-
-    # Register worker tool
-    from plutus.tools.worker_tool import WorkerTool
-    worker_tool = WorkerTool(worker_pool)
-    tool_registry.register(worker_tool)
-
-    # Initialize scheduler
-    scheduler = Scheduler(
-        on_fire=_scheduler_on_fire,
-        on_event=_scheduler_on_event,
-    )
-
-    # Register scheduler tool
-    from plutus.tools.scheduler_tool import SchedulerTool
-    scheduler_tool = SchedulerTool(scheduler)
-    tool_registry.register(scheduler_tool)
-
-    # Start scheduler if enabled
-    if config.scheduler.enabled:
-        await scheduler.start()
-
-    # Initialize Computer Use agent
-    cu_agent = _init_computer_use_agent(config, secrets)
-
-    # Initialize heartbeat
-    heartbeat = HeartbeatRunner(
-        config=config.heartbeat,
-        on_beat=_heartbeat_on_beat,
-        on_event=_heartbeat_on_event,
-    )
-    if config.heartbeat.enabled:
-        heartbeat.start()
-
-    # Initialize connector manager and register connector tool
-    from plutus.connectors import create_connector_manager
-    from plutus.tools.connector_tool import ConnectorTool
-    connector_manager = create_connector_manager()
-    connector_tool = ConnectorTool(connector_manager)
-    tool_registry.register(connector_tool)
-
-    # Start conversation auto-cleanup background task
-    cleanup_task = None
-    if config.memory.conversation_auto_delete_days > 0:
-        cleanup_task = asyncio.create_task(
-            _conversation_cleanup_loop(memory, config)
+        # Initialize model router
+        routing_config = ModelRoutingConfig(
+            enabled_models=config.model_routing.enabled_models,
+            cost_conscious=config.model_routing.cost_conscious,
+            default_worker_model=config.model_routing.default_worker_model,
+            default_scheduler_model=config.model_routing.default_scheduler_model,
         )
+        model_router = ModelRouter(config=routing_config, secrets=secrets)
+
+        # Initialize memory
+        memory = MemoryStore(config.resolve_memory_db())
+        await memory.initialize()
+
+        # Initialize guardrails
+        guardrails = GuardrailEngine(config)
+
+        # Initialize tool registry
+        tool_registry = create_default_registry()
+
+        # Initialize standard agent
+        agent = AgentRuntime(
+            config=config,
+            guardrails=guardrails,
+            memory=memory,
+            tool_registry=tool_registry,
+            secrets=secrets,
+        )
+        await agent.initialize()
+
+        # Register memory tool
+        from plutus.tools.memory_tool import MemoryTool
+        memory_tool = MemoryTool(memory, agent.conversation)
+        tool_registry.register(memory_tool)
+
+        # Initialize worker pool
+        worker_pool = WorkerPool(
+            max_workers=config.workers.max_concurrent_workers,
+            executor=_worker_executor,
+            on_status_change=_worker_status_change,
+        )
+
+        # Register worker tool
+        from plutus.tools.worker_tool import WorkerTool
+        worker_tool = WorkerTool(worker_pool)
+        tool_registry.register(worker_tool)
+
+        # Initialize scheduler
+        scheduler = Scheduler(
+            on_fire=_scheduler_on_fire,
+            on_event=_scheduler_on_event,
+        )
+
+        # Register scheduler tool
+        from plutus.tools.scheduler_tool import SchedulerTool
+        scheduler_tool = SchedulerTool(scheduler)
+        tool_registry.register(scheduler_tool)
+
+        # Start scheduler if enabled
+        if config.scheduler.enabled:
+            await scheduler.start()
+
+        # Initialize Computer Use agent
+        cu_agent = _init_computer_use_agent(config, secrets)
+
+        # Initialize heartbeat
+        heartbeat = HeartbeatRunner(
+            config=config.heartbeat,
+            on_beat=_heartbeat_on_beat,
+            on_event=_heartbeat_on_event,
+        )
+        if config.heartbeat.enabled:
+            heartbeat.start()
+
+        # Initialize connector manager and register connector tool
+        from plutus.connectors import create_connector_manager
+        from plutus.tools.connector_tool import ConnectorTool
+        connector_manager = create_connector_manager()
+        connector_tool = ConnectorTool(connector_manager)
+        tool_registry.register(connector_tool)
+
+        # Start conversation auto-cleanup background task
+        if config.memory.conversation_auto_delete_days > 0:
+            cleanup_task = asyncio.create_task(
+                _conversation_cleanup_loop(memory, config)
+            )
+            logger.info(
+                f"Conversation auto-cleanup enabled: {config.memory.conversation_auto_delete_days} days"
+            )
+
+        # Store all state
+        _state["config"] = config
+        _state["secrets"] = secrets
+        _state["memory"] = memory
+        _state["guardrails"] = guardrails
+        _state["tool_registry"] = tool_registry
+        _state["agent"] = agent
+        _state["cu_agent"] = cu_agent
+        _state["heartbeat"] = heartbeat
+        _state["connector_manager"] = connector_manager
+        _state["model_router"] = model_router
+        _state["worker_pool"] = worker_pool
+        _state["scheduler"] = scheduler
+
+        key_status = "configured" if agent.key_configured else "NOT configured"
+        cu_status = "enabled" if cu_agent else "disabled"
+        heartbeat_status = "enabled" if config.heartbeat.enabled else "disabled"
+        scheduler_status = "enabled" if config.scheduler.enabled else "disabled"
         logger.info(
-            f"Conversation auto-cleanup enabled: {config.memory.conversation_auto_delete_days} days"
+            f"Plutus v0.3.2 started — tier={config.guardrails.tier}, "
+            f"model={config.model.provider}/{config.model.model}, "
+            f"api_key={key_status}, computer_use={cu_status}, "
+            f"heartbeat={heartbeat_status}, scheduler={scheduler_status}, "
+            f"max_workers={config.workers.max_concurrent_workers}, "
+            f"worker_model={config.model_routing.default_worker_model}, "
+            f"scheduler_model={config.model_routing.default_scheduler_model}"
         )
 
-    # Store all state
-    _state["config"] = config
-    _state["secrets"] = secrets
-    _state["memory"] = memory
-    _state["guardrails"] = guardrails
-    _state["tool_registry"] = tool_registry
-    _state["agent"] = agent
-    _state["cu_agent"] = cu_agent
-    _state["heartbeat"] = heartbeat
-    _state["connector_manager"] = connector_manager
-    _state["model_router"] = model_router
-    _state["worker_pool"] = worker_pool
-    _state["scheduler"] = scheduler
+        # Initialize keep-alive (prevent system sleep)
+        from plutus.core.keep_alive import KeepAlive
+        keep_alive = KeepAlive()
+        if config.keep_alive.enabled:
+            keep_alive.enable()
+        _state["keep_alive"] = keep_alive
 
-    key_status = "configured" if agent.key_configured else "NOT configured"
-    cu_status = "enabled" if cu_agent else "disabled"
-    heartbeat_status = "enabled" if config.heartbeat.enabled else "disabled"
-    scheduler_status = "enabled" if config.scheduler.enabled else "disabled"
-    logger.info(
-        f"Plutus v0.3.2 started — tier={config.guardrails.tier}, "
-        f"model={config.model.provider}/{config.model.model}, "
-        f"api_key={key_status}, computer_use={cu_status}, "
-        f"heartbeat={heartbeat_status}, scheduler={scheduler_status}, "
-        f"max_workers={config.workers.max_concurrent_workers}, "
-        f"worker_model={config.model_routing.default_worker_model}, "
-        f"scheduler_model={config.model_routing.default_scheduler_model}"
-    )
+        # Auto-start connectors
+        await _auto_start_connectors(connector_manager)
 
-    # Initialize keep-alive (prevent system sleep)
-    from plutus.core.keep_alive import KeepAlive
-    keep_alive = KeepAlive()
-    if config.keep_alive.enabled:
-        keep_alive.enable()
-    _state["keep_alive"] = keep_alive
-
-    # Auto-start connectors
-    await _auto_start_connectors(connector_manager)
+    except Exception:
+        # Startup failed — clean up any resources that were initialized
+        logger.exception("Startup failed — cleaning up partial resources")
+        await _cleanup_resources(
+            keep_alive=keep_alive,
+            cleanup_task=cleanup_task,
+            heartbeat=heartbeat,
+            scheduler=scheduler,
+            worker_pool=worker_pool,
+            connector_manager=connector_manager,
+            agent=agent,
+        )
+        raise
 
     yield
 
-    # Shutdown
-    keep_alive.disable()
+    # Normal shutdown — each step wrapped individually so one failure
+    # doesn't prevent subsequent cleanup from running
+    await _cleanup_resources(
+        keep_alive=keep_alive,
+        cleanup_task=cleanup_task,
+        heartbeat=heartbeat,
+        scheduler=scheduler,
+        worker_pool=worker_pool,
+        connector_manager=connector_manager,
+        agent=agent,
+    )
+    logger.info("Plutus shut down")
+
+
+async def _cleanup_resources(
+    *,
+    keep_alive: Any = None,
+    cleanup_task: asyncio.Task | None = None,
+    heartbeat: HeartbeatRunner | None = None,
+    scheduler: Scheduler | None = None,
+    worker_pool: WorkerPool | None = None,
+    connector_manager: Any = None,
+    agent: AgentRuntime | None = None,
+) -> None:
+    """Clean up server resources safely. Each step is independent."""
+    if keep_alive:
+        try:
+            keep_alive.disable()
+        except Exception as e:
+            logger.error(f"Error disabling keep-alive: {e}")
     if cleanup_task and not cleanup_task.done():
         cleanup_task.cancel()
         try:
             await cleanup_task
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, Exception):
             pass
-    heartbeat.stop()
-    await scheduler.stop()
-    await worker_pool.cleanup()
-    await connector_manager.stop_all()
-    await agent.shutdown()
-    logger.info("Plutus shut down")
+    if heartbeat:
+        try:
+            heartbeat.stop()
+        except Exception as e:
+            logger.error(f"Error stopping heartbeat: {e}")
+    if scheduler:
+        try:
+            await scheduler.stop()
+        except Exception as e:
+            logger.error(f"Error stopping scheduler: {e}")
+    if worker_pool:
+        try:
+            await worker_pool.cleanup()
+        except Exception as e:
+            logger.error(f"Error cleaning up worker pool: {e}")
+    if connector_manager:
+        try:
+            await connector_manager.stop_all()
+        except Exception as e:
+            logger.error(f"Error stopping connectors: {e}")
+    if agent:
+        try:
+            await agent.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down agent: {e}")
 
 
 def create_app(config: PlutusConfig | None = None) -> FastAPI:

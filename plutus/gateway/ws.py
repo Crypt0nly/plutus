@@ -30,16 +30,28 @@ _FORCE_CU_KEYWORDS = {
 }
 
 
+_MAX_WS_CONNECTIONS = 50  # safety limit to prevent FD/memory exhaustion
+
+
 class ConnectionManager:
     """Manages active WebSocket connections."""
 
     def __init__(self) -> None:
         self._connections: list[WebSocket] = []
 
-    async def connect(self, ws: WebSocket) -> None:
+    async def connect(self, ws: WebSocket) -> bool:
+        """Accept a WebSocket connection. Returns False if limit is reached."""
+        if len(self._connections) >= _MAX_WS_CONNECTIONS:
+            await ws.accept()
+            await ws.close(code=1013, reason="Too many connections")
+            logger.warning(
+                f"Rejected WebSocket — limit of {_MAX_WS_CONNECTIONS} reached"
+            )
+            return False
         await ws.accept()
         self._connections.append(ws)
         logger.info(f"Client connected ({len(self._connections)} total)")
+        return True
 
     def disconnect(self, ws: WebSocket) -> None:
         if ws in self._connections:
@@ -65,7 +77,8 @@ def create_ws_router() -> APIRouter:
 
     @router.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket) -> None:
-        await manager.connect(ws)
+        if not await manager.connect(ws):
+            return  # connection rejected (limit reached)
 
         try:
             while True:
@@ -270,6 +283,8 @@ async def _handle_standard_chat(
     attachments: list[dict[str, str]] | None = None,
 ) -> None:
     """Process a message through the standard LiteLLM agent."""
+    from plutus.gateway.server import _agent_lock
+
     logger.info(f"Standard agent handling: {user_text[:80]}")
 
     # Notify UI that we're using standard mode
@@ -280,11 +295,12 @@ async def _handle_standard_chat(
     })
 
     try:
-        async for event in agent.process_message(user_text, attachments=attachments):
-            await ws.send_json(event.to_dict())
+        async with _agent_lock:
+            async for event in agent.process_message(user_text, attachments=attachments):
+                await ws.send_json(event.to_dict())
 
-            if event.type == "tool_approval_needed":
-                await manager.broadcast(event.to_dict())
+                if event.type == "tool_approval_needed":
+                    await manager.broadcast(event.to_dict())
     except Exception as e:
         logger.exception("Standard agent error")
         await ws.send_json({
@@ -342,7 +358,8 @@ async def _handle_resume_conversation(ws: WebSocket, message: dict[str, Any]) ->
 
     if agent and conv_id:
         await agent.conversation.resume_conversation(conv_id)
-        messages = await state["memory"].get_messages(conv_id)
+        # Limit messages sent over WebSocket to prevent OOM on large conversations
+        messages = await state["memory"].get_messages(conv_id, limit=200)
         await ws.send_json(
             {
                 "type": "conversation_resumed",
