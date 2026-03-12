@@ -792,14 +792,40 @@ def update() -> None:
     """Update Plutus to the latest version."""
     import subprocess
 
+    from pathlib import Path
+
     console.print(f"\n  Current version: [bold]{__version__}[/bold]")
     console.print("  Checking for updates...\n")
+
+    # ── Windows workaround: rename locked .exe scripts so pip can overwrite ──
+    renamed_scripts: list[tuple[Path, Path]] = []
+    if sys.platform == "win32":
+        scripts_dir = Path(sys.executable).parent / "Scripts"
+        if not scripts_dir.is_dir():
+            scripts_dir = Path(sys.executable).parent
+        for pattern in ("plutus.exe", "plutus-*.exe"):
+            for exe in scripts_dir.glob(pattern):
+                bak = exe.with_suffix(".exe.old")
+                try:
+                    if bak.exists():
+                        bak.unlink()
+                    exe.rename(bak)
+                    renamed_scripts.append((bak, exe))
+                except OSError:
+                    pass
 
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", "plutus-ai"],
         capture_output=True,
         text=True,
     )
+
+    # ── Windows: clean up .old files ──
+    for bak, _orig in renamed_scripts:
+        try:
+            bak.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     if result.returncode != 0:
         console.print(f"  [red bold]Update failed:[/red bold]\n  {result.stderr.strip()[:300]}")
