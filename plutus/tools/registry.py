@@ -121,6 +121,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.code_editor import CodeEditorTool
     from plutus.tools.desktop import DesktopTool
     from plutus.tools.filesystem import FilesystemTool
+    from plutus.tools.image_gen import ImageGenTool
     from plutus.tools.openai_computer import OpenAIComputerTool
     from plutus.tools.pc_control import PCControlTool
     from plutus.tools.process import ProcessTool
@@ -128,6 +129,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.subprocess_tool import SubprocessTool
     from plutus.tools.system_info import SystemInfoTool
     from plutus.tools.tool_creator import ToolCreatorTool
+    from plutus.tools.video_gen import VideoGenTool
     from plutus.tools.web_search import WebSearchTool
     from plutus.tools.wsl import WSLTool
 
@@ -160,6 +162,12 @@ def create_default_registry() -> ToolRegistry:
     # Tool creator (needs registry reference for dynamic registration)
     tool_creator = ToolCreatorTool(subprocess_mgr, registry)
     registry.register(tool_creator)
+
+    # ═══════════════════════════════════════════════════════════
+    # MEDIA TOOLS — image and video generation
+    # ═══════════════════════════════════════════════════════════
+    registry.register(ImageGenTool())
+    registry.register(VideoGenTool())
 
     # ═══════════════════════════════════════════════════════════
     # WEB TOOLS — internet access and search

@@ -39,6 +39,7 @@ dependencies = [
     "aiohttp>=3.9.0",
     "discord.py>=2.3.0",
     "openai>=1.60.0",
+    "google-genai>=1.0.0",
 ]
 
 [project.optional-dependencies]
