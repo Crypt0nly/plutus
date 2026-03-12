@@ -1,6 +1,6 @@
 """Plutus — Autonomous AI agent with subprocess orchestration."""
 
-__version__ = "0.3.42"
+__version__ = "0.3.43"
 
 
 def _detect_build_tag() -> str:
