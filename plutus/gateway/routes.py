@@ -2144,6 +2144,24 @@ def create_router() -> APIRouter:
 
         steps: list[dict[str, Any]] = []
 
+        # ── Windows workaround: rename locked .exe scripts so pip can overwrite ──
+        renamed_scripts: list[tuple[Path, Path]] = []
+        if sys.platform == "win32":
+            scripts_dir = Path(sys.executable).parent / "Scripts"
+            if not scripts_dir.is_dir():
+                # --user installs put scripts next to python.exe
+                scripts_dir = Path(sys.executable).parent
+            for pattern in ("plutus.exe", "plutus-*.exe"):
+                for exe in scripts_dir.glob(pattern):
+                    bak = exe.with_suffix(".exe.old")
+                    try:
+                        if bak.exists():
+                            bak.unlink()
+                        exe.rename(bak)
+                        renamed_scripts.append((bak, exe))
+                    except OSError:
+                        pass  # best-effort; pip may still succeed
+
         if is_git:
             # ── Git install: pull + editable reinstall ──
             code, out, err = await run(
@@ -2197,6 +2215,13 @@ def create_router() -> APIRouter:
                     "steps": steps,
                     "previous_version": __version__,
                 }
+
+        # ── Windows: clean up renamed .exe.old files ──
+        for bak, _orig in renamed_scripts:
+            try:
+                bak.unlink(missing_ok=True)
+            except OSError:
+                pass
 
         # Read new version from the freshly installed package
         new_version = __version__
