@@ -21,6 +21,12 @@ import {
   ArrowRight,
   Settings2,
   Power,
+  Brain,
+  Sparkles,
+  Wand2,
+  Server,
+  KeyRound,
+  Globe,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -38,11 +44,14 @@ interface ConnectorData {
   display_name: string;
   description: string;
   icon: string;
+  category: string;
   configured: boolean;
   connected: boolean;
   auto_start: boolean;
   config: Record<string, any>;
   config_schema: ConnectorField[];
+  features?: string[];
+  docs_url?: string;
 }
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -50,9 +59,105 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Mail: Mail,
   MessageCircle: MessageCircle,
   MessageSquare: MessageSquare,
+  Brain: Brain,
+  Sparkles: Sparkles,
+  Wand2: Wand2,
+  Server: Server,
 };
 
-/* ─── Connector Card (grid item) ─── */
+/* ─── AI Provider Card ─── */
+function AIProviderCard({
+  connector,
+  onConfigure,
+}: {
+  connector: ConnectorData;
+  onConfigure: (c: ConnectorData) => void;
+}) {
+  const Icon = ICON_MAP[connector.icon] || Brain;
+
+  return (
+    <div
+      className={`group relative rounded-2xl border transition-all duration-200 hover:shadow-lg ${
+        connector.configured
+          ? "border-violet-500/25 bg-violet-500/[0.03] hover:border-violet-500/40 hover:shadow-violet-500/5"
+          : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
+      }`}
+    >
+      <div className="p-5">
+        {/* Header row */}
+        <div className="flex items-start justify-between mb-3">
+          <div
+            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${
+              connector.configured
+                ? "bg-violet-500/15 text-violet-400"
+                : "bg-gray-800/80 text-gray-500 group-hover:bg-gray-800 group-hover:text-gray-400"
+            }`}
+          >
+            <Icon className="w-5 h-5" />
+          </div>
+
+          {connector.configured ? (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/20">
+              <KeyRound className="w-3 h-3" />
+              Active
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/30">
+              <Power className="w-3 h-3" />
+              No key
+            </span>
+          )}
+        </div>
+
+        {/* Name + Description */}
+        <h3 className="text-[15px] font-semibold text-gray-100 mb-1">
+          {connector.display_name}
+        </h3>
+        <p className="text-xs text-gray-500 leading-relaxed mb-3">
+          {connector.description}
+        </p>
+
+        {/* Feature tags */}
+        {connector.features && connector.features.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {connector.features.map((feat) => (
+              <span
+                key={feat}
+                className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/20"
+              >
+                {feat}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Action button */}
+        <button
+          onClick={() => onConfigure(connector)}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+            connector.configured
+              ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
+              : "bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-600/15 hover:shadow-lg hover:shadow-violet-500/20 active:scale-[0.98]"
+          }`}
+        >
+          {connector.configured ? (
+            <>
+              <Settings2 className="w-4 h-4" />
+              Manage Key
+            </>
+          ) : (
+            <>
+              Add Key
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Messaging Connector Card ─── */
 function ConnectorCard({
   connector,
   onConfigure,
@@ -175,6 +280,7 @@ function ConfigureModal({
   const [togglingAutoStart, setTogglingAutoStart] = useState(false);
 
   const Icon = ICON_MAP[connector.icon] || Plug;
+  const isAI = connector.category === "ai";
   const supportsTwoWay = connector.name === "telegram" || connector.name === "discord";
 
   // Initialize form data
@@ -317,6 +423,12 @@ function ConfigureModal({
     }
   };
 
+  // Color scheme based on category
+  const accentColor = isAI ? "violet" : "plutus";
+  const saveButtonClass = isAI
+    ? "bg-violet-600 hover:bg-violet-500 shadow-md shadow-violet-600/15"
+    : "bg-plutus-600 hover:bg-plutus-500 shadow-md shadow-plutus-600/15";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -331,7 +443,11 @@ function ConfigureModal({
         <div className="flex items-center gap-4 px-6 pt-6 pb-4 border-b border-gray-800/40">
           <div
             className={`w-11 h-11 rounded-xl flex items-center justify-center ${
-              listening
+              isAI
+                ? connector.configured
+                  ? "bg-violet-500/15 text-violet-400"
+                  : "bg-violet-500/10 text-violet-400"
+                : listening
                 ? "bg-blue-500/15 text-blue-400"
                 : connector.configured
                 ? "bg-emerald-500/15 text-emerald-400"
@@ -341,9 +457,16 @@ function ConfigureModal({
             <Icon className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-gray-100">
-              {connector.display_name}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold text-gray-100">
+                {connector.display_name}
+              </h3>
+              {isAI && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20 uppercase tracking-wider">
+                  AI
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-500 truncate">
               {connector.description}
             </p>
@@ -358,7 +481,21 @@ function ConfigureModal({
 
         {/* Modal body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {/* Two-Way Messaging (Telegram) */}
+          {/* AI Provider features */}
+          {isAI && connector.features && connector.features.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {connector.features.map((feat) => (
+                <span
+                  key={feat}
+                  className="text-[10px] font-medium px-2.5 py-1 rounded-lg bg-violet-500/8 text-violet-300/70 ring-1 ring-violet-500/15"
+                >
+                  {feat}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Two-Way Messaging (Telegram/Discord) */}
           {supportsTwoWay && connector.configured && (
             <div className="rounded-xl bg-gray-900/80 border border-gray-800/40 p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -440,7 +577,7 @@ function ConfigureModal({
           {/* Configuration Fields */}
           <div>
             <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              Configuration
+              {isAI ? "API Key" : "Configuration"}
             </h4>
             <div className="space-y-3">
               {connector.config_schema.map((field) => (
@@ -460,7 +597,11 @@ function ConfigureModal({
                           ? "number"
                           : "text"
                       }
-                      className="w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20 transition-all"
+                      className={`w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none transition-all ${
+                        isAI
+                          ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+                          : "focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
+                      }`}
                       placeholder={field.placeholder}
                       value={formData[field.name] || ""}
                       onChange={(e) =>
@@ -494,6 +635,19 @@ function ConfigureModal({
             </div>
           </div>
 
+          {/* Docs link for AI providers */}
+          {isAI && connector.docs_url && (
+            <a
+              href={connector.docs_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs text-violet-400/70 hover:text-violet-400 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Get your API key from {connector.display_name}
+            </a>
+          )}
+
           {/* Test Result */}
           {testResult && (
             <div
@@ -512,8 +666,8 @@ function ConfigureModal({
             </div>
           )}
 
-          {/* Send Test Message */}
-          {connector.configured && connector.name !== "whatsapp" && (
+          {/* Send Test Message (messaging connectors only) */}
+          {!isAI && connector.configured && connector.name !== "whatsapp" && (
             <div>
               <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
                 Send Test Message
@@ -580,10 +734,12 @@ function ConfigureModal({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-plutus-600 hover:bg-plutus-500 text-white text-sm font-medium transition-all disabled:opacity-50 shadow-md shadow-plutus-600/15 active:scale-[0.98]"
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98] ${saveButtonClass}`}
           >
             {saving ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : isAI ? (
+              <KeyRound className="w-3.5 h-3.5" />
             ) : (
               <Plug className="w-3.5 h-3.5" />
             )}
@@ -613,7 +769,7 @@ function ConfigureModal({
               ) : (
                 <Trash2 className="w-3.5 h-3.5" />
               )}
-              Disconnect
+              {isAI ? "Remove Key" : "Disconnect"}
             </button>
           )}
         </div>
@@ -665,35 +821,57 @@ export default function ConnectorsView() {
     );
   }
 
-  const configured = connectors.filter((c) => c.configured);
-  const available = connectors.filter((c) => !c.configured);
+  // Split by category
+  const aiConnectors = connectors.filter((c) => c.category === "ai");
+  const messagingConnectors = connectors.filter((c) => c.category !== "ai");
+
+  const aiConfigured = aiConnectors.filter((c) => c.configured);
+  const aiAvailable = aiConnectors.filter((c) => !c.configured);
+
+  const msgConfigured = messagingConnectors.filter((c) => c.configured);
+  const msgAvailable = messagingConnectors.filter((c) => !c.configured);
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-4xl mx-auto p-6 space-y-8">
+      <div className="max-w-5xl mx-auto p-6 space-y-10">
         {/* Header */}
         <div>
-          <h2 className="text-xl font-bold text-gray-100 mb-1">Connectors</h2>
+          <h2 className="text-xl font-bold text-gray-100 mb-1">Connections</h2>
           <p className="text-sm text-gray-500">
-            Link Plutus with external services for notifications and two-way
-            communication
+            Manage AI provider keys and messaging integrations in one place
           </p>
         </div>
 
-        {/* Connected */}
-        {configured.length > 0 && (
+        {/* ═══════════════════════════════════════════════ */}
+        {/* AI PROVIDERS SECTION                           */}
+        {/* ═══════════════════════════════════════════════ */}
+        {aiConnectors.length > 0 && (
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Connected
-              </h3>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
-                {configured.length}
-              </span>
+            {/* Section header */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                <Brain className="w-4 h-4 text-violet-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200">
+                  AI Providers
+                </h3>
+                <p className="text-[11px] text-gray-500">
+                  API keys for language models, image &amp; video generation
+                </p>
+              </div>
+              {aiConfigured.length > 0 && (
+                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20">
+                  {aiConfigured.length} active
+                </span>
+              )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {configured.map((c) => (
-                <ConnectorCard
+
+            {/* AI cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Show configured first, then unconfigured */}
+              {[...aiConfigured, ...aiAvailable].map((c) => (
+                <AIProviderCard
                   key={c.name}
                   connector={c}
                   onConfigure={setConfiguring}
@@ -703,26 +881,73 @@ export default function ConnectorsView() {
           </div>
         )}
 
-        {/* Available */}
-        {available.length > 0 && (
+        {/* Divider */}
+        {aiConnectors.length > 0 && messagingConnectors.length > 0 && (
+          <div className="border-t border-gray-800/40" />
+        )}
+
+        {/* ═══════════════════════════════════════════════ */}
+        {/* MESSAGING CONNECTORS SECTION                   */}
+        {/* ═══════════════════════════════════════════════ */}
+        {messagingConnectors.length > 0 && (
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Available
-              </h3>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/30">
-                {available.length}
-              </span>
+            {/* Section header */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-lg bg-plutus-500/10 flex items-center justify-center">
+                <Globe className="w-4 h-4 text-plutus-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200">
+                  Messaging &amp; Notifications
+                </h3>
+                <p className="text-[11px] text-gray-500">
+                  Send messages and enable two-way communication
+                </p>
+              </div>
+              {msgConfigured.length > 0 && (
+                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+                  {msgConfigured.length} connected
+                </span>
+              )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {available.map((c) => (
-                <ConnectorCard
-                  key={c.name}
-                  connector={c}
-                  onConfigure={setConfiguring}
-                />
-              ))}
-            </div>
+
+            {/* Connected messaging */}
+            {msgConfigured.length > 0 && (
+              <div className="mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {msgConfigured.map((c) => (
+                    <ConnectorCard
+                      key={c.name}
+                      connector={c}
+                      onConfigure={setConfiguring}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Available messaging */}
+            {msgAvailable.length > 0 && (
+              <div>
+                {msgConfigured.length > 0 && (
+                  <div className="flex items-center gap-2 mb-3 mt-5">
+                    <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                      Available
+                    </h4>
+                    <div className="flex-1 border-t border-gray-800/30" />
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {msgAvailable.map((c) => (
+                    <ConnectorCard
+                      key={c.name}
+                      connector={c}
+                      onConfigure={setConfiguring}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -733,11 +958,11 @@ export default function ConnectorsView() {
               <Plug className="w-7 h-7 text-gray-600" />
             </div>
             <h3 className="text-sm font-semibold text-gray-300 mb-1">
-              No connectors available
+              No connections available
             </h3>
             <p className="text-xs text-gray-500 max-w-sm mx-auto">
-              Connectors let Plutus communicate through external services like
-              Telegram, email, and more.
+              Connections let Plutus access AI providers and communicate through
+              external services.
             </p>
           </div>
         )}
@@ -745,25 +970,25 @@ export default function ConnectorsView() {
         {/* How it works */}
         <div className="rounded-2xl bg-surface border border-gray-800/60 p-5">
           <h4 className="text-sm font-semibold text-gray-300 mb-3">
-            How Connectors Work
+            How It Works
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               {
                 step: "1",
-                text: "Click a connector and enter your credentials",
+                text: "Add your AI provider API keys to unlock models and generation tools",
               },
               {
                 step: "2",
-                text: 'Hit "Test Connection" to verify it works',
+                text: "Configure messaging connectors for notifications and two-way chat",
               },
               {
                 step: "3",
-                text: "Enable two-way messaging to chat from external apps",
+                text: 'Test each connection to verify it works — hit "Test Connection"',
               },
               {
                 step: "4",
-                text: 'Ask Plutus to "send me a Telegram message" anytime',
+                text: 'Ask Plutus to "generate an image" or "send me a Telegram message"',
               },
             ].map((item) => (
               <div

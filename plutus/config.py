@@ -195,6 +195,7 @@ def _deep_merge(base: dict, override: dict) -> None:
 PROVIDER_ENV_VARS: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
     "custom": "API_KEY",
 }
 
