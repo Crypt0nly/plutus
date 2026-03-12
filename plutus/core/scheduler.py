@@ -237,6 +237,7 @@ class Scheduler:
         self._executions: list[JobExecution] = []
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
+        self._active_job_tasks: set[asyncio.Task] = set()
 
         # Load persisted jobs
         self._load()
@@ -372,10 +373,12 @@ class Scheduler:
                         else:
                             job.next_run = self._calc_next_run(job)
 
-                        asyncio.create_task(
+                        task = asyncio.create_task(
                             self._fire_job(job),
                             name=f"job-{job.id}"
                         )
+                        self._active_job_tasks.add(task)
+                        task.add_done_callback(self._active_job_tasks.discard)
 
                 # Sleep 30 seconds between checks
                 try:
@@ -401,11 +404,14 @@ class Scheduler:
         )
 
         # Emit event
-        if self._on_event:
-            await self._on_event({
-                "type": "scheduler_job_fired",
-                "job": job.to_dict(),
-            })
+        try:
+            if self._on_event:
+                await self._on_event({
+                    "type": "scheduler_job_fired",
+                    "job": job.to_dict(),
+                })
+        except Exception as e:
+            logger.error(f"Failed to emit job_fired event for {job.id}: {e}")
 
         try:
             result = ""

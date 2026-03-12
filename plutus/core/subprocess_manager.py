@@ -324,6 +324,15 @@ class SubprocessManager:
         finally:
             await worker.stop()
             self._results[task.id] = result
+            # Trim results to prevent unbounded memory growth
+            if len(self._results) > 200:
+                # Keep only the 100 most recent results
+                sorted_ids = sorted(
+                    self._results,
+                    key=lambda tid: self._results[tid].duration,
+                )
+                for old_id in sorted_ids[:100]:
+                    del self._results[old_id]
 
         await self._notify(result)
         return result

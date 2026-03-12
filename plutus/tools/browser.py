@@ -83,7 +83,11 @@ class BrowserTool(Tool):
             from playwright.async_api import async_playwright
 
             self._pw = await async_playwright().start()
-            self._browser = await self._pw.chromium.launch(headless=False)
+            # Use headless mode when no display is available (e.g. Linux servers)
+            import os
+            has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+            headless = not has_display
+            self._browser = await self._pw.chromium.launch(headless=headless)
             self._page = await self._browser.new_page()
         except ImportError:
             raise RuntimeError(
@@ -262,7 +266,11 @@ class BrowserTool(Tool):
         if not code:
             return "[ERROR] Evaluate requires a 'value' parameter with JS code"
         result = await self._page.evaluate(code)
-        return str(result)
+        output = str(result)
+        # Cap output to prevent OOM from massive DOM dumps
+        if len(output) > 50000:
+            output = output[:50000] + "\n... [truncated at 50KB]"
+        return output
 
     async def _back(self, kwargs: dict) -> str:
         await self._page.go_back()
