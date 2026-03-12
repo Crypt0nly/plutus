@@ -54,6 +54,7 @@ class BaseConnector(ABC):
     display_name: str = ""
     description: str = ""
     icon: str = ""  # Lucide icon name for the UI
+    category: str = "messaging"  # "messaging" or "ai"
 
     def __init__(self):
         self._config_store = ConnectorConfig(self.name)
@@ -145,6 +146,7 @@ class BaseConnector(ABC):
             "display_name": self.display_name,
             "description": self.description,
             "icon": self.icon,
+            "category": self.category,
             "configured": self.is_configured,
             "connected": self.is_connected,
             "auto_start": self.auto_start,

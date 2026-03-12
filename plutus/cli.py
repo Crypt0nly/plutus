@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import webbrowser
+from pathlib import Path
 
 import click
 from rich.console import Console
@@ -78,13 +79,40 @@ def main(ctx: click.Context) -> None:
 @click.option("--port", default=None, type=int, help="Port to bind to (default: 7777)")
 @click.option("--dev", is_flag=True, help="Run in development mode (auto-reload)")
 @click.option("--no-browser", is_flag=True, help="Don't open the browser automatically")
-def start(host: str | None, port: int | None, dev: bool, no_browser: bool) -> None:
+@click.option("--force", is_flag=True, help="Kill any existing instance on the same port")
+def start(
+    host: str | None,
+    port: int | None,
+    dev: bool,
+    no_browser: bool,
+    force: bool,
+) -> None:
     """Launch the Plutus agent and web interface."""
     import uvicorn
 
     config = PlutusConfig.load()
     bind_host = host or config.gateway.host
     bind_port = port or config.gateway.port
+
+    # Check if port is already in use and handle it
+    if _port_in_use(bind_host, bind_port):
+        if force:
+            console.print(
+                f"  [yellow]Port {bind_port} in use — killing existing process...[/yellow]"
+            )
+            _kill_port(bind_port)
+            import time
+            time.sleep(1)
+        else:
+            console.print(
+                f"\n  [red bold]Port {bind_port} is already in use.[/red bold]\n"
+                f"  Plutus may already be running at http://{bind_host}:{bind_port}\n\n"
+                f"  Options:\n"
+                f"    plutus start --force      Kill the existing instance and restart\n"
+                f"    plutus start --port 7778  Start on a different port\n"
+                f"    plutus stop               Stop the running instance\n"
+            )
+            sys.exit(1)
 
     console.print(BANNER)
 
@@ -96,6 +124,9 @@ def start(host: str | None, port: int | None, dev: bool, no_browser: bool) -> No
     console.print(Panel(table, title="Configuration", border_style="cyan"))
     console.print()
 
+    # Write PID file for stop command
+    _write_pid_file(bind_port)
+
     if not no_browser and not dev:
         import threading
 
@@ -106,16 +137,136 @@ def start(host: str | None, port: int | None, dev: bool, no_browser: bool) -> No
 
         threading.Thread(target=_open, daemon=True).start()
 
-    uvicorn.run(
-        "plutus.gateway.server:create_app",
-        host=bind_host,
-        port=bind_port,
-        reload=dev,
-        factory=True,
-        log_level="info",
-        ws_ping_interval=20,   # Send WS ping frame every 20s
-        ws_ping_timeout=20,    # Close if no pong within 20s
+    try:
+        uvicorn.run(
+            "plutus.gateway.server:create_app",
+            host=bind_host,
+            port=bind_port,
+            reload=dev,
+            factory=True,
+            log_level="info",
+            ws_ping_interval=20,   # Send WS ping frame every 20s
+            ws_ping_timeout=20,    # Close if no pong within 20s
+        )
+    finally:
+        _remove_pid_file(bind_port)
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    """Check if a port is already bound."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return False
+        except OSError:
+            return True
+
+
+def _kill_port(port: int) -> None:
+    """Kill any process listening on the given port."""
+    import signal
+    try:
+        import psutil
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.laddr.port == port and conn.pid:
+                try:
+                    os.kill(conn.pid, signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    pass
+    except Exception:
+        # Fallback: try lsof
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["lsof", "-ti", f":{port}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for pid_str in result.stdout.strip().split():
+                try:
+                    os.kill(int(pid_str), signal.SIGTERM)
+                except (ValueError, ProcessLookupError, PermissionError):
+                    pass
+        except Exception:
+            pass
+
+
+def _pid_file_path(port: int) -> Path:
+    return plutus_dir() / f"plutus_{port}.pid"
+
+
+def _write_pid_file(port: int) -> None:
+    """Write the current PID to a file."""
+    try:
+        _pid_file_path(port).write_text(str(os.getpid()))
+    except OSError:
+        pass
+
+
+def _remove_pid_file(port: int) -> None:
+    """Remove the PID file."""
+    try:
+        path = _pid_file_path(port)
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
+@main.command()
+@click.option("--port", default=None, type=int, help="Port of the instance to stop")
+def stop(port: int | None) -> None:
+    """Stop a running Plutus instance."""
+    import signal
+
+    config = PlutusConfig.load()
+    target_port = port or config.gateway.port
+
+    pid_file = _pid_file_path(target_port)
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            console.print(f"  [green]Sent stop signal to Plutus (PID {pid})[/green]")
+            _remove_pid_file(target_port)
+            return
+        except (ValueError, ProcessLookupError):
+            _remove_pid_file(target_port)
+        except PermissionError:
+            console.print(f"  [red]Permission denied killing PID from {pid_file}[/red]")
+            return
+
+    # Fallback: kill by port
+    if _port_in_use("127.0.0.1", target_port):
+        _kill_port(target_port)
+        console.print(f"  [green]Stopped process on port {target_port}[/green]")
+    else:
+        console.print(f"  [dim]No Plutus instance found on port {target_port}[/dim]")
+
+
+@main.command(name="restart")
+@click.option("--port", default=None, type=int, help="Port to restart on")
+def restart_cmd(port: int | None) -> None:
+    """Restart Plutus (stop + start)."""
+    import subprocess
+    import time
+
+    config = PlutusConfig.load()
+    target_port = port or config.gateway.port
+
+    # Stop existing instance
+    if _port_in_use("127.0.0.1", target_port):
+        console.print(f"  [yellow]Stopping existing instance on port {target_port}...[/yellow]")
+        _kill_port(target_port)
+        time.sleep(1.5)
+
+    # Start new instance
+    console.print("  [green]Starting Plutus...[/green]")
+    subprocess.Popen(
+        [sys.executable, "-m", "plutus.cli", "start", "--port", str(target_port)],
+        start_new_session=True,
     )
+    console.print(f"  [green]Plutus restarting on port {target_port}[/green]")
 
 
 @main.command()
