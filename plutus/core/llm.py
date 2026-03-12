@@ -513,11 +513,22 @@ class LLMClient:
                         "content": [{"type": "output_text", "text": content}],
                     })
 
-                # Emit tool calls in their native format
+                # Emit tool calls in their native format.
+                # Messages from history use Chat Completions format where
+                # name/arguments are nested under "function"; extract them.
                 for tc in tool_calls:
                     tc_id = tc.get("id", "")
                     tc_name = tc.get("name", "")
                     tc_args = tc.get("arguments", {})
+                    if not tc_name and "function" in tc:
+                        func = tc["function"]
+                        tc_name = func.get("name", "")
+                        tc_args = func.get("arguments", tc_args)
+                        if isinstance(tc_args, str):
+                            try:
+                                tc_args = json.loads(tc_args)
+                            except (json.JSONDecodeError, ValueError):
+                                pass
 
                     if tc_name == NATIVE_COMPUTER_USE_TOOL:
                         # Reconstruct the computer_call item
