@@ -619,8 +619,11 @@ This builds trust and helps the user understand you're getting smarter.
 PLAN_TOOL_DEF = ToolDefinition(
     name="plan",
     description=(
-        "IMPORTANT: You MUST use this tool at the start of any multi-step task. "
-        "Create an execution plan to track your progress and prevent forgetting goals. "
+        "Create a plan ONLY for complex tasks that involve 4+ distinct steps "
+        "and where losing track of progress would be a real problem. "
+        "Do NOT create plans for simple, quick, or straightforward requests "
+        "(e.g. opening a tab, running a command, answering a question). "
+        "Just do simple tasks directly without planning overhead. "
         "Actions: 'create' (new plan with steps), 'update_step' (mark step status), "
         "'get' (view current plan), 'complete'/'cancel' (finish plan). "
         "Plans are persisted and always visible in your context."
@@ -812,7 +815,7 @@ class AgentRuntime:
             all_tools = tool_names + (["plan"] if self._config.planner.enabled and "plan" not in tool_names else [])
             parts.append(f"\n## Available Tools: {', '.join(all_tools)}")
             parts.append("**Primary tool: `pc`** — use this for all computer interaction.")
-            parts.append("**Plan tool: `plan`** — ALWAYS create a plan for multi-step tasks. This is how you stay on track.")
+            parts.append("**Plan tool: `plan`** — only use for complex tasks with 4+ steps. Skip for simple/quick requests.")
             parts.append("**Memory tool: `memory`** — save facts, goals, and checkpoints. This is how you remember things.")
 
         # Add tier info
@@ -830,8 +833,9 @@ class AgentRuntime:
         # which means it gets high attention weight in transformer models
         parts.append("\n## REMINDER")
         parts.append(
-            "Before starting work: (1) save the user's goal with `memory`, "
-            "(2) create a `plan` if the task has multiple steps. "
+            "Before starting work: (1) save the user's goal with `memory` if it's important, "
+            "(2) create a `plan` ONLY if the task is complex (4+ steps) — "
+            "do NOT plan for simple requests like opening apps, running commands, or quick questions. "
             "If you see a Conversation History Summary or Active Plan above, "
             "READ IT and continue from where you left off. Do NOT start over.\n"
             "For web pages: snapshot() → click_ref/type_ref. "
