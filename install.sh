@@ -71,7 +71,17 @@ echo "[1/4] $PY_VER found."
 echo "[2/4] Installing Plutus..."
 
 $PYTHON_CMD -m pip install --upgrade pip >/dev/null 2>&1 || true
-$PYTHON_CMD -m pip install --upgrade "plutus-ai[all]"
+$PYTHON_CMD -m pip install --upgrade "plutus-ai[all]" 2>/tmp/plutus_install_err.txt || {
+    if grep -qi "no RECORD file" /tmp/plutus_install_err.txt 2>/dev/null; then
+        echo "       Retrying with --force-reinstall (missing package metadata)..."
+        $PYTHON_CMD -m pip install --force-reinstall --upgrade "plutus-ai[all]"
+    else
+        cat /tmp/plutus_install_err.txt >&2
+        rm -f /tmp/plutus_install_err.txt
+        exit 1
+    fi
+}
+rm -f /tmp/plutus_install_err.txt
 
 echo "       Plutus installed."
 
