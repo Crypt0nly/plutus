@@ -97,6 +97,11 @@ class BaseConnector(ABC):
 
     def save_config(self, data: dict[str, Any]) -> None:
         """Save connector configuration."""
+        # Don't overwrite real credentials with masked values from the UI
+        for field in self._sensitive_fields():
+            val = data.get(field, "")
+            if not val or "••" in str(val):
+                data.pop(field, None)
         self._config.update(data)
         self._config["configured"] = True
         self._config_store.save(self._config)
