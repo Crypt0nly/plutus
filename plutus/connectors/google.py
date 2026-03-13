@@ -77,16 +77,11 @@ class GoogleConnector(BaseConnector):
 
     def get_config(self) -> dict[str, Any]:
         config = dict(self._config)
-        # Mask client ID
-        cid = config.get("client_id", "")
-        if cid and len(cid) > 12:
-            config["client_id"] = cid[:8] + "••••" + cid[-4:]
-        # Mask client secret
-        cs = config.get("client_secret", "")
-        if cs and len(cs) > 8:
-            config["client_secret"] = cs[:4] + "••••" + cs[-4:]
-        elif cs:
-            config["client_secret"] = "••••"
+        # Clear sensitive fields — only send flags so the UI knows they're set
+        for field in ("client_id", "client_secret"):
+            val = config.get(field, "")
+            config[f"_has_{field}"] = bool(val)
+            config[field] = ""
         # Show token status
         tokens = load_tokens(self.service)
         if tokens.get("access_token"):
