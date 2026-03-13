@@ -191,6 +191,10 @@ jobs:
       - name: Publish to PyPI
         if: steps.version_check.outputs.exists == 'false'
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Skip wheels already uploaded by a previous partial run so that
+          # retries don't fail with 400 on duplicate filenames.
+          skip-existing: true
 
   # ── Step 4: Create release and bump version for next time ───────
   post-release:
