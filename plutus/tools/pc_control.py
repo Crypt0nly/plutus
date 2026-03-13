@@ -65,6 +65,14 @@ class PCControlTool(Tool):
         self._keyboard = None
         self._screen = None
 
+    async def cleanup(self):
+        """Clean up browser and other resources."""
+        try:
+            if self._browser:
+                await self._browser.close()
+        except Exception:
+            pass
+
     def _ensure_desktop_uia(self):
         """Lazy-load the Windows UIA desktop controller."""
         if self._desktop is None:

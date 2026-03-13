@@ -574,15 +574,20 @@ async def _scheduler_on_fire(job: ScheduledJob) -> str:
         final = await pool.wait_for(status.task_id, timeout=300.0)
         return final.result if final and final.result else "Job completed."
     elif agent:
-        # Run on main agent
+        # Run on main agent — acquire the lock to prevent concurrent
+        # process_message() calls (e.g. user chatting at the same time).
+        if _agent_lock.locked():
+            logger.warning(f"Skipping scheduled job '{job.name}' — agent is busy")
+            return f"Job skipped: agent was busy processing another request."
         result_parts = []
         try:
-            async for event in agent.process_message(
-                f"[SCHEDULED JOB: {job.name}]\n{job.prompt}"
-            ):
-                await ws_manager.broadcast(event.to_dict())
-                if hasattr(event, "content") and event.content:
-                    result_parts.append(event.content)
+            async with _agent_lock:
+                async for event in agent.process_message(
+                    f"[SCHEDULED JOB: {job.name}]\n{job.prompt}"
+                ):
+                    await ws_manager.broadcast(event.to_dict())
+                    if hasattr(event, "content") and event.content:
+                        result_parts.append(event.content)
         except Exception as e:
             logger.exception(f"Scheduled job '{job.name}' failed")
             return f"Job failed: {e}"

@@ -294,19 +294,36 @@ async def _handle_standard_chat(
         "message": "🖥️ Computer Use mode — I can see and control your screen",
     })
 
+    disconnected = False
     try:
         async with _agent_lock:
             async for event in agent.process_message(user_text, attachments=attachments):
-                await ws.send_json(event.to_dict())
+                if disconnected:
+                    # Client disconnected — keep draining the generator so the
+                    # agent finishes cleanly (tool_use / tool_result stay paired).
+                    continue
+                try:
+                    await ws.send_json(event.to_dict())
+                except (WebSocketDisconnect, RuntimeError, Exception) as send_err:
+                    logger.warning(f"Client disconnected during processing: {send_err}")
+                    disconnected = True
+                    continue
 
                 if event.type == "tool_approval_needed":
-                    await manager.broadcast(event.to_dict())
+                    try:
+                        await manager.broadcast(event.to_dict())
+                    except Exception:
+                        pass
     except Exception as e:
         logger.exception("Standard agent error")
-        await ws.send_json({
-            "type": "error",
-            "message": f"Agent error: {str(e)}",
-        })
+        if not disconnected:
+            try:
+                await ws.send_json({
+                    "type": "error",
+                    "message": f"Agent error: {str(e)}",
+                })
+            except Exception:
+                pass
 
 
 async def _handle_approval(ws: WebSocket, message: dict[str, Any]) -> None:

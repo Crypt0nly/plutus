@@ -356,6 +356,12 @@ class WSLTool(Tool):
             return "\n".join(result_parts)
 
         except TimeoutError:
+            # Kill the process to prevent zombies
+            try:
+                process.kill()
+                await process.wait()
+            except Exception:
+                pass
             return f"[TIMEOUT] Command timed out after {timeout} seconds"
         except Exception as e:
             return f"[ERROR] {e}"
