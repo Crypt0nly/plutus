@@ -5,11 +5,21 @@ The agent can use this tool to:
   - Send a file or screenshot via Telegram
   - List available connectors and their status
   - Check if a connector is configured
+  - Read/send Gmail emails, manage Calendar events, manage Drive files
 
 Usage examples (from the agent):
   connector(action="send", service="telegram", message="Hello from Plutus!")
   connector(action="send_file", service="telegram", file_path="/path/to/screenshot.png")
   connector(action="send", service="email", message="Report", to="a@b.com", subject="Report")
+  connector(action="send", service="google_gmail", message="Hello", to="a@b.com", subject="Hi")
+  connector(action="google", service="google_gmail",
+            google_action="list_messages", query="is:unread")
+  connector(action="google", service="google_calendar", google_action="list_events")
+  connector(action="google", service="google_calendar", google_action="create_event",
+            summary="Meeting", start="2025-01-01T10:00:00Z", end="2025-01-01T11:00:00Z")
+  connector(action="google", service="google_drive", google_action="list_files")
+  connector(action="google", service="google_drive", google_action="upload_file",
+            name="notes.txt", content="Hello world")
   connector(action="list")
   connector(action="status", service="telegram")
 """
@@ -42,20 +52,26 @@ class ConnectorTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Send messages or files to the user through external services like "
-            "Telegram, Email, WhatsApp, or Discord. "
+            "Send messages or files through external services like "
+            "Telegram, Email, WhatsApp, Discord, Gmail, Google Calendar, "
+            "and Google Drive. "
             "Use action='list' to see available connectors. "
             "Use action='send' with service='telegram' to send a Telegram message. "
             "Use action='send_file' with service='telegram' or service='discord' "
             "and file_path to send a screenshot or file. "
             "Use action='send' with service='email' to send an email "
             "(requires 'to' and 'subject' params). "
-            "Use action='send' with service='discord' to send a Discord message "
-            "(optional 'channel_id' param). "
-            "Use action='manage' with service='discord' to manage the Discord server "
-            "(channels, roles, members). "
-            "The user configures connectors in the Connectors tab — you just "
-            "send messages and files through them."
+            "Use action='send' with service='google_gmail' to send a Gmail email "
+            "(requires 'to' and 'subject' params). "
+            "Use action='google' to interact with Google services: "
+            "service='google_gmail' for reading emails (google_action='list_messages', "
+            "'get_message', 'list_labels'), "
+            "service='google_calendar' for managing events (google_action='list_events', "
+            "'create_event', 'update_event', 'delete_event'), "
+            "service='google_drive' for managing files (google_action='list_files', "
+            "'get_file', 'upload_file', 'get_file_metadata'). "
+            "Use action='manage' with service='discord' to manage the Discord server. "
+            "The user configures connectors in the Connectors tab."
         )
 
     @property
@@ -65,22 +81,30 @@ class ConnectorTool(Tool):
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["send", "send_file", "list", "status", "manage"],
+                    "enum": [
+                        "send", "send_file", "list", "status",
+                        "manage", "google",
+                    ],
                     "description": (
                         "Action to perform. "
                         "'send' = send a text message. "
                         "'send_file' = send a file or screenshot. "
                         "'list' = list all connectors and their status. "
                         "'status' = check if a specific connector is configured. "
-                        "'manage' = manage Discord server (channels, roles, members)."
+                        "'manage' = manage Discord server. "
+                        "'google' = interact with Google services "
+                        "(Gmail, Calendar, Drive)."
                     ),
                 },
                 "service": {
                     "type": "string",
-                    "enum": ["telegram", "email", "whatsapp", "discord"],
+                    "enum": [
+                        "telegram", "email", "whatsapp", "discord",
+                        "google_gmail", "google_calendar", "google_drive",
+                    ],
                     "description": (
                         "Which connector to use. Required for 'send', "
-                        "'send_file', 'manage', and 'status' actions."
+                        "'send_file', 'manage', 'google', and 'status' actions."
                     ),
                 },
                 "message": {
@@ -164,6 +188,98 @@ class ConnectorTool(Tool):
                     "type": "string",
                     "description": "Role ID for assign_role/remove_role actions.",
                 },
+                "google_action": {
+                    "type": "string",
+                    "enum": [
+                        "list_messages", "get_message", "list_labels",
+                        "list_events", "create_event", "update_event",
+                        "delete_event",
+                        "list_files", "get_file", "get_file_metadata",
+                        "upload_file",
+                    ],
+                    "description": (
+                        "Google-specific action. Required when action='google'."
+                    ),
+                },
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "Search query for Gmail (e.g. 'is:unread', "
+                        "'from:alice@example.com') or Drive "
+                        "(e.g. 'name contains \"report\"')."
+                    ),
+                },
+                "message_id": {
+                    "type": "string",
+                    "description": "Gmail message ID for get_message.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Max results to return (default 10).",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Event title for create_event.",
+                },
+                "start": {
+                    "type": "string",
+                    "description": (
+                        "Event start time in ISO 8601 format "
+                        "(e.g. '2025-01-15T10:00:00-05:00')."
+                    ),
+                },
+                "end": {
+                    "type": "string",
+                    "description": (
+                        "Event end time in ISO 8601 format."
+                    ),
+                },
+                "event_description": {
+                    "type": "string",
+                    "description": "Event description for create_event.",
+                },
+                "location": {
+                    "type": "string",
+                    "description": "Event location for create_event.",
+                },
+                "event_id": {
+                    "type": "string",
+                    "description": (
+                        "Calendar event ID for update_event/delete_event."
+                    ),
+                },
+                "calendar_id": {
+                    "type": "string",
+                    "description": (
+                        "Calendar ID (default 'primary'). Use for "
+                        "calendar operations."
+                    ),
+                },
+                "file_id": {
+                    "type": "string",
+                    "description": (
+                        "Drive file ID for get_file/get_file_metadata."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": (
+                        "File content for upload_file action."
+                    ),
+                },
+                "mime_type": {
+                    "type": "string",
+                    "description": (
+                        "MIME type for upload_file (default 'text/plain')."
+                    ),
+                },
+                "updates": {
+                    "type": "object",
+                    "description": (
+                        "Updates dict for update_event "
+                        "(e.g. {\"summary\": \"New title\"})."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -209,6 +325,12 @@ class ConnectorTool(Tool):
                 return "Error: 'manage' action is only supported for Discord"
             return await self._manage_discord(**kwargs)
 
+        elif action == "google":
+            service = kwargs.get("service", "")
+            if not service:
+                return "Error: 'service' is required (google_gmail, google_calendar, google_drive)"
+            return await self._handle_google(service, **kwargs)
+
         else:
             return (
                 f"Error: Unknown action '{action}'. "
@@ -245,7 +367,8 @@ class ConnectorTool(Tool):
         if not connector:
             return (
                 f"Error: Unknown connector '{service}'. "
-                "Available: telegram, email, whatsapp, discord"
+                "Available: telegram, email, whatsapp, discord, "
+                "google_gmail, google_calendar, google_drive"
             )
 
         if connector.is_configured:
@@ -280,7 +403,8 @@ class ConnectorTool(Tool):
         if not connector:
             return (
                 f"Error: Unknown connector '{service}'. "
-                "Available: telegram, email, whatsapp, discord"
+                "Available: telegram, email, whatsapp, discord, "
+                "google_gmail, google_calendar, google_drive"
             )
 
         if not connector.is_configured:
@@ -307,6 +431,15 @@ class ConnectorTool(Tool):
             if not contact:
                 return "Error: 'contact' (WhatsApp contact name) is required"
             send_kwargs["contact"] = contact
+
+        elif service == "google_gmail":
+            to = kwargs.get("to", "")
+            if not to:
+                return (
+                    "Error: 'to' (recipient email) is required for Gmail messages"
+                )
+            send_kwargs["to"] = to
+            send_kwargs["subject"] = kwargs.get("subject", "Message from Plutus")
 
         elif service == "telegram":
             parse_mode = kwargs.get("parse_mode", "HTML")
@@ -339,7 +472,8 @@ class ConnectorTool(Tool):
         if not connector:
             return (
                 f"Error: Unknown connector '{service}'. "
-                "Available: telegram, email, whatsapp, discord"
+                "Available: telegram, email, whatsapp, discord, "
+                "google_gmail, google_calendar, google_drive"
             )
 
         if not connector.is_configured:
@@ -515,6 +649,165 @@ class ConnectorTool(Tool):
 
         except Exception as e:
             return f"Error executing Discord action '{discord_action}': {str(e)}"
+
+    async def _handle_google(self, service: str, **kwargs: Any) -> str:
+        """Handle Google-specific actions (Gmail, Calendar, Drive)."""
+        connector = self._manager.get(service)
+        if not connector:
+            return (
+                f"Error: Unknown Google service '{service}'. "
+                "Available: google_gmail, google_calendar, google_drive"
+            )
+        if not connector.is_configured:
+            return (
+                f"Error: {connector.display_name} is not authorized. "
+                "The user needs to connect it in the Connectors tab."
+            )
+
+        google_action = kwargs.get("google_action", "")
+        if not google_action:
+            return "Error: 'google_action' is required for Google services"
+
+        import json as _json
+
+        try:
+            result: dict[str, Any] = {}
+
+            # ── Gmail ──
+            if service == "google_gmail":
+                if google_action == "list_messages":
+                    query = kwargs.get("query", "")
+                    max_results = int(kwargs.get("max_results", 10))
+                    result = await connector.list_messages(query, max_results)
+                elif google_action == "get_message":
+                    mid = kwargs.get("message_id", "")
+                    if not mid:
+                        return "Error: 'message_id' is required"
+                    result = await connector.get_message(mid)
+                elif google_action == "list_labels":
+                    result = await connector.list_labels()
+                else:
+                    return f"Error: Unknown gmail action '{google_action}'"
+
+            # ── Calendar ──
+            elif service == "google_calendar":
+                cal_id = kwargs.get("calendar_id", "primary")
+
+                if google_action == "list_events":
+                    max_results = int(kwargs.get("max_results", 10))
+                    result = await connector.list_events(
+                        calendar_id=cal_id,
+                        time_min=kwargs.get("start"),
+                        time_max=kwargs.get("end"),
+                        max_results=max_results,
+                    )
+                elif google_action == "create_event":
+                    summary = kwargs.get("summary", "")
+                    start = kwargs.get("start", "")
+                    end = kwargs.get("end", "")
+                    if not summary or not start or not end:
+                        return (
+                            "Error: 'summary', 'start', and 'end' "
+                            "are required for create_event"
+                        )
+                    result = await connector.create_event(
+                        summary=summary,
+                        start=start,
+                        end=end,
+                        calendar_id=cal_id,
+                        description=kwargs.get(
+                            "event_description", ""
+                        ),
+                        location=kwargs.get("location", ""),
+                    )
+                elif google_action == "update_event":
+                    eid = kwargs.get("event_id", "")
+                    updates = kwargs.get("updates", {})
+                    if not eid:
+                        return "Error: 'event_id' is required"
+                    if not updates:
+                        return "Error: 'updates' dict is required"
+                    result = await connector.update_event(
+                        eid, updates, calendar_id=cal_id
+                    )
+                elif google_action == "delete_event":
+                    eid = kwargs.get("event_id", "")
+                    if not eid:
+                        return "Error: 'event_id' is required"
+                    result = await connector.delete_event(
+                        eid, calendar_id=cal_id
+                    )
+                else:
+                    return (
+                        f"Error: Unknown calendar action "
+                        f"'{google_action}'"
+                    )
+
+            # ── Drive ──
+            elif service == "google_drive":
+                if google_action == "list_files":
+                    query = kwargs.get("query", "")
+                    max_results = int(kwargs.get("max_results", 20))
+                    result = await connector.list_files(
+                        query, max_results
+                    )
+                elif google_action == "get_file":
+                    fid = kwargs.get("file_id", "")
+                    if not fid:
+                        return "Error: 'file_id' is required"
+                    result = await connector.get_file_content(fid)
+                elif google_action == "get_file_metadata":
+                    fid = kwargs.get("file_id", "")
+                    if not fid:
+                        return "Error: 'file_id' is required"
+                    result = await connector.get_file_metadata(fid)
+                elif google_action == "upload_file":
+                    name = kwargs.get("name", "")
+                    content = kwargs.get("content", "")
+                    if not name:
+                        return "Error: 'name' is required"
+                    if not content:
+                        return "Error: 'content' is required"
+                    mime = kwargs.get("mime_type", "text/plain")
+                    result = await connector.upload_file(
+                        name, content, mime
+                    )
+                else:
+                    return (
+                        f"Error: Unknown drive action "
+                        f"'{google_action}'"
+                    )
+
+            else:
+                return f"Error: '{service}' does not support google actions"
+
+            # Format result
+            if result.get("success"):
+                data = result.get("data")
+                msg = result.get("message", "")
+                if msg and not data:
+                    return f"{connector.display_name}: {msg}"
+                if data:
+                    formatted = _json.dumps(
+                        data, indent=2, default=str, ensure_ascii=False
+                    )
+                    # Truncate very large responses
+                    if len(formatted) > 8000:
+                        formatted = formatted[:8000] + "\n... [truncated]"
+                    prefix = f"{connector.display_name}: {msg}\n" if msg else ""
+                    return f"{prefix}{formatted}"
+                return f"{connector.display_name}: Done"
+            else:
+                return (
+                    f"{connector.display_name} error: "
+                    f"{result.get('message', 'Unknown error')}"
+                )
+
+        except Exception as e:
+            return (
+                f"Error executing {google_action} on "
+                f"{connector.display_name}: {e}"
+            )
 
     async def _broadcast_attachment(
         self,
