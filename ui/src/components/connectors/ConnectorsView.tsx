@@ -798,13 +798,15 @@ function ConfigureModal({
                   <p className="text-[11px] text-gray-500 mt-0.5">
                     {connector.configured
                       ? "Account is authorized via OAuth"
-                      : "Save your Client ID first, then authorize"}
+                      : connector.config._has_client_id
+                        ? "Credentials saved — click below to authorize"
+                        : "Save your Client ID first, then authorize"}
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleAuthorize}
-                disabled={authorizing || !formData.client_id?.trim()}
+                disabled={authorizing || !(formData.client_id?.trim() || connector.config._has_client_id)}
                 className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 ${
                   connector.configured
                     ? "bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/20"
