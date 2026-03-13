@@ -12,6 +12,19 @@
 
 $ErrorActionPreference = "Stop"
 
+# ── Pipeline-safe re-launch ─────────────────────────────────
+# When invoked via `iwr ... | iex`, the script text flows through stdin.
+# Child processes (pip, python) inherit that handle and consume part of
+# the script, which corrupts the iex pipeline and crashes the terminal.
+# Fix: save to a temp file and re-run from disk so stdin is clean.
+if (-not $PSCommandPath) {
+    $tmpPs1 = Join-Path ([System.IO.Path]::GetTempPath()) "plutus-install-$PID.ps1"
+    $MyInvocation.MyCommand.ScriptBlock.ToString() | Set-Content -LiteralPath $tmpPs1 -Encoding UTF8
+    try     { & powershell.exe -ExecutionPolicy Bypass -File $tmpPs1 }
+    finally { Remove-Item -LiteralPath $tmpPs1 -Force -ErrorAction SilentlyContinue }
+    return
+}
+
 Write-Host ""
 Write-Host "  ____  _       _             " -ForegroundColor Magenta
 Write-Host " |  _ \| |_   _| |_ _   _ ___ " -ForegroundColor Magenta
