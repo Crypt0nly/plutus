@@ -709,12 +709,23 @@ function ConfigureModal({
               {isGoogle ? "OAuth Setup" : isAI ? "API Key" : "Configuration"}
             </h4>
             <div className="space-y-3">
-              {connector.config_schema.map((field) => (
+              {connector.config_schema.map((field) => {
+                const hasSaved = connector.config[`_has_${field.name}`] === true;
+                const currentVal = formData[field.name] || "";
+                const effectivePlaceholder =
+                  hasSaved && !currentVal
+                    ? `${field.label} saved — enter new value to replace`
+                    : field.placeholder;
+
+                return (
                 <div key={field.name}>
                   <label className="text-xs font-medium text-gray-400 mb-1.5 block">
                     {field.label}
-                    {field.required && (
+                    {field.required && !hasSaved && (
                       <span className="text-red-400 ml-0.5">*</span>
+                    )}
+                    {hasSaved && !currentVal && (
+                      <span className="text-emerald-400 ml-1.5 text-[10px] font-normal">Saved</span>
                     )}
                   </label>
                   <div className="relative">
@@ -733,8 +744,8 @@ function ConfigureModal({
                           ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
                           : "focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
                       }`}
-                      placeholder={field.placeholder}
-                      value={formData[field.name] || ""}
+                      placeholder={effectivePlaceholder}
+                      value={currentVal}
                       onChange={(e) =>
                         setFormData((prev) => ({
                           ...prev,
@@ -742,7 +753,7 @@ function ConfigureModal({
                         }))
                       }
                     />
-                    {field.type === "password" && (
+                    {field.type === "password" && currentVal && (
                       <button
                         type="button"
                         onClick={() => togglePassword(field.name)}
@@ -762,7 +773,8 @@ function ConfigureModal({
                     </p>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
