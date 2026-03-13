@@ -794,6 +794,15 @@ class AgentRuntime:
         await self._planner.initialize()
 
     async def shutdown(self) -> None:
+        # Clean up tool resources (e.g. Playwright browser)
+        if self._tool_registry:
+            for name in self._tool_registry.list_tools():
+                tool = self._tool_registry.get(name)
+                if tool and hasattr(tool, "cleanup"):
+                    try:
+                        await tool.cleanup()
+                    except Exception:
+                        pass
         await self._memory.close()
 
     def set_tool_registry(self, registry: Any) -> None:
@@ -1044,6 +1053,7 @@ class AgentRuntime:
                 # Internal tools (plan, memory) bypass guardrails entirely —
                 # they're bookkeeping tools that don't affect the system.
                 _INTERNAL_TOOLS = {"plan", "memory"}
+                decision = None
 
                 if tc.name not in _INTERNAL_TOOLS:
                     # Check guardrails for external tools.
@@ -1064,7 +1074,11 @@ class AgentRuntime:
                         await self._conversation.add_tool_result(tc.id, result_text)
                         continue
 
-                if tc.name not in _INTERNAL_TOOLS and decision.requires_approval:
+                if (
+                    tc.name not in _INTERNAL_TOOLS
+                    and decision is not None
+                    and decision.requires_approval
+                ):
                     # Create the approval request first so we have an ID,
                     # then emit the event with that ID, then block.
                     approval_req = self._guardrails.create_approval(
