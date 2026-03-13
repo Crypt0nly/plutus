@@ -262,6 +262,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ auto_start }),
     }),
+  authorizeConnector: (name: string) =>
+    request<Record<string, any>>(`/connectors/${name}/authorize`, {
+      method: "POST",
+    }),
 
   // WSL
   getWSLStatus: () =>
