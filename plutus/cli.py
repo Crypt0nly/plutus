@@ -820,6 +820,18 @@ def update() -> None:
         text=True,
     )
 
+    # Retry with --force-reinstall if pip can't uninstall due to missing RECORD
+    if result.returncode != 0 and "no RECORD file" in result.stderr.lower():
+        console.print("  [yellow]Detected missing package metadata, retrying...[/yellow]")
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "pip", "install",
+                "--force-reinstall", "--no-deps", "--upgrade", "plutus-ai",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
     # ── Windows: clean up .old files ──
     for bak, _orig in renamed_scripts:
         try:

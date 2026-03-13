@@ -2230,6 +2230,21 @@ def create_router() -> APIRouter:
                 "success": code == 0,
                 "output": (out.strip() or clean_err)[:500],
             })
+            if code != 0 and "no RECORD file" in err.lower():
+                # Package was installed without metadata (legacy install or
+                # corrupted dist-info).  Retry with --force-reinstall so pip
+                # skips the uninstall step and just overwrites files.
+                pip_cmd = [
+                    sys.executable, "-m", "pip", "install",
+                    "--force-reinstall", "--no-deps", "--upgrade", "plutus-ai",
+                ]
+                code, out, err = await run(pip_cmd, timeout=180)
+                clean_err = _clean_pip_stderr(err)
+                steps.append({
+                    "step": "pip_upgrade_force",
+                    "success": code == 0,
+                    "output": (out.strip() or clean_err)[:500],
+                })
             if code != 0:
                 return {
                     "success": False,
