@@ -105,8 +105,8 @@ jobs:
       - name: Build wheels
         run: cibuildwheel --output-dir wheelhouse
         env:
-          # Build for Python 3.11, 3.12, 3.13 (add 3.14 once it's GA on PyPI)
-          CIBW_BUILD: "cp311-* cp312-* cp313-*"
+          # Build for Python 3.11, 3.12, 3.13, 3.14
+          CIBW_BUILD: "cp311-* cp312-* cp313-* cp314-*"
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
           # Skip musllinux (Alpine) and 32-bit — not worth the build time
