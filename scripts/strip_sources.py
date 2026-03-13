@@ -16,18 +16,24 @@ import argparse
 import sys
 from pathlib import Path
 
-# Must match the list in build_compiled.py
+# Must match the list in build_compiled.py, MINUS the worker scripts.
+# Workers are executed via subprocess (not imported), so they must stay as .py —
+# compiled .so/.pyd files can't be run with `python -m` or as __main__ scripts.
 PROTECTED_MODULES = [
     # Core orchestration
     "plutus/core/agent.py",
+    "plutus/core/computer_use_agent.py",
     "plutus/core/conversation.py",
     "plutus/core/heartbeat.py",
+    "plutus/core/llm.py",
     "plutus/core/model_router.py",
     "plutus/core/planner.py",
     "plutus/core/scheduler.py",
     "plutus/core/subprocess_manager.py",
     "plutus/core/summarizer.py",
     "plutus/core/worker_pool.py",
+    # Gateway (WebSocket orchestration)
+    "plutus/gateway/ws.py",
     # PC control
     "plutus/pc/browser_control.py",
     "plutus/pc/computer_use.py",
@@ -43,11 +49,13 @@ PROTECTED_MODULES = [
     # Skills engine
     "plutus/skills/engine.py",
     "plutus/skills/creator.py",
-    # Workers
-    "plutus/workers/code_analysis_worker.py",
-    "plutus/workers/file_edit_worker.py",
-    "plutus/workers/shell_worker.py",
-    "plutus/workers/custom_worker.py",
+    "plutus/skills/loader.py",
+    "plutus/skills/python_runner.py",
+    # Connector bridges
+    "plutus/connectors/discord_bridge.py",
+    "plutus/connectors/telegram_bridge.py",
+    # NOTE: Workers (plutus/workers/*) are intentionally NOT listed here.
+    # They run as subprocess scripts (__main__) and must remain as .py files.
 ]
 
 
