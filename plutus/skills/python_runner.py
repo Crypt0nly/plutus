@@ -481,9 +481,30 @@ class PythonSkillRunner:
                     error="run() must be an async function (async def run(ctx, params))",
                 )
 
-            # Execute the skill
+            # Execute the skill with a timeout to prevent infinite loops
+            # from hanging the backend indefinitely.
+            SKILL_TIMEOUT = 300  # 5 minutes max
             ctx.log(f"Starting skill: {skill_name}")
-            result = await run_func(ctx, params)
+            try:
+                result = await asyncio.wait_for(run_func(ctx, params), timeout=SKILL_TIMEOUT)
+            except asyncio.TimeoutError:
+                ctx.log(f"TIMEOUT: Skill exceeded {SKILL_TIMEOUT}s limit")
+                return PythonSkillResult(
+                    success=False,
+                    skill_name=skill_name,
+                    error=f"Skill timed out after {SKILL_TIMEOUT} seconds",
+                    logs=ctx.get_logs(),
+                    duration=time.time() - start_time,
+                )
+            except SystemExit as e:
+                ctx.log(f"Skill called sys.exit({e.code})")
+                return PythonSkillResult(
+                    success=False,
+                    skill_name=skill_name,
+                    error=f"Skill called sys.exit({e.code}) — blocked to protect the backend",
+                    logs=ctx.get_logs(),
+                    duration=time.time() - start_time,
+                )
 
             # Validate the result
             if not isinstance(result, dict):

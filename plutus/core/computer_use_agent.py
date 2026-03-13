@@ -168,7 +168,7 @@ class ComputerUseAgent:
             })
             return
 
-        client = anthropic.Anthropic(api_key=self._api_key)
+        client = anthropic.AsyncAnthropic(api_key=self._api_key)
 
         tools = self.get_tool_definitions()
         system_prompt = self._build_system_prompt()
@@ -187,7 +187,7 @@ class ComputerUseAgent:
 
             try:
                 # Call the Anthropic API with computer use beta
-                response = client.beta.messages.create(
+                response = await client.beta.messages.create(
                     model=self._model,
                     max_tokens=4096,
                     system=system_prompt,
@@ -312,7 +312,9 @@ class ComputerUseAgent:
             action = tool_input.get("action", "")
             # Pass all params except 'action' to the executor
             params = {k: v for k, v in tool_input.items() if k != "action"}
-            return self._executor.execute_action(action, **params)
+            # Run in a thread to avoid blocking the event loop — execute_action
+            # uses synchronous pyautogui calls and time.sleep() internally.
+            return await asyncio.to_thread(self._executor.execute_action, action, **params)
 
         elif tool_name == "bash":
             return await self._execute_bash(tool_input)
