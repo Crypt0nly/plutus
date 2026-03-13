@@ -82,13 +82,16 @@ class BaseConnector(ABC):
         return self._running
 
     def get_config(self) -> dict[str, Any]:
-        """Return the config with sensitive fields masked."""
+        """Return the config with sensitive fields cleared (never sent to UI)."""
         config = dict(self._config)
-        # Mask sensitive fields
+        # Clear sensitive fields — only send a flag so the UI knows they're set
         for key in self._sensitive_fields():
             if key in config and config[key]:
-                val = str(config[key])
-                config[key] = val[:4] + "•" * max(0, len(val) - 8) + val[-4:] if len(val) > 8 else "••••"
+                config[f"_has_{key}"] = True
+                config[key] = ""
+            else:
+                config[f"_has_{key}"] = False
+                config[key] = ""
         return config
 
     def get_raw_config(self) -> dict[str, Any]:

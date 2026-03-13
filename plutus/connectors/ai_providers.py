@@ -42,17 +42,12 @@ class AIProviderConnector(BaseConnector):
         return ["api_key"]
 
     def get_config(self) -> dict[str, Any]:
-        """Return config with the key status (never the actual key)."""
+        """Return config with key cleared (never sent to UI)."""
         config = dict(self._config)
-        # Show masked key if configured
-        if self.is_configured:
-            key = self._get_key()
-            if key and len(key) > 8:
-                config["api_key"] = (
-                    key[:4] + "•" * max(0, len(key) - 8) + key[-4:]
-                )
-            else:
-                config["api_key"] = "••••"
+        # Never send the actual key — only a flag so the UI knows it's set
+        key = self._get_key()
+        config["_has_api_key"] = bool(key)
+        config["api_key"] = ""
         return config
 
     def _get_key(self) -> str | None:
