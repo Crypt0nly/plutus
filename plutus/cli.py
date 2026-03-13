@@ -821,7 +821,7 @@ def update() -> None:
     )
 
     # Retry with --force-reinstall if pip can't uninstall due to missing RECORD
-    if result.returncode != 0 and "no RECORD file" in result.stderr.lower():
+    if result.returncode != 0 and "no record file" in result.stderr.lower():
         console.print("  [yellow]Detected missing package metadata, retrying...[/yellow]")
         result = subprocess.run(
             [

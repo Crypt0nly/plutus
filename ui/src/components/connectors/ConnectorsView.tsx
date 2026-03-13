@@ -89,7 +89,7 @@ function AIProviderCard({
           : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
       }`}
     >
-      <div className="p-5">
+      <div className="p-5 flex flex-col h-full">
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
@@ -140,7 +140,7 @@ function AIProviderCard({
         {/* Action button */}
         <button
           onClick={() => onConfigure(connector)}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+          className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
             connector.configured
               ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
               : "bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-600/15 hover:shadow-lg hover:shadow-violet-500/20 active:scale-[0.98]"
@@ -185,7 +185,7 @@ function ConnectorCard({
           : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
       }`}
     >
-      <div className="p-5">
+      <div className="p-5 flex flex-col h-full">
         {/* Icon + Status */}
         <div className="flex items-start justify-between mb-3">
           <div
@@ -230,7 +230,7 @@ function ConnectorCard({
         {/* Action button */}
         <button
           onClick={() => onConfigure(connector)}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+          className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
             connector.configured
               ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
               : "bg-plutus-600 hover:bg-plutus-500 text-white shadow-md shadow-plutus-600/15 hover:shadow-lg hover:shadow-plutus-500/20 active:scale-[0.98]"
@@ -271,7 +271,7 @@ function GoogleConnectorCard({
           : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
       }`}
     >
-      <div className="p-5">
+      <div className="p-5 flex flex-col h-full">
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
@@ -322,7 +322,7 @@ function GoogleConnectorCard({
         {/* Action button */}
         <button
           onClick={() => onConfigure(connector)}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+          className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
             connector.configured
               ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
               : "bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/15 hover:shadow-lg hover:shadow-sky-500/20 active:scale-[0.98]"
