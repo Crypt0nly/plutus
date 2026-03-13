@@ -115,6 +115,13 @@ jobs:
           # Use manylinux_2_28 (default in v3, but explicit for clarity)
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
+          # Pin auditwheel to manylinux_2_28 only — avoids redundant legacy
+          # tags (manylinux2014 + manylinux_2_17 + manylinux_2_28) that
+          # PyPI rejects with 400 Bad Request.
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
+            auditwheel repair -w {dest_dir} {wheel}
+            --plat manylinux_2_28_x86_64
+
           # Before building: install Cython and compile protected modules.
           # v3 no longer preinstalls setuptools/wheel, so we must install them.
           # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
