@@ -13,6 +13,9 @@ from the wheel (see scripts/strip_sources.py).
 
 from __future__ import annotations
 
+import os
+import sys
+
 from Cython.Build import cythonize
 from setuptools import Extension, setup
 
@@ -76,10 +79,15 @@ def make_extensions() -> list[Extension]:
     return extensions
 
 
-# nthreads=0 → single-threaded Cython compilation. This avoids the macOS
-# "spawn" multiprocessing crash entirely (macOS doesn't use "fork", so
-# nthreads>0 causes worker processes to re-execute this script and crash).
-# 25 modules compile fast enough serially in CI.
+# On macOS, Python defaults to the "spawn" multiprocessing start method (not
+# "fork"), so nthreads>0 causes Cython worker processes to re-import this
+# script and crash. On Linux and Windows, parallel compilation works fine.
+def _compile_threads() -> int:
+    if sys.platform == "darwin":
+        return 0  # serial on macOS to avoid spawn crash
+    return os.cpu_count() or 1
+
+
 if __name__ == "__main__":
     ext_modules = cythonize(
         make_extensions(),
@@ -88,7 +96,7 @@ if __name__ == "__main__":
             "boundscheck": False,
             "wraparound": False,
         },
-        nthreads=0,
+        nthreads=_compile_threads(),
     )
 
     setup(
