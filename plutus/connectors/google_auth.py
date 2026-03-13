@@ -1,15 +1,14 @@
-"""Google OAuth 2.0 PKCE flow for desktop/native apps.
+"""Google OAuth 2.0 flow for desktop/native apps.
 
 Handles the full OAuth lifecycle:
   1. Generate PKCE code verifier/challenge
   2. Build authorization URL → user opens in browser
   3. Spin up a temporary localhost HTTP server to catch the callback
-  4. Exchange auth code (with PKCE proof) for access + refresh tokens
+  4. Exchange auth code (with PKCE proof + client secret) for tokens
   5. Persist tokens in ~/.plutus/connectors/<name>.json
   6. Auto-refresh expired access tokens
 
-No client secret required — Google treats Desktop/Native OAuth clients as
-"public clients" where PKCE replaces the secret.
+Google Desktop/Native OAuth clients require both the client secret and PKCE.
 
 Reference: https://developers.google.com/identity/protocols/oauth2/native-app
 """
@@ -112,7 +111,7 @@ def clear_tokens(service: str) -> None:
 # ── Token refresh ────────────────────────────────────────────────────────────
 
 async def get_valid_access_token(
-    service: str, client_id: str
+    service: str, client_id: str, client_secret: str = ""
 ) -> str | None:
     """Return a valid access token, refreshing if expired."""
     tokens = load_tokens(service)
@@ -134,11 +133,14 @@ async def get_valid_access_token(
     try:
         import httpx
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(TOKEN_URL, data={
+            refresh_data: dict[str, str] = {
                 "client_id": client_id,
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
-            })
+            }
+            if client_secret:
+                refresh_data["client_secret"] = client_secret
+            resp = await client.post(TOKEN_URL, data=refresh_data)
             if resp.status_code != 200:
                 logger.error(f"Token refresh failed: {resp.status_code} {resp.text}")
                 return None
@@ -204,6 +206,7 @@ class _OAuthCallbackHandler(BaseHTTPRequestHandler):
 async def start_oauth_flow(
     service: str,
     client_id: str,
+    client_secret: str = "",
     scopes: list[str] | None = None,
     port: int = 0,
 ) -> dict[str, Any]:
@@ -212,12 +215,13 @@ async def start_oauth_flow(
     1. Generates PKCE verifier/challenge
     2. Opens the user's browser to Google consent screen
     3. Listens on localhost for the callback
-    4. Exchanges the code for tokens
+    4. Exchanges the code for tokens (with client secret)
     5. Stores tokens and returns result
 
     Args:
         service: Google service name (gmail, calendar, drive)
         client_id: OAuth client ID from Google Cloud Console
+        client_secret: OAuth client secret from Google Cloud Console
         scopes: OAuth scopes (defaults to SCOPES[service])
         port: Localhost port for callback (0 = auto-assign)
 
@@ -282,13 +286,16 @@ async def start_oauth_flow(
     try:
         import httpx
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(TOKEN_URL, data={
+            exchange_data: dict[str, str] = {
                 "client_id": client_id,
                 "code": auth_code,
                 "code_verifier": code_verifier,
                 "grant_type": "authorization_code",
                 "redirect_uri": redirect_uri,
-            })
+            }
+            if client_secret:
+                exchange_data["client_secret"] = client_secret
+            resp = await client.post(TOKEN_URL, data=exchange_data)
 
             if resp.status_code != 200:
                 return {
