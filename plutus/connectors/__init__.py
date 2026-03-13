@@ -9,6 +9,11 @@ from plutus.connectors.ai_providers import (
 from plutus.connectors.base import BaseConnector, ConnectorManager
 from plutus.connectors.discord import DiscordConnector
 from plutus.connectors.email import EmailConnector
+from plutus.connectors.google import (
+    GmailConnector,
+    GoogleCalendarConnector,
+    GoogleDriveConnector,
+)
 from plutus.connectors.telegram import TelegramConnector
 from plutus.connectors.whatsapp import WhatsAppConnector
 
@@ -29,6 +34,11 @@ def create_connector_manager() -> ConnectorManager:
     mgr.register(WhatsAppConnector())
     mgr.register(DiscordConnector())
 
+    # Google Workspace
+    mgr.register(GmailConnector())
+    mgr.register(GoogleCalendarConnector())
+    mgr.register(GoogleDriveConnector())
+
     return mgr
 
 
@@ -43,5 +53,8 @@ __all__ = [
     "AnthropicConnector",
     "GeminiConnector",
     "OllamaConnector",
+    "GmailConnector",
+    "GoogleCalendarConnector",
+    "GoogleDriveConnector",
     "create_connector_manager",
 ]

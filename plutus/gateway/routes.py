@@ -1698,6 +1698,28 @@ def create_router() -> APIRouter:
         connector.clear_config()
         return {"message": f"{connector.display_name} disconnected", "status": connector.status()}
 
+    @router.post("/connectors/{name}/authorize")
+    async def authorize_connector(name: str) -> dict[str, Any]:
+        """Start OAuth PKCE flow for Google connectors.
+
+        Opens the user's browser to Google's consent screen, waits for the
+        callback on a temporary localhost server, exchanges the code for
+        tokens, and stores them locally.
+        """
+        from plutus.gateway.server import get_state
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+        connector = connector_mgr.get(name)
+        if not connector:
+            raise HTTPException(404, f"Connector '{name}' not found")
+        if not hasattr(connector, "authorize"):
+            raise HTTPException(400, f"{connector.display_name} does not support OAuth")
+        result = await connector.authorize()
+        result["status"] = connector.status()
+        return result
+
     # ── WSL (Windows Subsystem for Linux) ─────────────────────
 
     @router.get("/wsl/status")

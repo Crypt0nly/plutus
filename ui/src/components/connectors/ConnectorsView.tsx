@@ -27,6 +27,9 @@ import {
   Server,
   KeyRound,
   Globe,
+  Shield,
+  Calendar,
+  HardDrive,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -52,6 +55,7 @@ interface ConnectorData {
   config_schema: ConnectorField[];
   features?: string[];
   docs_url?: string;
+  auth_type?: string;
 }
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -63,6 +67,8 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Sparkles: Sparkles,
   Wand2: Wand2,
   Server: Server,
+  Calendar: Calendar,
+  HardDrive: HardDrive,
 };
 
 /* ─── AI Provider Card ─── */
@@ -247,6 +253,98 @@ function ConnectorCard({
   );
 }
 
+/* ─── Google Workspace Card ─── */
+function GoogleConnectorCard({
+  connector,
+  onConfigure,
+}: {
+  connector: ConnectorData;
+  onConfigure: (c: ConnectorData) => void;
+}) {
+  const Icon = ICON_MAP[connector.icon] || Globe;
+
+  return (
+    <div
+      className={`group relative rounded-2xl border transition-all duration-200 hover:shadow-lg ${
+        connector.configured
+          ? "border-sky-500/25 bg-sky-500/[0.03] hover:border-sky-500/40 hover:shadow-sky-500/5"
+          : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
+      }`}
+    >
+      <div className="p-5">
+        {/* Header row */}
+        <div className="flex items-start justify-between mb-3">
+          <div
+            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${
+              connector.configured
+                ? "bg-sky-500/15 text-sky-400"
+                : "bg-gray-800/80 text-gray-500 group-hover:bg-gray-800 group-hover:text-gray-400"
+            }`}
+          >
+            <Icon className="w-5 h-5" />
+          </div>
+
+          {connector.configured ? (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-sky-500/15 text-sky-400 ring-1 ring-sky-500/20">
+              <Shield className="w-3 h-3" />
+              Authorized
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/30">
+              <Power className="w-3 h-3" />
+              Not connected
+            </span>
+          )}
+        </div>
+
+        {/* Name + Description */}
+        <h3 className="text-[15px] font-semibold text-gray-100 mb-1">
+          {connector.display_name}
+        </h3>
+        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-3">
+          {connector.description}
+        </p>
+
+        {/* Feature tags */}
+        {connector.features && connector.features.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {connector.features.map((feat) => (
+              <span
+                key={feat}
+                className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/20"
+              >
+                {feat}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Action button */}
+        <button
+          onClick={() => onConfigure(connector)}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+            connector.configured
+              ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
+              : "bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/15 hover:shadow-lg hover:shadow-sky-500/20 active:scale-[0.98]"
+          }`}
+        >
+          {connector.configured ? (
+            <>
+              <Settings2 className="w-4 h-4" />
+              Manage
+            </>
+          ) : (
+            <>
+              Connect
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Configuration Modal ─── */
 function ConfigureModal({
   connector,
@@ -279,8 +377,11 @@ function ConfigureModal({
   const [autoStart, setAutoStart] = useState(connector.auto_start || false);
   const [togglingAutoStart, setTogglingAutoStart] = useState(false);
 
+  const [authorizing, setAuthorizing] = useState(false);
+
   const Icon = ICON_MAP[connector.icon] || Plug;
   const isAI = connector.category === "ai";
+  const isGoogle = connector.auth_type === "oauth";
   const supportsTwoWay = connector.name === "telegram" || connector.name === "discord";
 
   // Initialize form data
@@ -424,10 +525,29 @@ function ConfigureModal({
   };
 
   // Color scheme based on category
-  const accentColor = isAI ? "violet" : "plutus";
-  const saveButtonClass = isAI
+  const accentColor = isGoogle ? "sky" : isAI ? "violet" : "plutus";
+  const saveButtonClass = isGoogle
+    ? "bg-sky-600 hover:bg-sky-500 shadow-md shadow-sky-600/15"
+    : isAI
     ? "bg-violet-600 hover:bg-violet-500 shadow-md shadow-violet-600/15"
     : "bg-plutus-600 hover:bg-plutus-500 shadow-md shadow-plutus-600/15";
+
+  const handleAuthorize = async () => {
+    setAuthorizing(true);
+    setTestResult(null);
+    try {
+      const result = await api.authorizeConnector(connector.name);
+      setTestResult({ success: result.success, message: result.message });
+      if (result.success) onRefresh();
+    } catch (e: any) {
+      setTestResult({
+        success: false,
+        message: `Authorization failed: ${e.message}`,
+      });
+    } finally {
+      setAuthorizing(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -443,7 +563,11 @@ function ConfigureModal({
         <div className="flex items-center gap-4 px-6 pt-6 pb-4 border-b border-gray-800/40">
           <div
             className={`w-11 h-11 rounded-xl flex items-center justify-center ${
-              isAI
+              isGoogle
+                ? connector.configured
+                  ? "bg-sky-500/15 text-sky-400"
+                  : "bg-sky-500/10 text-sky-400"
+                : isAI
                 ? connector.configured
                   ? "bg-violet-500/15 text-violet-400"
                   : "bg-violet-500/10 text-violet-400"
@@ -464,6 +588,11 @@ function ConfigureModal({
               {isAI && (
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20 uppercase tracking-wider">
                   AI
+                </span>
+              )}
+              {isGoogle && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20 uppercase tracking-wider">
+                  OAuth
                 </span>
               )}
             </div>
@@ -577,7 +706,7 @@ function ConfigureModal({
           {/* Configuration Fields */}
           <div>
             <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              {isAI ? "API Key" : "Configuration"}
+              {isGoogle ? "OAuth Setup" : isAI ? "API Key" : "Configuration"}
             </h4>
             <div className="space-y-3">
               {connector.config_schema.map((field) => (
@@ -598,7 +727,9 @@ function ConfigureModal({
                           : "text"
                       }
                       className={`w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none transition-all ${
-                        isAI
+                        isGoogle
+                          ? "focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20"
+                          : isAI
                           ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
                           : "focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
                       }`}
@@ -634,6 +765,52 @@ function ConfigureModal({
               ))}
             </div>
           </div>
+
+          {/* OAuth Authorize button for Google connectors */}
+          {isGoogle && (
+            <div className="rounded-xl bg-gray-900/80 border border-gray-800/40 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                    connector.configured
+                      ? "bg-sky-500/15 text-sky-400"
+                      : "bg-gray-800 text-gray-500"
+                  }`}
+                >
+                  <Shield className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-gray-200">
+                    Google Authorization
+                  </h4>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {connector.configured
+                      ? "Account is authorized via OAuth"
+                      : "Save your Client ID first, then authorize"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleAuthorize}
+                disabled={authorizing || !formData.client_id?.trim()}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 ${
+                  connector.configured
+                    ? "bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/20"
+                    : "bg-sky-600 hover:bg-sky-500 text-white"
+                }`}
+              >
+                {authorizing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Shield className="w-4 h-4" />
+                )}
+                {connector.configured ? "Re-authorize" : "Authorize with Google"}
+              </button>
+              <p className="text-[10px] text-gray-600 text-center">
+                Opens Google's consent screen in your browser — tokens stay local
+              </p>
+            </div>
+          )}
 
           {/* Docs link for AI providers */}
           {isAI && connector.docs_url && (
@@ -823,10 +1000,16 @@ export default function ConnectorsView() {
 
   // Split by category
   const aiConnectors = connectors.filter((c) => c.category === "ai");
-  const messagingConnectors = connectors.filter((c) => c.category !== "ai");
+  const googleConnectors = connectors.filter((c) => c.category === "google");
+  const messagingConnectors = connectors.filter(
+    (c) => c.category !== "ai" && c.category !== "google"
+  );
 
   const aiConfigured = aiConnectors.filter((c) => c.configured);
   const aiAvailable = aiConnectors.filter((c) => !c.configured);
+
+  const googleConfigured = googleConnectors.filter((c) => c.configured);
+  const googleAvailable = googleConnectors.filter((c) => !c.configured);
 
   const msgConfigured = messagingConnectors.filter((c) => c.configured);
   const msgAvailable = messagingConnectors.filter((c) => !c.configured);
@@ -882,7 +1065,50 @@ export default function ConnectorsView() {
         )}
 
         {/* Divider */}
-        {aiConnectors.length > 0 && messagingConnectors.length > 0 && (
+        {aiConnectors.length > 0 && (googleConnectors.length > 0 || messagingConnectors.length > 0) && (
+          <div className="border-t border-gray-800/40" />
+        )}
+
+        {/* ═══════════════════════════════════════════════ */}
+        {/* GOOGLE WORKSPACE SECTION                       */}
+        {/* ═══════════════════════════════════════════════ */}
+        {googleConnectors.length > 0 && (
+          <div>
+            {/* Section header */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center">
+                <Shield className="w-4 h-4 text-sky-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200">
+                  Google Workspace
+                </h3>
+                <p className="text-[11px] text-gray-500">
+                  Gmail, Calendar &amp; Drive — authorized via OAuth (no secrets stored)
+                </p>
+              </div>
+              {googleConfigured.length > 0 && (
+                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
+                  {googleConfigured.length} authorized
+                </span>
+              )}
+            </div>
+
+            {/* Google cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[...googleConfigured, ...googleAvailable].map((c) => (
+                <GoogleConnectorCard
+                  key={c.name}
+                  connector={c}
+                  onConfigure={setConfiguring}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Divider */}
+        {(aiConnectors.length > 0 || googleConnectors.length > 0) && messagingConnectors.length > 0 && (
           <div className="border-t border-gray-800/40" />
         )}
 
