@@ -113,7 +113,7 @@ function AIProviderCard({
         <h3 className="text-[15px] font-semibold text-gray-100 mb-1">
           {connector.display_name}
         </h3>
-        <p className="text-xs text-gray-500 leading-relaxed mb-3">
+        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-3">
           {connector.description}
         </p>
 
@@ -181,9 +181,9 @@ function ConnectorCard({
     >
       <div className="p-5">
         {/* Icon + Status */}
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start justify-between mb-3">
           <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${
+            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${
               isListening
                 ? "bg-blue-500/15 text-blue-400"
                 : connector.configured
@@ -191,7 +191,7 @@ function ConnectorCard({
                 : "bg-gray-800/80 text-gray-500 group-hover:bg-gray-800 group-hover:text-gray-400"
             }`}
           >
-            <Icon className="w-6 h-6" />
+            <Icon className="w-5 h-5" />
           </div>
 
           {/* Status pill */}
@@ -217,7 +217,7 @@ function ConnectorCard({
         <h3 className="text-[15px] font-semibold text-gray-100 mb-1">
           {connector.display_name}
         </h3>
-        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-5">
+        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-4">
           {connector.description}
         </p>
 
@@ -914,7 +914,7 @@ export default function ConnectorsView() {
             {/* Connected messaging */}
             {msgConfigured.length > 0 && (
               <div className="mb-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {msgConfigured.map((c) => (
                     <ConnectorCard
                       key={c.name}
@@ -937,7 +937,7 @@ export default function ConnectorsView() {
                     <div className="flex-1 border-t border-gray-800/30" />
                   </div>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {msgAvailable.map((c) => (
                     <ConnectorCard
                       key={c.name}
@@ -968,11 +968,11 @@ export default function ConnectorsView() {
         )}
 
         {/* How it works */}
-        <div className="rounded-2xl bg-surface border border-gray-800/60 p-5">
+        <div className="rounded-2xl bg-gray-900/40 border border-gray-800/60 p-5">
           <h4 className="text-sm font-semibold text-gray-300 mb-3">
             How It Works
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               {
                 step: "1",
