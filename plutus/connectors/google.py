@@ -94,7 +94,12 @@ class GoogleConnector(BaseConnector):
         return config
 
     def save_config(self, data: dict[str, Any]) -> None:
-        """Save the OAuth client ID."""
+        """Save OAuth credentials, ignoring masked values from the UI."""
+        # Don't overwrite real credentials with masked values
+        for field in ("client_id", "client_secret"):
+            val = data.get(field, "")
+            if not val or "••" in val:
+                data.pop(field, None)
         self._config.update(data)
         self._config["configured"] = True
         self._config_store.save(self._config)
