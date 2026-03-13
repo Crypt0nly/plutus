@@ -16,6 +16,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Only one publish pipeline at a time. If a new commit is pushed while a
+# previous build is still running, cancel the in-progress run so we don't
+# race on the same version number.
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: true
+
 permissions:
   contents: write   # Required for version bump commit + release creation
   id-token: write   # Required for PyPI trusted publishing
@@ -154,16 +161,35 @@ jobs:
     environment: pypi
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if version already exists on PyPI
+        id: version_check
+        run: |
+          VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/plutus-ai/${VERSION}/json")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "::warning::Version ${VERSION} already exists on PyPI — skipping upload."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version ${VERSION} not on PyPI — proceeding with upload."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/download-artifact@v4
+        if: steps.version_check.outputs.exists == 'false'
         with:
           path: dist/
           pattern: wheels-*
           merge-multiple: true
 
       - name: List artifacts
+        if: steps.version_check.outputs.exists == 'false'
         run: ls -la dist/
 
       - name: Publish to PyPI
+        if: steps.version_check.outputs.exists == 'false'
         uses: pypa/gh-action-pypi-publish@release/v1
 
   # ── Step 4: Create release and bump version for next time ───────
@@ -188,14 +214,18 @@ jobs:
 
       - name: Bump patch version for next release
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Pull latest in case another commit landed while we were building
+          git pull --rebase origin main
+
           VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
           NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
           sed -i "s/__version__ = \".*\"/__version__ = \"${NEXT_VERSION}\"/" plutus/__init__.py
           echo "Bumped: ${VERSION} → ${NEXT_VERSION}"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add plutus/__init__.py
           git commit -m "Bump version to ${NEXT_VERSION} [skip ci]"
           git push
