@@ -115,6 +115,40 @@ try {
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + `
              [System.Environment]::GetEnvironmentVariable("Path", "User")
 
+# pip may install to the per-user site-packages (AppData\Roaming\Python\PythonXYZ\Scripts)
+# which often isn't on PATH. Detect this and add it so `plutus` works immediately.
+$userScriptsDir = & $pythonFull -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))" 2>$null
+if ($userScriptsDir -and (Test-Path $userScriptsDir)) {
+    $pathLower = $env:Path.ToLower()
+    if (-not $pathLower.Contains($userScriptsDir.ToLower())) {
+        # Add to this session
+        $env:Path = "$userScriptsDir;$env:Path"
+
+        # Persist to the user's PATH so future terminals work too
+        $currentUserPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        if (-not $currentUserPath) { $currentUserPath = "" }
+        if (-not $currentUserPath.ToLower().Contains($userScriptsDir.ToLower())) {
+            [System.Environment]::SetEnvironmentVariable(
+                "Path",
+                "$userScriptsDir;$currentUserPath",
+                "User"
+            )
+            Write-Host "       Added Python Scripts to PATH: $userScriptsDir" -ForegroundColor DarkGray
+        }
+    }
+}
+
+# Also check the system-level Scripts dir (next to python.exe)
+$sysScriptsDir = Split-Path $pythonFull
+if ($sysScriptsDir -and -not $sysScriptsDir.EndsWith("Scripts")) {
+    $sysScriptsDir = Join-Path $sysScriptsDir "Scripts"
+}
+if ($sysScriptsDir -and (Test-Path $sysScriptsDir)) {
+    if (-not $env:Path.ToLower().Contains($sysScriptsDir.ToLower())) {
+        $env:Path = "$sysScriptsDir;$env:Path"
+    }
+}
+
 # Verify the `plutus` command works with the correct Python.
 # If another Python version has a stale plutus.exe on PATH, `plutus start`
 # will fail with "No module named 'plutus'".  Detect this and warn/fix.
