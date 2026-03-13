@@ -1,0 +1,49 @@
+# Git
+.git/
+.gitignore
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+*.so
+*.pyd
+*.c
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Node modules (rebuilt in Docker)
+ui/node_modules/
+ui/.vite/
+
+# Plutus runtime data
+.plutus/
+*.db
+audit.jsonl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment files (secrets should be passed via env vars)
+.env
+.env.local
+
+# Testing / CI
+.pytest_cache/
+htmlcov/
+.coverage
+.github/
