@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText } from "lucide-react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
@@ -73,6 +73,9 @@ export function SettingsView() {
             </div>
           )}
         </div>
+
+        {/* Version Banner */}
+        <VersionBanner />
 
         {/* Appearance */}
         <AppearanceSection />
@@ -445,6 +448,241 @@ function AppearanceSection() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+interface UpdateInfo {
+  update_available: boolean;
+  dismissed?: boolean;
+  current_version: string;
+  latest_version: string;
+  release_name?: string;
+  release_notes?: string;
+  release_url?: string;
+  published_at?: string;
+  error?: string;
+}
+
+function VersionBanner() {
+  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [updateResult, setUpdateResult] = useState<{ success: boolean; new_version?: string; error?: string } | null>(null);
+  const [showNotes, setShowNotes] = useState(false);
+
+  const checkUpdate = useCallback(async () => {
+    setChecking(true);
+    try {
+      const data = await api.checkForUpdate();
+      setInfo(data);
+    } catch {
+      setInfo(null);
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkUpdate();
+  }, [checkUpdate]);
+
+  const handleUpdate = async () => {
+    setUpdating(true);
+    setUpdateResult(null);
+    try {
+      const result = await api.applyUpdate();
+      setUpdateResult(result);
+      if (result.success) {
+        // Re-check to reflect new version
+        setTimeout(checkUpdate, 2000);
+      }
+    } catch (e) {
+      setUpdateResult({ success: false, error: String(e) });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDismiss = async () => {
+    if (!info) return;
+    try {
+      await api.dismissUpdate(info.latest_version);
+      setInfo((prev) => prev ? { ...prev, dismissed: true } : prev);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Loading state
+  if (checking && !info) {
+    return (
+      <div className="bg-surface rounded-xl border border-gray-800/60 p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-4 h-4 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin" />
+          <span className="text-sm text-gray-500">Checking version...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!info) return null;
+
+  const hasUpdate = info.update_available && !info.dismissed;
+
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        hasUpdate
+          ? "bg-plutus-500/5 border-plutus-500/30"
+          : "bg-surface border-gray-800/60"
+      }`}
+    >
+      {/* Version row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+              hasUpdate ? "bg-plutus-500/15" : "bg-gray-800/60"
+            }`}
+          >
+            {hasUpdate ? (
+              <ArrowUpCircle className="w-5 h-5 text-plutus-400" />
+            ) : (
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-200">
+                Plutus v{info.current_version}
+              </span>
+              {hasUpdate && (
+                <span className="text-[10px] font-medium text-plutus-400 bg-plutus-500/15 px-2 py-0.5 rounded-full">
+                  v{info.latest_version} available
+                </span>
+              )}
+              {!hasUpdate && !info.update_available && (
+                <span className="text-[10px] text-emerald-400/70">Up to date</span>
+              )}
+              {info.dismissed && (
+                <span className="text-[10px] text-gray-600">Update dismissed</span>
+              )}
+            </div>
+            {hasUpdate && info.release_name && (
+              <p className="text-xs text-gray-500 mt-0.5">{info.release_name}</p>
+            )}
+            {hasUpdate && info.published_at && (
+              <p className="text-[10px] text-gray-600 mt-0.5">
+                Released {new Date(info.published_at).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Check again */}
+          <button
+            onClick={checkUpdate}
+            disabled={checking}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors"
+            title="Check for updates"
+          >
+            <RefreshCw className={`w-4 h-4 ${checking ? "animate-spin" : ""}`} />
+          </button>
+
+          {hasUpdate && (
+            <>
+              {/* View release notes */}
+              {info.release_notes && (
+                <button
+                  onClick={() => setShowNotes(!showNotes)}
+                  className="text-xs text-gray-400 hover:text-gray-200 px-2.5 py-1.5 rounded-lg hover:bg-gray-800/50 transition-colors"
+                >
+                  {showNotes ? "Hide notes" : "Release notes"}
+                </button>
+              )}
+
+              {/* Release link */}
+              {info.release_url && (
+                <a
+                  href={info.release_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors"
+                  title="View on GitHub"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
+
+              {/* Dismiss */}
+              <button
+                onClick={handleDismiss}
+                className="p-1.5 rounded-lg text-gray-600 hover:text-gray-400 hover:bg-gray-800/50 transition-colors"
+                title="Dismiss this update"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              {/* Update button */}
+              <button
+                onClick={handleUpdate}
+                disabled={updating}
+                className="flex items-center gap-1.5 text-xs font-medium px-4 py-1.5 rounded-lg bg-plutus-500 text-white hover:bg-plutus-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {updating ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                    Update
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Release notes expandable */}
+      {showNotes && info.release_notes && (
+        <div className="mt-3 pt-3 border-t border-gray-800/40">
+          <pre className="text-xs text-gray-400 whitespace-pre-wrap font-mono leading-relaxed max-h-60 overflow-y-auto">
+            {info.release_notes}
+          </pre>
+        </div>
+      )}
+
+      {/* Update result */}
+      {updateResult && (
+        <div
+          className={`mt-3 pt-3 border-t border-gray-800/40 text-xs ${
+            updateResult.success ? "text-emerald-400" : "text-red-400"
+          }`}
+        >
+          {updateResult.success ? (
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" />
+              <span>
+                Updated to v{updateResult.new_version}. Restart Plutus to apply changes.
+              </span>
+            </div>
+          ) : (
+            <span>Update failed: {updateResult.error}</span>
+          )}
+        </div>
+      )}
+
+      {/* Error */}
+      {info.error && (
+        <p className="text-[10px] text-gray-600 mt-2">
+          Could not check for updates: {info.error}
+        </p>
+      )}
     </div>
   );
 }
