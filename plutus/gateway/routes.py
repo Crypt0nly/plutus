@@ -2230,7 +2230,7 @@ def create_router() -> APIRouter:
                 "success": code == 0,
                 "output": (out.strip() or clean_err)[:500],
             })
-            if code != 0 and "no RECORD file" in err.lower():
+            if code != 0 and "no record file" in err.lower():
                 # Package was installed without metadata (legacy install or
                 # corrupted dist-info).  Retry with --force-reinstall so pip
                 # skips the uninstall step and just overwrites files.
