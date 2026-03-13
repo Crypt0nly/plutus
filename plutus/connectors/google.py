@@ -47,7 +47,7 @@ class GoogleConnector(BaseConnector):
         return bool(tokens.get("access_token"))
 
     def _sensitive_fields(self) -> list[str]:
-        return ["client_id"]
+        return ["client_id", "client_secret"]
 
     def config_schema(self) -> list[dict[str, Any]]:
         return [
@@ -62,6 +62,17 @@ class GoogleConnector(BaseConnector):
                     "Credentials → OAuth 2.0 Client ID (Desktop app type)"
                 ),
             },
+            {
+                "name": "client_secret",
+                "label": "Client Secret",
+                "type": "password",
+                "required": True,
+                "placeholder": "GOCSPX-...",
+                "help": (
+                    "Found alongside the Client ID in Google Cloud Console → "
+                    "Credentials → your OAuth 2.0 client"
+                ),
+            },
         ]
 
     def get_config(self) -> dict[str, Any]:
@@ -70,6 +81,12 @@ class GoogleConnector(BaseConnector):
         cid = config.get("client_id", "")
         if cid and len(cid) > 12:
             config["client_id"] = cid[:8] + "••••" + cid[-4:]
+        # Mask client secret
+        cs = config.get("client_secret", "")
+        if cs and len(cs) > 8:
+            config["client_secret"] = cs[:4] + "••••" + cs[-4:]
+        elif cs:
+            config["client_secret"] = "••••"
         # Show token status
         tokens = load_tokens(self.service)
         if tokens.get("access_token"):
@@ -89,14 +106,21 @@ class GoogleConnector(BaseConnector):
     async def _get_client_id(self) -> str:
         return self._config.get("client_id", "")
 
+    async def _get_client_secret(self) -> str:
+        return self._config.get("client_secret", "")
+
     async def authorize(self) -> dict[str, Any]:
         """Start the OAuth PKCE flow — opens the user's browser."""
         client_id = await self._get_client_id()
         if not client_id:
             return {"success": False, "message": "Set your OAuth Client ID first"}
+        client_secret = await self._get_client_secret()
+        if not client_secret:
+            return {"success": False, "message": "Set your Client Secret first"}
         return await start_oauth_flow(
             service=self.service,
             client_id=client_id,
+            client_secret=client_secret,
             scopes=self.oauth_scopes or SCOPES.get(self.service, []),
         )
 
@@ -105,7 +129,8 @@ class GoogleConnector(BaseConnector):
         client_id = await self._get_client_id()
         if not client_id:
             return None
-        return await get_valid_access_token(self.service, client_id)
+        client_secret = await self._get_client_secret()
+        return await get_valid_access_token(self.service, client_id, client_secret)
 
     async def _api_request(
         self,
