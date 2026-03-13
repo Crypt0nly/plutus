@@ -943,6 +943,13 @@ def create_app(config: PlutusConfig | None = None) -> FastAPI:
     app.include_router(create_router(), prefix="/api")
     app.include_router(create_ws_router())
 
+    # Silence Chrome DevTools probe (prevents noisy 404s in the log)
+    @app.get("/.well-known/appspecific/com.chrome.devtools.json")
+    async def _chrome_devtools_probe():
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(content={}, status_code=200)
+
     # Serve the UI — check bundled location first (pip install), then dev location
     ui_dir = Path(__file__).parent.parent / "ui_dist"
     if not ui_dir.exists():
