@@ -1,5 +1,6 @@
 # Plutus Installer for Windows
 # Usage: iwr -useb https://useplutus.ai/install.ps1 | iex
+# (The -useb flag avoids a security warning prompt on older PowerShell versions)
 #
 # What this script does:
 #   1. Checks if Python 3.11+ is installed (installs via winget if not)
@@ -38,6 +39,8 @@ Write-Host ""
 
 # ── Step 1: Check Python ──────────────────────────────────
 
+$MAX_PYTHON_MINOR = 13  # Max supported Python minor version (3.x)
+
 function Get-PythonCommand {
     # Try python first, then python3
     foreach ($cmd in @("python", "python3")) {
@@ -46,7 +49,7 @@ function Get-PythonCommand {
             if ($version -match "Python (\d+)\.(\d+)") {
                 $major = [int]$Matches[1]
                 $minor = [int]$Matches[2]
-                if ($major -ge 3 -and $minor -ge 11) {
+                if ($major -eq 3 -and $minor -ge 11 -and $minor -le $MAX_PYTHON_MINOR) {
                     return $cmd
                 }
             }
@@ -61,6 +64,27 @@ $pythonCmd = Get-PythonCommand
 $pythonFull = $null  # Will hold the absolute path to the chosen Python
 
 if (-not $pythonCmd) {
+    # Check if we found Python but it's too new
+    $tooNew = $false
+    foreach ($cmd in @("python", "python3")) {
+        try {
+            $version = & $cmd --version 2>&1
+            if ($version -match "Python (\d+)\.(\d+)") {
+                $foundMajor = [int]$Matches[1]
+                $foundMinor = [int]$Matches[2]
+                if ($foundMajor -eq 3 -and $foundMinor -gt $MAX_PYTHON_MINOR) {
+                    $tooNew = $true
+                    Write-Host ""
+                    Write-Host "[ERROR] Python $foundMajor.$foundMinor detected, but Plutus requires Python 3.11-3.$MAX_PYTHON_MINOR." -ForegroundColor Red
+                    Write-Host "        Python $foundMajor.$foundMinor is too new — many dependencies don't support it yet." -ForegroundColor Yellow
+                    Write-Host "        Install Python 3.$MAX_PYTHON_MINOR from https://www.python.org/downloads/" -ForegroundColor Yellow
+                    Write-Host "        Make sure to check 'Add Python to PATH' during install." -ForegroundColor Yellow
+                    Write-Host ""
+                    exit 1
+                }
+            }
+        } catch { continue }
+    }
     Write-Host "[1/4] Python 3.11+ not found. Installing..." -ForegroundColor Yellow
 
     # Check if winget is available
