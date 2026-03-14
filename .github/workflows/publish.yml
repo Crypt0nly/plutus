@@ -63,17 +63,15 @@ jobs:
           npm ci
           npm run build
 
-      - name: Show version to publish
-        run: |
-          VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
-          echo "Publishing version: ${VERSION}"
-
       # ── Build wheels with cibuildwheel ───────────────────────────
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - uses: astral-sh/setup-uv@v5
+      - name: Show version to publish
+        run: |
+          VERSION=$(python -c "exec(open('plutus/__init__.py').read()); print(__version__)")
+          echo "Publishing version: ${VERSION}"
 
       - name: Install cibuildwheel
         run: pip install cibuildwheel==3.4.0
@@ -102,13 +100,12 @@ jobs:
           # Before building: install Cython and compile protected modules.
           # v3 no longer preinstalls setuptools/wheel, so we must install them.
           # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
-          # Uses uv for fast dependency resolution.
           CIBW_BEFORE_BUILD: >
-            uv pip install "cython>=3.2.4" "setuptools>=69.0,<82" &&
+            pip install "cython>=3.2.4" "setuptools>=69.0,<82" &&
             python build_compiled.py build_ext --inplace
 
-          # Use uv-backed build frontend for faster installs
-          CIBW_BUILD_FRONTEND: "build[uv]"
+          # The actual wheel build (default in v3, but explicit for clarity)
+          CIBW_BUILD_FRONTEND: "build"
 
           # Test that the compiled wheel actually imports correctly
           CIBW_TEST_COMMAND: >
