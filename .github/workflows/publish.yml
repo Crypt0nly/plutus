@@ -90,13 +90,14 @@ jobs:
           # Use manylinux_2_28 (default in v3, but explicit for clarity)
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
-          # Pin auditwheel to a single manylinux tag — without --only-plat
-          # auditwheel adds legacy compat tags (manylinux2014 + _2_17 + _2_28)
-          # which PyPI rejects with 400 Bad Request.  The manylinux_2_28
-          # container already sets AUDITWHEEL_PLAT, so --only-plat alone
-          # is sufficient — no need to hardcode --plat.
+          # Pin auditwheel to a single manylinux tag — without explicit
+          # --plat, auditwheel adds legacy compat tags (manylinux2014 +
+          # _2_17 + _2_28) which PyPI rejects with 400 Bad Request.
+          # Hardcode the platform instead of relying on AUDITWHEEL_PLAT
+          # env var, which may not be set in all container images.
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
-            auditwheel repair -w {dest_dir} {wheel} --only-plat
+            auditwheel repair -w {dest_dir} {wheel}
+            --plat manylinux_2_28_x86_64
 
           # Before building: install Cython and compile protected modules.
           # v3 no longer preinstalls setuptools/wheel, so we must install them.
