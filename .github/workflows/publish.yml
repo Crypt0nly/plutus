@@ -184,6 +184,11 @@ jobs:
           # Skip wheels already uploaded by a previous partial run so that
           # retries don't fail with 400 on duplicate filenames.
           skip-existing: true
+          verbose: true
+          # Disable attestations — the action now defaults attestations:true
+          # but PyPI returns 400 if the trusted publisher config doesn't match
+          # the attestation identity (environment, workflow path, etc.).
+          attestations: false
 
   # ── Create release and bump version for next time ────────────────
   post-release:
