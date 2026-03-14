@@ -111,7 +111,7 @@ jobs:
           # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
           # Uses uv for fast dependency resolution.
           CIBW_BEFORE_BUILD: >
-            uv pip install --system "cython>=3.2.4" "setuptools>=69.0,<82" &&
+            uv pip install "cython>=3.2.4" "setuptools>=69.0,<82" &&
             python build_compiled.py build_ext --inplace
 
           # Use uv-backed build frontend for faster installs
