@@ -35,7 +35,7 @@ echo ""
 
 # ── Step 2: Install build deps ───────────────
 echo "[2/5] Installing build dependencies..."
-pip install "cython>=3.0" "setuptools>=69.0" build
+pip install "cython>=3.2.4" "setuptools>=69.0" build
 echo "       Build deps ready."
 echo ""
 

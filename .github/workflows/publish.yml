@@ -126,7 +126,7 @@ jobs:
           # v3 no longer preinstalls setuptools/wheel, so we must install them.
           # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
           CIBW_BEFORE_BUILD: >
-            pip install "cython>=3.0" "setuptools>=69.0,<82" &&
+            pip install "cython>=3.2.4" "setuptools>=69.0,<82" &&
             python build_compiled.py build_ext --inplace
 
           # The actual wheel build (default in v3, but explicit for clarity)
