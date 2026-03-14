@@ -101,9 +101,12 @@ jobs:
 
           # Before building: install Cython and compile protected modules.
           # v3 no longer preinstalls setuptools/wheel, so we must install them.
-          # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
+          # Note: setuptools here is only used for Cython compilation
+          # (build_ext), NOT for building the wheel (hatchling does that),
+          # so PEP 639 metadata concerns don't apply. Python 3.14 requires
+          # setuptools 82+ for C API compatibility.
           CIBW_BEFORE_BUILD: >
-            pip install "cython>=3.2.4" "setuptools>=69.0,<82" &&
+            pip install "cython>=3.2.4" "setuptools>=69.0" &&
             python build_compiled.py build_ext --inplace
 
           # The actual wheel build (default in v3, but explicit for clarity)
