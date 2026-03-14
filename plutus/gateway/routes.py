@@ -2264,18 +2264,37 @@ def create_router() -> APIRouter:
         new_version = __version__
         try:
             code, out, _err = await run(
-                [sys.executable, "-c", "import plutus; print(plutus.__version__)"],
+                [sys.executable, "-c",
+                 "import plutus; print(plutus.__version__)"],
             )
             if code == 0 and out.strip():
                 new_version = out.strip()
         except Exception:
             pass
 
+        # If pip "succeeded" but the version didn't change, no wheel was
+        # available for this platform.  Report the failure instead of
+        # doing a pointless restart.
+        if new_version == __version__:
+            return {
+                "success": False,
+                "error": (
+                    f"No update available for this platform. "
+                    f"Version {__version__} is still the latest "
+                    f"compatible wheel."
+                ),
+                "previous_version": __version__,
+                "new_version": new_version,
+                "steps": steps,
+                "restart_required": False,
+            }
+
         # Schedule a server restart so the new code is loaded
         async def _restart_server() -> None:
             await asyncio.sleep(1.5)  # let the response reach the client
             logger.info("Restarting Plutus after update...")
-            # Re-exec with the original command line to preserve --host/--port/etc.
+            # Re-exec with the original command line to preserve
+            # --host/--port/etc.
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
         asyncio.get_event_loop().create_task(_restart_server())
