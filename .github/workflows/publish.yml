@@ -3,7 +3,7 @@ name: Publish to PyPI
 # Build compiled platform wheels and publish to PyPI.
 #
 # Every push to main automatically:
-#   1. Builds compiled wheels for all platforms
+#   1. Builds compiled wheels for all platforms (with UI built inline)
 #   2. Publishes to PyPI as a stable release
 #   3. Creates a GitHub Release
 #   4. Bumps the patch version for the next release
@@ -21,14 +21,36 @@ permissions:
   id-token: write   # Required for PyPI trusted publishing
 
 jobs:
-  # ── Step 1: Build the React frontend ────────────────────────────
-  build-ui:
-    runs-on: ubuntu-latest
+  # ── Build compiled wheels per platform ────────────────────────────
+  #
+  # Each runner builds the React frontend itself (npm cache makes this
+  # fast after the first run), eliminating the serial build-ui job.
+  build-wheels:
     # Skip version-bump commits to prevent infinite loops
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            cibw_archs: x86_64
+            artifact_name: wheels-linux-x86_64
+          # macOS arm64 (Apple Silicon) — Intel users can use Rosetta
+          - os: macos-latest
+            cibw_archs: arm64
+            artifact_name: wheels-macos-arm64
+          # Windows x86_64
+          - os: windows-latest
+            cibw_archs: AMD64
+            artifact_name: wheels-windows-x86_64
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
 
+      # ── Build the React frontend inline ──────────────────────────
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -46,55 +68,7 @@ jobs:
           VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
           echo "Publishing version: ${VERSION}"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ui-dist
-          path: ui/dist/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: source
-          path: plutus/__init__.py
-
-  # ── Step 2: Build compiled wheels per platform ──────────────────
-  build-wheels:
-    needs: build-ui
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux x86_64
-          - os: ubuntu-latest
-            cibw_archs: x86_64
-            artifact_name: wheels-linux-x86_64
-          # macOS x86_64 (Intel)
-          - os: macos-latest
-            cibw_archs: x86_64
-            artifact_name: wheels-macos-x86_64
-          # macOS arm64 (Apple Silicon)
-          - os: macos-latest
-            cibw_archs: arm64
-            artifact_name: wheels-macos-arm64
-          # Windows x86_64
-          - os: windows-latest
-            cibw_archs: AMD64
-            artifact_name: wheels-windows-x86_64
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: ui-dist
-          path: ui/dist/
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: source
-          path: plutus/
-
+      # ── Build wheels with cibuildwheel ───────────────────────────
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -126,17 +100,13 @@ jobs:
           # Before building: install Cython and compile protected modules.
           # v3 no longer preinstalls setuptools/wheel, so we must install them.
           # Pin setuptools<82 to avoid PEP 639 license field incompatibilities.
+          # Uses uv for fast dependency resolution.
           CIBW_BEFORE_BUILD: >
-            pip install "cython>=3.2.4" "setuptools>=69.0,<82" &&
+            uv pip install --system "cython>=3.2.4" "setuptools>=69.0,<82" &&
             python build_compiled.py build_ext --inplace
 
-          # The actual wheel build (default in v3, but explicit for clarity)
-          CIBW_BUILD_FRONTEND: "build"
-
-          # Upgrade pip in test environment so pre-built wheels (e.g. tiktoken)
-          # are found. Must use "python -m pip" because Windows rejects bare
-          # "pip install --upgrade pip" when upgrading itself.
-          CIBW_BEFORE_TEST: "python -m pip install --upgrade pip"
+          # Use uv-backed build frontend for faster installs
+          CIBW_BUILD_FRONTEND: "build[uv]"
 
           # Test that the compiled wheel actually imports correctly
           CIBW_TEST_COMMAND: >
@@ -151,7 +121,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: wheelhouse/*.whl
 
-  # ── Step 3: Publish wheels to PyPI (no sdist — open-core protection) ──
+  # ── Publish wheels to PyPI (no sdist — open-core protection) ─────
   #
   # Only compiled platform wheels are published. No source distribution
   # is uploaded so that unsupported platforms cannot fall back to raw
@@ -178,7 +148,7 @@ jobs:
           # retries don't fail with 400 on duplicate filenames.
           skip-existing: true
 
-  # ── Step 4: Create release and bump version for next time ───────
+  # ── Create release and bump version for next time ────────────────
   post-release:
     needs: publish
     runs-on: ubuntu-latest
