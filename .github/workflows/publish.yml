@@ -124,10 +124,11 @@ jobs:
 
           # Pin auditwheel to manylinux_2_28 only — avoids redundant legacy
           # tags (manylinux2014 + manylinux_2_17 + manylinux_2_28) that
-          # PyPI rejects with 400 Bad Request.
+          # PyPI rejects with 400 Bad Request.  --only-plat prevents
+          # auditwheel from appending extra compatibility tags.
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
             auditwheel repair -w {dest_dir} {wheel}
-            --plat manylinux_2_28_x86_64
+            --plat manylinux_2_28_x86_64 --only-plat
 
           # Before building: install Cython and compile protected modules.
           # v3 no longer preinstalls setuptools/wheel, so we must install them.
