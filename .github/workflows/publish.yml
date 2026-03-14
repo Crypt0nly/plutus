@@ -69,6 +69,7 @@ jobs:
           python-version: "3.12"
 
       - name: Show version to publish
+        shell: bash
         run: |
           VERSION=$(python -c "exec(open('plutus/__init__.py').read()); print(__version__)")
           echo "Publishing version: ${VERSION}"
