@@ -80,6 +80,8 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: astral-sh/setup-uv@v5
+
       - name: Install cibuildwheel
         run: pip install cibuildwheel==3.4.0
 
