@@ -115,6 +115,10 @@ jobs:
           # The actual wheel build (default in v3, but explicit for clarity)
           CIBW_BUILD_FRONTEND: "build"
 
+          # Upgrade pip in test environment so pre-built wheels (e.g. tiktoken)
+          # are found on newer Python versions like 3.14.
+          CIBW_BEFORE_TEST: "python -m pip install --upgrade pip"
+
           # Test that the compiled wheel actually imports correctly
           CIBW_TEST_COMMAND: >
             python -c "from plutus.core.agent import AgentRuntime; print('OK: agent');
