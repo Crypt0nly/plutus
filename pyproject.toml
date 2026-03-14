@@ -61,7 +61,7 @@ dev = [
     "ruff>=0.8.0",
 ]
 build = [
-    "cython>=3.0.0",
+    "cython>=3.2.4",
     "setuptools>=69.0.0",
 ]
 
