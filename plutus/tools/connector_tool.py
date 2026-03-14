@@ -308,9 +308,9 @@ class ConnectorTool(Tool):
             return await self._send_message(service, message, **kwargs)
 
         elif action == "send_file":
-            service = kwargs.get("service", "")
-            file_path = kwargs.get("file_path", "")
-            caption = kwargs.get("caption", "")
+            service = kwargs.pop("service", "")
+            file_path = kwargs.pop("file_path", "")
+            caption = kwargs.pop("caption", "")
 
             if not service:
                 return "Error: 'service' parameter is required for send_file action"
@@ -326,7 +326,7 @@ class ConnectorTool(Tool):
             return await self._manage_discord(**kwargs)
 
         elif action == "google":
-            service = kwargs.get("service", "")
+            service = kwargs.pop("service", "")
             if not service:
                 return "Error: 'service' is required (google_gmail, google_calendar, google_drive)"
             return await self._handle_google(service, **kwargs)
