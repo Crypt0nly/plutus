@@ -138,6 +138,9 @@ jobs:
     needs: [build-wheels]
     runs-on: ubuntu-latest
     environment: pypi
+    permissions:
+      id-token: write    # OIDC for PyPI trusted publishing + attestations
+      attestations: write # Required for sigstore attestations
 
     steps:
       - uses: actions/download-artifact@v4
