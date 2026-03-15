@@ -102,6 +102,16 @@ class ConnectorAutoStartUpdate(BaseModel):
     auto_start: bool
 
 
+class CustomConnectorCreate(BaseModel):
+    connector_id: str
+    display_name: str = ""
+    description: str = ""
+    base_url: str
+    auth_type: str = "none"
+    credentials: dict[str, str] = {}
+    default_headers: dict[str, str] = {}
+
+
 
 def create_router() -> APIRouter:
     router = APIRouter()
@@ -1685,7 +1695,7 @@ def create_router() -> APIRouter:
 
     @router.delete("/connectors/{name}")
     async def disconnect_connector(name: str) -> dict[str, Any]:
-        """Remove a connector's configuration."""
+        """Remove a connector's configuration (or delete a custom connector entirely)."""
         from plutus.gateway.server import get_state
         state = get_state()
         connector_mgr = state.get("connector_manager")
@@ -1694,9 +1704,49 @@ def create_router() -> APIRouter:
         connector = connector_mgr.get(name)
         if not connector:
             raise HTTPException(404, f"Connector '{name}' not found")
+
+        # If it's a custom connector, fully delete it
+        if hasattr(connector, 'connector_id') and name.startswith('custom_'):
+            from plutus.connectors.custom_api import CustomConnectorManager
+            await connector.stop()
+            connector.clear_config()
+            CustomConnectorManager.delete_custom_connector(connector.connector_id)
+            if name in connector_mgr._connectors:
+                del connector_mgr._connectors[name]
+            return {"message": f"Custom connector '{connector.display_name}' deleted", "deleted": True}
+
         await connector.stop()
         connector.clear_config()
         return {"message": f"{connector.display_name} disconnected", "status": connector.status()}
+
+    @router.post("/connectors/custom")
+    async def create_custom_connector(body: CustomConnectorCreate) -> dict[str, Any]:
+        """Create a new custom API connector."""
+        from plutus.gateway.server import get_state
+        from plutus.connectors.custom_api import CustomConnectorManager as CCM
+        state = get_state()
+        connector_mgr = state.get("connector_manager")
+        if not connector_mgr:
+            raise HTTPException(500, "Connector manager not initialized")
+
+        success, message, connector = CCM.create_custom_connector(
+            connector_id=body.connector_id,
+            display_name=body.display_name,
+            description=body.description,
+            base_url=body.base_url,
+            auth_type=body.auth_type,
+            credentials=body.credentials if body.credentials else None,
+            default_headers=body.default_headers if body.default_headers else None,
+        )
+
+        if not success or not connector:
+            raise HTTPException(400, message)
+
+        connector_mgr.register(connector)
+        return {
+            "message": message,
+            "connector": connector.status(),
+        }
 
     @router.post("/connectors/{name}/authorize")
     async def authorize_connector(name: str) -> dict[str, Any]:

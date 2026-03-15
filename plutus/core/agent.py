@@ -884,6 +884,16 @@ class AgentRuntime:
                             "  git(operation='push', working_directory='~/plutus-workspace/repo')\n"
                             "  git(operation='checkout', args='-b feature-branch', working_directory='~/plutus-workspace/repo')"
                         )
+                    # Check for custom connectors
+                    custom_conns = [c for c in configured if c.get("is_custom")]
+                    if custom_conns:
+                        custom_names = ", ".join(c["display_name"] for c in custom_conns)
+                        parts.append(
+                            f"\n### Custom API Connectors\n"
+                            f"The following custom connectors are configured: **{custom_names}**.\n"
+                            f"Use `connector(action='custom', service='custom_<id>', method='GET', endpoint='/...')` "
+                            f"to make requests to these APIs."
+                        )
                 else:
                     parts.append(
                         "\n## Connected Services\n"
@@ -893,6 +903,22 @@ class AgentRuntime:
                     )
             except Exception:
                 pass  # Don't break the prompt if connector listing fails
+
+        # Self-extension capabilities
+        parts.append(
+            "\n## Self-Extension\n"
+            "You can extend your own capabilities:\n\n"
+            "**Create Skills:** Use `pc(operation='create_skill', ...)` to create new browser/desktop "
+            "automation skills. Skills are saved to ~/.plutus/skills/ and available immediately.\n\n"
+            "**Create Tools:** Use `tool_creator(operation='create', ...)` to create new Python-based "
+            "tools. Tools are saved to ~/.plutus/custom_tools/ and registered at runtime.\n\n"
+            "**Create Custom Connectors:** Use `connector(action='create_connector', "
+            "connector_id='...', base_url='...', auth_type='...', credentials={...})` to create "
+            "new API connectors for any REST service. The user can also create these from the "
+            "Connectors tab in the UI.\n\n"
+            "When a user asks you to integrate with a new service, prefer creating a custom connector "
+            "(if it has an API) over creating a browser skill (which is fragile)."
+        )
 
         # Add workspace info
         workspace_dir = str(Path.home() / "plutus-workspace")

@@ -266,6 +266,19 @@ export const api = {
     request<Record<string, any>>(`/connectors/${name}/authorize`, {
       method: "POST",
     }),
+  createCustomConnector: (data: {
+    connector_id: string;
+    display_name?: string;
+    description?: string;
+    base_url: string;
+    auth_type?: string;
+    credentials?: Record<string, string>;
+    default_headers?: Record<string, string>;
+  }) =>
+    request<Record<string, any>>("/connectors/custom", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   // WSL
   getWSLStatus: () =>

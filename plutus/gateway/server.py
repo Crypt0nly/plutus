@@ -797,6 +797,13 @@ async def lifespan(app: FastAPI):
         from plutus.tools.connector_tool import ConnectorTool
         from plutus.tools.git_tool import GitTool
         connector_manager = create_connector_manager()
+
+        # Load user-created custom API connectors
+        from plutus.connectors.custom_api import CustomConnectorManager
+        for custom_conn in CustomConnectorManager.load_all_custom_connectors():
+            connector_manager.register(custom_conn)
+            logger.info(f"Loaded custom connector: {custom_conn.name}")
+
         connector_tool = ConnectorTool(connector_manager)
         tool_registry.register(connector_tool)
         git_tool = GitTool(connector_manager)

@@ -5,6 +5,7 @@ import {
   MessageCircle,
   MessageSquare,
   Plug,
+  Unplug,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -30,6 +31,10 @@ import {
   Shield,
   Calendar,
   HardDrive,
+  Plus,
+  Link,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -971,6 +976,59 @@ export default function ConnectorsView() {
   const [connectors, setConnectors] = useState<ConnectorData[]>([]);
   const [loading, setLoading] = useState(true);
   const [configuring, setConfiguring] = useState<ConnectorData | null>(null);
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [customForm, setCustomForm] = useState({
+    connector_id: "",
+    display_name: "",
+    description: "",
+    base_url: "",
+    auth_type: "none",
+  });
+  const [customCredentials, setCustomCredentials] = useState<Record<string, string>>({});
+  const [customHeaders, setCustomHeaders] = useState("");
+  const [creatingCustom, setCreatingCustom] = useState(false);
+  const [customError, setCustomError] = useState("");
+  const [customSuccess, setCustomSuccess] = useState("");
+
+  const handleCreateCustom = async () => {
+    setCreatingCustom(true);
+    setCustomError("");
+    setCustomSuccess("");
+    try {
+      let parsedHeaders: Record<string, string> = {};
+      if (customHeaders.trim()) {
+        try {
+          parsedHeaders = JSON.parse(customHeaders);
+        } catch {
+          setCustomError("Invalid JSON in default headers");
+          setCreatingCustom(false);
+          return;
+        }
+      }
+      await api.createCustomConnector({
+        connector_id: customForm.connector_id,
+        display_name: customForm.display_name,
+        description: customForm.description,
+        base_url: customForm.base_url,
+        auth_type: customForm.auth_type,
+        credentials: Object.keys(customCredentials).length > 0 ? customCredentials : undefined,
+        default_headers: Object.keys(parsedHeaders).length > 0 ? parsedHeaders : undefined,
+      });
+      setCustomSuccess(`Connector "${customForm.display_name || customForm.connector_id}" created!`);
+      setCustomForm({ connector_id: "", display_name: "", description: "", base_url: "", auth_type: "none" });
+      setCustomCredentials({});
+      setCustomHeaders("");
+      fetchConnectors();
+      setTimeout(() => {
+        setCustomSuccess("");
+        setShowAddCustom(false);
+      }, 2000);
+    } catch (e: any) {
+      setCustomError(e.message || "Failed to create connector");
+    } finally {
+      setCreatingCustom(false);
+    }
+  };
 
   const fetchConnectors = useCallback(async () => {
     try {
@@ -1012,8 +1070,9 @@ export default function ConnectorsView() {
   // Split by category
   const aiConnectors = connectors.filter((c) => c.category === "ai");
   const googleConnectors = connectors.filter((c) => c.category === "google");
+  const customConnectors = connectors.filter((c) => (c as any).is_custom);
   const messagingConnectors = connectors.filter(
-    (c) => c.category !== "ai" && c.category !== "google"
+    (c) => c.category !== "ai" && c.category !== "google" && !(c as any).is_custom
   );
 
   const aiConfigured = aiConnectors.filter((c) => c.configured);
@@ -1177,6 +1236,231 @@ export default function ConnectorsView() {
             </p>
           </div>
         )}
+
+        {/* ═══════════════════════════════════════════════ */}
+        {/* CUSTOM API CONNECTORS SECTION                   */}
+        {/* ═══════════════════════════════════════════════ */}
+        <div>
+          <div className="border-t border-gray-800/40 mb-10" />
+
+          {/* Section header */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+              <Link className="w-4 h-4 text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-200">
+                Custom API Connectors
+              </h3>
+              <p className="text-[11px] text-gray-500">
+                Connect any REST API — Jira, Notion, Slack, or your own services
+              </p>
+            </div>
+            {customConnectors.length > 0 && (
+              <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">
+                {customConnectors.length} custom
+              </span>
+            )}
+          </div>
+
+          {/* Existing custom connectors */}
+          {customConnectors.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+              {customConnectors.map((c) => (
+                <ConnectorCard
+                  key={c.name}
+                  connector={c}
+                  onConfigure={setConfiguring}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Add Custom Connector button / form */}
+          <button
+            onClick={() => setShowAddCustom(!showAddCustom)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100 border border-gray-700/40 hover:border-gray-600/60"
+          >
+            {showAddCustom ? (
+              <>
+                <ChevronUp className="w-4 h-4" />
+                Hide
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                Add Custom Connector
+              </>
+            )}
+          </button>
+
+          {showAddCustom && (
+            <div className="mt-4 rounded-2xl border border-gray-800/60 bg-surface p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Connector ID */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Connector ID *</label>
+                  <input
+                    type="text"
+                    value={customForm.connector_id}
+                    onChange={(e) => setCustomForm({ ...customForm, connector_id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
+                    placeholder="jira, notion, slack..."
+                    className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                  />
+                </div>
+
+                {/* Display Name */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Display Name</label>
+                  <input
+                    type="text"
+                    value={customForm.display_name}
+                    onChange={(e) => setCustomForm({ ...customForm, display_name: e.target.value })}
+                    placeholder="My Jira Instance"
+                    className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                  />
+                </div>
+
+                {/* Base URL */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Base URL *</label>
+                  <input
+                    type="text"
+                    value={customForm.base_url}
+                    onChange={(e) => setCustomForm({ ...customForm, base_url: e.target.value })}
+                    placeholder="https://api.example.com/v1"
+                    className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                  />
+                </div>
+
+                {/* Auth Type */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Authentication</label>
+                  <select
+                    value={customForm.auth_type}
+                    onChange={(e) => {
+                      setCustomForm({ ...customForm, auth_type: e.target.value });
+                      setCustomCredentials({});
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors appearance-none"
+                  >
+                    <option value="none">None</option>
+                    <option value="api_key">API Key</option>
+                    <option value="bearer_token">Bearer Token</option>
+                    <option value="basic_auth">Basic Auth</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Auth credentials based on type */}
+              {customForm.auth_type === "api_key" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">API Key</label>
+                  <input
+                    type="password"
+                    value={customCredentials.api_key || ""}
+                    onChange={(e) => setCustomCredentials({ ...customCredentials, api_key: e.target.value })}
+                    placeholder="Your API key"
+                    className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                  />
+                  <p className="text-[10px] text-gray-600 mt-1">Sent as X-API-Key header</p>
+                </div>
+              )}
+
+              {customForm.auth_type === "bearer_token" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Bearer Token</label>
+                  <input
+                    type="password"
+                    value={customCredentials.token || ""}
+                    onChange={(e) => setCustomCredentials({ ...customCredentials, token: e.target.value })}
+                    placeholder="Your bearer token"
+                    className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                  />
+                </div>
+              )}
+
+              {customForm.auth_type === "basic_auth" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Username</label>
+                    <input
+                      type="text"
+                      value={customCredentials.username || ""}
+                      onChange={(e) => setCustomCredentials({ ...customCredentials, username: e.target.value })}
+                      placeholder="Username"
+                      className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                    <input
+                      type="password"
+                      value={customCredentials.password || ""}
+                      onChange={(e) => setCustomCredentials({ ...customCredentials, password: e.target.value })}
+                      placeholder="Password or token"
+                      className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Description</label>
+                <input
+                  type="text"
+                  value={customForm.description}
+                  onChange={(e) => setCustomForm({ ...customForm, description: e.target.value })}
+                  placeholder="What does this API do?"
+                  className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors"
+                />
+              </div>
+
+              {/* Default Headers */}
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Default Headers (optional JSON)</label>
+                <input
+                  type="text"
+                  value={customHeaders}
+                  onChange={(e) => setCustomHeaders(e.target.value)}
+                  placeholder='{"Accept": "application/json"}'
+                  className="w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-700/50 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-colors font-mono text-xs"
+                />
+              </div>
+
+              {/* Error / Success */}
+              {customError && (
+                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">
+                  <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  {customError}
+                </div>
+              )}
+              {customSuccess && (
+                <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-lg">
+                  <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                  {customSuccess}
+                </div>
+              )}
+
+              {/* Create button */}
+              <div className="flex justify-end">
+                <button
+                  onClick={handleCreateCustom}
+                  disabled={creatingCustom || !customForm.connector_id || !customForm.base_url}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 bg-amber-500/90 hover:bg-amber-500 text-gray-900 shadow-md shadow-amber-500/15 hover:shadow-lg hover:shadow-amber-500/20 active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  {creatingCustom ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Plus className="w-4 h-4" />
+                  )}
+                  Create Connector
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* How it works */}
         <div className="rounded-2xl bg-gray-900/40 border border-gray-800/60 p-5">
