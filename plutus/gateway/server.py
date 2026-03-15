@@ -711,6 +711,10 @@ async def lifespan(app: FastAPI):
     try:
         config = PlutusConfig.load()
 
+        # Ensure the workspace directory exists (auto-created for existing users on upgrade)
+        workspace_dir = Path.home() / "plutus-workspace"
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+
         # Initialize secrets store and inject stored keys into environment
         secrets = SecretsStore()
         secrets.inject_all()
@@ -788,12 +792,15 @@ async def lifespan(app: FastAPI):
         if config.heartbeat.enabled:
             heartbeat.start()
 
-        # Initialize connector manager and register connector tool
+        # Initialize connector manager and register connector + git tools
         from plutus.connectors import create_connector_manager
         from plutus.tools.connector_tool import ConnectorTool
+        from plutus.tools.git_tool import GitTool
         connector_manager = create_connector_manager()
         connector_tool = ConnectorTool(connector_manager)
         tool_registry.register(connector_tool)
+        git_tool = GitTool(connector_manager)
+        tool_registry.register(git_tool)
         agent.set_connector_manager(connector_manager)
 
         # Start conversation auto-cleanup background task

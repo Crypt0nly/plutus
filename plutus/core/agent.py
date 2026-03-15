@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 from plutus.config import PlutusConfig, SecretsStore
@@ -867,7 +868,16 @@ class AgentRuntime:
                             "  connector(action='github', service='github', github_action='search_code', query='...', owner='...', repo='...')\n\n"
                             "When the user asks about their repos, code, issues, or PRs, use the "
                             "GitHub connector FIRST instead of navigating to github.com in the browser. "
-                            "It is faster and more reliable."
+                            "It is faster and more reliable.\n\n"
+                            "**Git Workflow:** You also have a `git` tool for local repository operations. "
+                            "Use it to clone repos, create branches, commit changes, and push code. "
+                            "The git tool automatically authenticates using the GitHub connector token.\n"
+                            "  git(operation='clone', args='user/repo')\n"
+                            "  git(operation='status', working_directory='~/plutus-workspace/repo')\n"
+                            "  git(operation='add', args='.', working_directory='~/plutus-workspace/repo')\n"
+                            "  git(operation='commit', args='-m \"feat: add feature\"', working_directory='~/plutus-workspace/repo')\n"
+                            "  git(operation='push', working_directory='~/plutus-workspace/repo')\n"
+                            "  git(operation='checkout', args='-b feature-branch', working_directory='~/plutus-workspace/repo')"
                         )
                 else:
                     parts.append(
@@ -878,6 +888,17 @@ class AgentRuntime:
                     )
             except Exception:
                 pass  # Don't break the prompt if connector listing fails
+
+        # Add workspace info
+        workspace_dir = str(Path.home() / "plutus-workspace")
+        parts.append(
+            f"\n## Workspace\n"
+            f"Your workspace directory is: `{workspace_dir}`\n"
+            f"Use this as your default working directory for projects, code, downloads, "
+            f"and generated files. You can also save files elsewhere depending on context "
+            f"(e.g. the user's Desktop, Documents, or a specific project folder).\n"
+            f"When cloning repositories, clone them into the workspace by default."
+        )
 
         # Add tier info
         tier = self._config.guardrails.tier
