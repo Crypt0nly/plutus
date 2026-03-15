@@ -794,6 +794,7 @@ async def lifespan(app: FastAPI):
         connector_manager = create_connector_manager()
         connector_tool = ConnectorTool(connector_manager)
         tool_registry.register(connector_tool)
+        agent.set_connector_manager(connector_manager)
 
         # Start conversation auto-cleanup background task
         if config.memory.conversation_auto_delete_days > 0:
