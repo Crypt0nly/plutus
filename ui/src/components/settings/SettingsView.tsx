@@ -1,10 +1,131 @@
-import { useEffect, useState, useCallback } from "react";
-import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X, Minus, Plus, Check } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
 import { useAppStore } from "../../stores/appStore";
 import { applyTheme, type ThemeMode } from "../../hooks/useTheme";
+
+/* ═══════════════════════════════════════════════════════════
+   Reusable UI Components
+   ═══════════════════════════════════════════════════════════ */
+
+/** Custom slider with filled track */
+function PlutusSlider({
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const fill = ((value - min) / (max - min)) * 100;
+  return (
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(parseInt(e.target.value))}
+      className="plutus-slider w-full"
+      style={{ "--slider-fill": `${fill}%` } as React.CSSProperties}
+    />
+  );
+}
+
+/** Custom toggle switch */
+function ToggleSwitch({
+  enabled,
+  onChange,
+  variant = "default",
+}: {
+  enabled: boolean;
+  onChange: (v: boolean) => void;
+  variant?: "default" | "emerald" | "amber";
+}) {
+  const variantClass = variant === "emerald"
+    ? "toggle-switch-emerald"
+    : variant === "amber"
+    ? "toggle-switch-amber"
+    : "";
+
+  return (
+    <button
+      onClick={() => onChange(!enabled)}
+      className={`toggle-switch ${variantClass}`}
+      data-state={enabled ? "on" : "off"}
+      role="switch"
+      aria-checked={enabled}
+    >
+      <span className="toggle-thumb" />
+    </button>
+  );
+}
+
+/** Number input with stepper buttons */
+function NumberStepper({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  suffix,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  suffix?: string;
+}) {
+  const clamp = (v: number) => {
+    if (min !== undefined && v < min) return min;
+    if (max !== undefined && v > max) return max;
+    return v;
+  };
+
+  return (
+    <div className="number-input-group h-10">
+      <button
+        onClick={() => onChange(clamp(value - step))}
+        className="px-2"
+        disabled={min !== undefined && value <= min}
+      >
+        <Minus className="w-3.5 h-3.5" />
+      </button>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => {
+          const v = parseInt(e.target.value);
+          if (!isNaN(v)) onChange(clamp(v));
+        }}
+        min={min}
+        max={max}
+        step={step}
+        className="text-sm text-gray-200 py-2 w-20"
+      />
+      {suffix && <span className="text-xs text-gray-500 pr-1">{suffix}</span>}
+      <button
+        onClick={() => onChange(clamp(value + step))}
+        className="px-2"
+        disabled={max !== undefined && value >= max}
+      >
+        <Plus className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Main Settings View
+   ═══════════════════════════════════════════════════════════ */
 
 export function SettingsView() {
   const [config, setConfig] = useState<Record<string, any> | null>(null);
@@ -53,6 +174,9 @@ export function SettingsView() {
     );
   }
 
+  const maxToolRounds = config.agent?.max_tool_rounds || 25;
+  const schedulerEnabled = config.scheduler?.enabled !== false;
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto p-6 space-y-6">
@@ -66,9 +190,7 @@ export function SettingsView() {
           </div>
           {saved && (
             <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg animate-fade-in">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+              <Check className="w-4 h-4" />
               Saved
             </div>
           )}
@@ -116,28 +238,24 @@ export function SettingsView() {
           </div>
 
           <div className="space-y-5">
-            {/* Max tool rounds */}
+            {/* Max tool rounds — custom slider */}
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <label className="text-sm text-gray-300">Max Tool Rounds</label>
-                <span className="text-sm font-mono text-plutus-400 bg-plutus-500/10 px-2.5 py-0.5 rounded-md">
-                  {config.agent?.max_tool_rounds || 25}
+                <span className="text-sm font-mono text-plutus-400 bg-plutus-500/10 px-2.5 py-0.5 rounded-md min-w-[3rem] text-center">
+                  {maxToolRounds}
                 </span>
               </div>
-              <input
-                type="range"
-                min="5"
-                max="100"
-                step="5"
-                className="w-full accent-plutus-500 h-2 rounded-full"
-                defaultValue={config.agent?.max_tool_rounds || 25}
-                onChange={(e) =>
-                  handleSave({
-                    agent: { max_tool_rounds: parseInt(e.target.value) || 25 },
-                  })
+              <PlutusSlider
+                min={5}
+                max={100}
+                step={5}
+                value={maxToolRounds}
+                onChange={(v) =>
+                  handleSave({ agent: { max_tool_rounds: v } })
                 }
               />
-              <div className="flex justify-between text-[10px] text-gray-600 mt-1.5 px-0.5">
+              <div className="flex justify-between text-[10px] text-gray-600 mt-2 px-0.5">
                 <span>5</span>
                 <span>25</span>
                 <span>50</span>
@@ -149,25 +267,19 @@ export function SettingsView() {
               </p>
             </div>
 
-            {/* Scheduler toggle */}
+            {/* Scheduler toggle — custom toggle */}
             <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
               <div>
                 <p className="text-sm text-gray-300">Scheduler</p>
                 <p className="text-xs text-gray-500 mt-0.5">Allow Plutus to create and run cron jobs</p>
               </div>
-              <button
-                onClick={() => handleSave({ scheduler: { enabled: !(config.scheduler?.enabled ?? true) } })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
-                  config.scheduler?.enabled !== false ? "bg-plutus-500" : "bg-gray-700"
-                }`}
-              >
-                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                  config.scheduler?.enabled !== false ? "translate-x-6" : "translate-x-1"
-                }`} />
-              </button>
+              <ToggleSwitch
+                enabled={schedulerEnabled}
+                onChange={(v) => handleSave({ scheduler: { enabled: v } })}
+              />
             </div>
 
-            {/* Keep Alive toggle */}
+            {/* Keep Alive toggle — custom toggle */}
             <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
@@ -185,24 +297,18 @@ export function SettingsView() {
                   )}
                 </div>
               </div>
-              <button
-                onClick={async () => {
-                  const newEnabled = !(keepAlive?.enabled ?? false);
+              <ToggleSwitch
+                enabled={keepAlive?.enabled ?? false}
+                onChange={async (v) => {
                   try {
-                    const result = await api.setKeepAlive(newEnabled);
+                    const result = await api.setKeepAlive(v);
                     setKeepAlive(result as any);
                   } catch (e) {
                     console.error("Failed to toggle keep-alive:", e);
                   }
                 }}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
-                  keepAlive?.enabled ? "bg-emerald-500" : "bg-gray-700"
-                }`}
-              >
-                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                  keepAlive?.enabled ? "translate-x-6" : "translate-x-1"
-                }`} />
-              </button>
+                variant="emerald"
+              />
             </div>
           </div>
         </div>
@@ -223,13 +329,13 @@ export function SettingsView() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Host</label>
-                <div className="bg-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 font-mono">
+                <div className="bg-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 font-mono border border-gray-700/30">
                   {config.gateway?.host || "127.0.0.1"}
                 </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Port</label>
-                <div className="bg-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 font-mono">
+                <div className="bg-gray-800/50 rounded-lg px-3 py-2 text-sm text-gray-400 font-mono border border-gray-700/30">
                   {config.gateway?.port || 7777}
                 </div>
               </div>
@@ -253,48 +359,47 @@ export function SettingsView() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Context Window</label>
-                <input
-                  type="number"
-                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
-                  defaultValue={config.memory?.context_window_messages || 20}
-                  onChange={(e) =>
-                    handleSave({
-                      memory: { context_window_messages: parseInt(e.target.value) || 20 },
-                    })
+                <label className="text-xs text-gray-500 mb-1.5 block">Context Window</label>
+                <NumberStepper
+                  value={config.memory?.context_window_messages || 20}
+                  onChange={(v) =>
+                    handleSave({ memory: { context_window_messages: v } })
                   }
+                  min={5}
+                  max={100}
+                  step={5}
+                  suffix="msgs"
                 />
-                <p className="text-[10px] text-gray-600 mt-1">Messages kept in active context</p>
+                <p className="text-[10px] text-gray-600 mt-1.5">Messages kept in active context</p>
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Max History</label>
-                <input
-                  type="number"
-                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
-                  defaultValue={config.memory?.max_conversation_history || 100}
-                  onChange={(e) =>
-                    handleSave({
-                      memory: { max_conversation_history: parseInt(e.target.value) || 100 },
-                    })
+                <label className="text-xs text-gray-500 mb-1.5 block">Max History</label>
+                <NumberStepper
+                  value={config.memory?.max_conversation_history || 100}
+                  onChange={(v) =>
+                    handleSave({ memory: { max_conversation_history: v } })
                   }
+                  min={10}
+                  max={1000}
+                  step={10}
+                  suffix="msgs"
                 />
-                <p className="text-[10px] text-gray-600 mt-1">Total messages stored per conversation</p>
+                <p className="text-[10px] text-gray-600 mt-1.5">Total messages stored per conversation</p>
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Auto-Delete After (days)</label>
-                <input
-                  type="number"
-                  min="0"
-                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
-                  defaultValue={config.memory?.conversation_auto_delete_days ?? 30}
-                  onChange={(e) =>
-                    handleSave({
-                      memory: { conversation_auto_delete_days: parseInt(e.target.value) || 0 },
-                    })
+                <label className="text-xs text-gray-500 mb-1.5 block">Auto-Delete After</label>
+                <NumberStepper
+                  value={config.memory?.conversation_auto_delete_days ?? 30}
+                  onChange={(v) =>
+                    handleSave({ memory: { conversation_auto_delete_days: v } })
                   }
+                  min={0}
+                  max={365}
+                  step={1}
+                  suffix="days"
                 />
-                <p className="text-[10px] text-gray-600 mt-1">
-                  Conversations with no activity for this many days are automatically deleted. Set to 0 to disable.
+                <p className="text-[10px] text-gray-600 mt-1.5">
+                  Conversations with no activity are auto-deleted. 0 = disabled.
                 </p>
               </div>
             </div>
@@ -353,7 +458,7 @@ function SystemPromptEditor({
           </div>
         </div>
         {dirty && (
-          <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full animate-fade-in">
             Unsaved
           </span>
         )}
@@ -364,7 +469,7 @@ function SystemPromptEditor({
         placeholder="e.g. Always respond in Spanish. Prefer Python over JavaScript. Never delete files without asking first..."
         value={draft}
         onChange={(e) => handleChange(e.target.value)}
-        className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2.5 text-sm text-gray-300 placeholder-gray-600 font-mono leading-relaxed resize-y focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20 min-h-[120px]"
+        className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-300 placeholder-gray-600 font-mono leading-relaxed resize-y focus:outline-none focus:border-plutus-500/50 focus:ring-2 focus:ring-plutus-500/20 min-h-[120px] transition-all duration-200"
       />
 
       <div className="flex items-center justify-between mt-3">
@@ -375,7 +480,7 @@ function SystemPromptEditor({
           {draft && (
             <button
               onClick={handleClear}
-              className="text-xs text-gray-500 hover:text-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-800/50 transition-colors"
+              className="text-xs text-gray-500 hover:text-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-800/50 transition-all duration-200"
             >
               Clear
             </button>
@@ -383,9 +488,9 @@ function SystemPromptEditor({
           <button
             onClick={handleSave}
             disabled={!dirty || saving}
-            className={`text-xs font-medium px-4 py-1.5 rounded-lg transition-colors ${
+            className={`text-xs font-medium px-4 py-1.5 rounded-lg transition-all duration-200 ${
               dirty && !saving
-                ? "bg-plutus-500 text-white hover:bg-plutus-600"
+                ? "bg-plutus-500 text-white hover:bg-plutus-600 shadow-sm shadow-plutus-500/20 active:scale-[0.97]"
                 : "bg-gray-800/50 text-gray-600 cursor-not-allowed"
             }`}
           >
@@ -431,19 +536,31 @@ function AppearanceSection() {
             <button
               key={opt.value}
               onClick={() => handleChange(opt.value)}
-              className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all duration-150 ${
+              className={`selector-card flex flex-col items-center gap-2.5 p-4 rounded-xl border-2 ${
                 active
-                  ? "border-plutus-500/40 bg-plutus-500/10 ring-1 ring-plutus-500/20"
+                  ? "border-plutus-500/40 bg-plutus-500/10 ring-1 ring-plutus-500/20 shadow-lg shadow-plutus-500/5"
                   : "border-gray-800/60 hover:border-gray-700 hover:bg-gray-800/40"
               }`}
+              data-active={active}
             >
-              <Icon className={`w-5 h-5 ${active ? "text-plutus-400" : "text-gray-500"}`} />
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                active ? "bg-plutus-500/15" : "bg-gray-800/50"
+              }`}>
+                <Icon className={`w-5 h-5 transition-all duration-200 ${
+                  active ? "text-plutus-400 scale-110" : "text-gray-500"
+                }`} />
+              </div>
               <div className="text-center">
-                <span className={`text-xs font-medium block ${active ? "text-gray-100" : "text-gray-400"}`}>
+                <span className={`text-xs font-medium block transition-colors ${active ? "text-gray-100" : "text-gray-400"}`}>
                   {opt.label}
                 </span>
                 <span className="text-[10px] text-gray-500 mt-0.5 block">{opt.description}</span>
               </div>
+              {active && (
+                <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-plutus-500/20 flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-plutus-400" />
+                </div>
+              )}
             </button>
           );
         })}
@@ -532,7 +649,7 @@ function VersionBanner() {
 
   return (
     <div
-      className={`rounded-xl border p-4 ${
+      className={`rounded-xl border p-4 transition-all duration-200 ${
         hasUpdate
           ? "bg-plutus-500/5 border-plutus-500/30"
           : "bg-surface border-gray-800/60"
@@ -542,7 +659,7 @@ function VersionBanner() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div
-            className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-200 ${
               hasUpdate ? "bg-plutus-500/15" : "bg-gray-800/60"
             }`}
           >
@@ -585,7 +702,7 @@ function VersionBanner() {
           <button
             onClick={checkUpdate}
             disabled={checking}
-            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors"
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-all duration-200"
             title="Check for updates"
           >
             <RefreshCw className={`w-4 h-4 ${checking ? "animate-spin" : ""}`} />
@@ -597,7 +714,7 @@ function VersionBanner() {
               {info.release_notes && (
                 <button
                   onClick={() => setShowNotes(!showNotes)}
-                  className="text-xs text-gray-400 hover:text-gray-200 px-2.5 py-1.5 rounded-lg hover:bg-gray-800/50 transition-colors"
+                  className="text-xs text-gray-400 hover:text-gray-200 px-2.5 py-1.5 rounded-lg hover:bg-gray-800/50 transition-all duration-200"
                 >
                   {showNotes ? "Hide notes" : "Release notes"}
                 </button>
@@ -609,7 +726,7 @@ function VersionBanner() {
                   href={info.release_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors"
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-all duration-200"
                   title="View on GitHub"
                 >
                   <ExternalLink className="w-4 h-4" />
@@ -619,7 +736,7 @@ function VersionBanner() {
               {/* Dismiss */}
               <button
                 onClick={handleDismiss}
-                className="p-1.5 rounded-lg text-gray-600 hover:text-gray-400 hover:bg-gray-800/50 transition-colors"
+                className="p-1.5 rounded-lg text-gray-600 hover:text-gray-400 hover:bg-gray-800/50 transition-all duration-200"
                 title="Dismiss this update"
               >
                 <X className="w-4 h-4" />
@@ -629,7 +746,7 @@ function VersionBanner() {
               <button
                 onClick={handleUpdate}
                 disabled={updating}
-                className="flex items-center gap-1.5 text-xs font-medium px-4 py-1.5 rounded-lg bg-plutus-500 text-white hover:bg-plutus-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 text-xs font-medium px-4 py-1.5 rounded-lg bg-plutus-500 text-white hover:bg-plutus-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-plutus-500/20 active:scale-[0.97]"
               >
                 {updating ? (
                   <>
@@ -650,7 +767,7 @@ function VersionBanner() {
 
       {/* Release notes expandable */}
       {showNotes && info.release_notes && (
-        <div className="mt-3 pt-3 border-t border-gray-800/40">
+        <div className="mt-3 pt-3 border-t border-gray-800/40 animate-fade-in">
           <pre className="text-xs text-gray-400 whitespace-pre-wrap font-mono leading-relaxed max-h-60 overflow-y-auto">
             {info.release_notes}
           </pre>
@@ -660,7 +777,7 @@ function VersionBanner() {
       {/* Update result */}
       {updateResult && (
         <div
-          className={`mt-3 pt-3 border-t border-gray-800/40 text-xs ${
+          className={`mt-3 pt-3 border-t border-gray-800/40 text-xs animate-fade-in ${
             updateResult.success ? "text-emerald-400" : "text-red-400"
           }`}
         >

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Heart, Play, Square, Clock, Moon, Save, Info } from "lucide-react";
+import { Heart, Play, Square, Clock, Moon, Save, Info, Minus, Plus } from "lucide-react";
 import { api } from "../../lib/api";
 
 interface HeartbeatStatus {
@@ -82,12 +82,20 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
     return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
   };
 
+  const sliderFill = ((interval - 30) / (3600 - 30)) * 100;
+
   return (
     <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-rose-500/10 flex items-center justify-center">
-            <Heart className="w-5 h-5 text-rose-400" />
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-300 ${
+            status?.running && !status?.paused
+              ? "bg-rose-500/15 shadow-sm shadow-rose-500/10"
+              : "bg-rose-500/10"
+          }`}>
+            <Heart className={`w-5 h-5 text-rose-400 transition-transform duration-300 ${
+              status?.running && !status?.paused ? "scale-110" : ""
+            }`} />
           </div>
           <div>
             <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
@@ -111,16 +119,16 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded transition-colors"
+            className="text-xs text-gray-500 hover:text-gray-300 px-2.5 py-1.5 rounded-lg hover:bg-gray-800/50 transition-all duration-200"
           >
             {expanded ? "Collapse" : "Configure"}
           </button>
           <button
             onClick={handleToggle}
-            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            className={`flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-lg border transition-all duration-200 active:scale-[0.97] ${
               status?.running
-                ? "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                ? "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 shadow-sm shadow-red-500/5"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 shadow-sm shadow-emerald-500/5"
             }`}
           >
             {status?.running ? (
@@ -134,7 +142,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
 
       {/* Status bar when running */}
       {status?.running && (
-        <div className="mt-4 bg-gray-800/40 rounded-lg p-3 flex items-center gap-5 text-xs text-gray-400">
+        <div className="mt-4 bg-gray-800/40 rounded-xl p-3.5 flex items-center gap-5 text-xs text-gray-400 animate-fade-in">
           <span>
             Beats: <span className="text-gray-200 font-medium">{status.consecutive_beats}</span>
             <span className="text-gray-600">/{status.max_consecutive}</span>
@@ -148,14 +156,21 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
               Quiet: {status.quiet_hours_start} – {status.quiet_hours_end}
             </span>
           )}
+          {/* Progress bar */}
+          <div className="flex-1 h-1 bg-gray-700/50 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-rose-500/60 to-rose-400/60 rounded-full transition-all duration-500"
+              style={{ width: `${(status.consecutive_beats / status.max_consecutive) * 100}%` }}
+            />
+          </div>
         </div>
       )}
 
       {/* Expandable config */}
       {expanded && (
-        <div className="mt-5 pt-5 border-t border-gray-800/40 space-y-5">
+        <div className="mt-5 pt-5 border-t border-gray-800/40 space-y-5 animate-fade-in">
           {/* Info */}
-          <div className="bg-gray-800/30 rounded-lg p-3 flex gap-2.5">
+          <div className="bg-gray-800/30 rounded-xl p-3.5 flex gap-2.5">
             <Info className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
             <p className="text-xs text-gray-500 leading-relaxed">
               The heartbeat periodically wakes Plutus so it can continue working on
@@ -164,14 +179,14 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
             </p>
           </div>
 
-          {/* Interval */}
+          {/* Interval — custom slider */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-gray-500 flex items-center gap-1.5">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-xs text-gray-400 flex items-center gap-1.5">
                 <Clock className="w-3 h-3" />
                 Wake-up interval
               </label>
-              <span className="text-xs font-mono text-plutus-400 bg-plutus-500/10 px-2 py-0.5 rounded-md">
+              <span className="text-xs font-mono text-plutus-400 bg-plutus-500/10 px-2.5 py-0.5 rounded-md min-w-[3rem] text-center">
                 {formatInterval(interval)}
               </span>
             </div>
@@ -182,9 +197,10 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
               step="30"
               value={interval}
               onChange={(e) => setInterval_(parseInt(e.target.value))}
-              className="w-full accent-plutus-500 h-2 rounded-full"
+              className="plutus-slider w-full"
+              style={{ "--slider-fill": `${sliderFill}%` } as React.CSSProperties}
             />
-            <div className="flex justify-between text-[10px] text-gray-600 mt-1.5 px-0.5">
+            <div className="flex justify-between text-[10px] text-gray-600 mt-2 px-0.5">
               <span>30s</span>
               <span>5m</span>
               <span>15m</span>
@@ -193,27 +209,42 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
             </div>
           </div>
 
-          {/* Max consecutive */}
+          {/* Max consecutive — number stepper */}
           <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">
+            <label className="text-xs text-gray-400 mb-2 block">
               Max consecutive beats (safety limit)
             </label>
-            <input
-              type="number"
-              className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
-              value={maxConsecutive}
-              min={1}
-              max={1000}
-              onChange={(e) => setMaxConsecutive(parseInt(e.target.value) || 50)}
-            />
-            <p className="text-[10px] text-gray-600 mt-1">
+            <div className="number-input-group h-10">
+              <button
+                onClick={() => setMaxConsecutive(Math.max(1, maxConsecutive - 5))}
+                className="px-2"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <input
+                type="number"
+                value={maxConsecutive}
+                min={1}
+                max={1000}
+                onChange={(e) => setMaxConsecutive(parseInt(e.target.value) || 50)}
+                className="text-sm text-gray-200 py-2 w-20"
+              />
+              <span className="text-xs text-gray-500 pr-1">beats</span>
+              <button
+                onClick={() => setMaxConsecutive(Math.min(1000, maxConsecutive + 5))}
+                className="px-2"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-600 mt-1.5">
               Auto-pauses after this many beats with no user interaction.
             </p>
           </div>
 
           {/* Quiet hours */}
           <div>
-            <label className="text-xs text-gray-500 mb-2 block flex items-center gap-1.5">
+            <label className="text-xs text-gray-400 mb-2 block flex items-center gap-1.5">
               <Moon className="w-3 h-3" />
               Quiet hours (optional)
             </label>
@@ -222,7 +253,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
                 <label className="text-[10px] text-gray-600 mb-1 block">Start</label>
                 <input
                   type="time"
-                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
+                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-3 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-2 focus:ring-plutus-500/20 transition-all duration-200"
                   value={quietStart}
                   onChange={(e) => setQuietStart(e.target.value)}
                   placeholder="23:00"
@@ -232,7 +263,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
                 <label className="text-[10px] text-gray-600 mb-1 block">End</label>
                 <input
                   type="time"
-                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
+                  className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-3 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-2 focus:ring-plutus-500/20 transition-all duration-200"
                   value={quietEnd}
                   onChange={(e) => setQuietEnd(e.target.value)}
                   placeholder="07:00"
@@ -243,11 +274,11 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
 
           {/* Custom prompt */}
           <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">
+            <label className="text-xs text-gray-400 mb-1.5 block">
               Custom heartbeat prompt (optional)
             </label>
             <textarea
-              className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20 min-h-[60px] resize-y"
+              className="w-full bg-gray-800/50 border border-gray-700/50 rounded-xl px-3.5 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-plutus-500/50 focus:ring-2 focus:ring-plutus-500/20 min-h-[60px] resize-y transition-all duration-200"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Leave empty for default: review plan and continue working..."
@@ -259,7 +290,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-plutus-600 hover:bg-plutus-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-plutus-600 hover:bg-plutus-500 disabled:opacity-50 text-white text-sm font-medium transition-all duration-200 shadow-sm shadow-plutus-600/20 active:scale-[0.98]"
           >
             <Save className="w-4 h-4" />
             {saving ? "Saving..." : "Save Heartbeat Settings"}

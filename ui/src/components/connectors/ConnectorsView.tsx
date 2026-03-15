@@ -689,15 +689,12 @@ function ConfigureModal({
                 <button
                   onClick={toggleAutoStart}
                   disabled={togglingAutoStart}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    autoStart ? "bg-blue-600" : "bg-gray-700"
-                  } ${togglingAutoStart ? "opacity-50" : ""}`}
+                  className={`toggle-switch ${togglingAutoStart ? 'opacity-50' : ''}`}
+                  data-state={autoStart ? 'on' : 'off'}
+                  role="switch"
+                  aria-checked={autoStart}
                 >
-                  <span
-                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                      autoStart ? "translate-x-[18px]" : "translate-x-[3px]"
-                    }`}
-                  />
+                  <span className="toggle-thumb" />
                 </button>
               </div>
             </div>
