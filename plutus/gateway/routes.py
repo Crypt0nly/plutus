@@ -2232,16 +2232,34 @@ def create_router() -> APIRouter:
             })
             if code != 0 and "no record file" in err.lower():
                 # Package was installed without metadata (legacy install or
-                # corrupted dist-info).  Retry with --force-reinstall so pip
-                # skips the uninstall step and just overwrites files.
+                # corrupted dist-info).  Remove the broken dist-info so pip
+                # can do a clean install, then install WITH deps so new
+                # dependencies added in the update are picked up.
+                import importlib.metadata
+
+                try:
+                    dist = importlib.metadata.distribution("plutus-ai")
+                    dist_info = Path(dist._path)  # type: ignore[attr-defined]
+                    if dist_info.is_dir():
+                        import shutil
+
+                        shutil.rmtree(dist_info, ignore_errors=True)
+                        steps.append({
+                            "step": "remove_broken_metadata",
+                            "success": True,
+                            "output": f"Removed {dist_info.name}",
+                        })
+                except Exception:
+                    pass
+
                 pip_cmd = [
                     sys.executable, "-m", "pip", "install",
-                    "--force-reinstall", "--no-deps", "--upgrade", "plutus-ai",
+                    "--upgrade", "plutus-ai",
                 ]
                 code, out, err = await run(pip_cmd, timeout=180)
                 clean_err = _clean_pip_stderr(err)
                 steps.append({
-                    "step": "pip_upgrade_force",
+                    "step": "pip_upgrade_retry",
                     "success": code == 0,
                     "output": (out.strip() or clean_err)[:500],
                 })
