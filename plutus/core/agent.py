@@ -738,6 +738,7 @@ class AgentRuntime:
             summarizer=self._summarizer,
         )
         self._tool_registry = tool_registry
+        self._connector_manager = None  # Set via set_connector_manager()
         self._event_handlers: list[Callable[[AgentEvent], Any]] = []
 
         # Track tool rounds for auto-checkpointing
@@ -809,6 +810,10 @@ class AgentRuntime:
     def set_tool_registry(self, registry: Any) -> None:
         self._tool_registry = registry
 
+    def set_connector_manager(self, manager: Any) -> None:
+        """Store a reference to the ConnectorManager for system-prompt injection."""
+        self._connector_manager = manager
+
     def _build_system_prompt(self) -> str:
         """Build the system prompt with tool awareness and current context."""
         parts = [SYSTEM_PROMPT]
@@ -827,6 +832,52 @@ class AgentRuntime:
             parts.append("**Primary tool: `pc`** — use this for all computer interaction.")
             parts.append("**Plan tool: `plan`** — only use for complex tasks with 4+ steps. Skip for simple/quick requests.")
             parts.append("**Memory tool: `memory`** — save facts, goals, and checkpoints. This is how you remember things.")
+
+        # Inject connector awareness — tell the agent which connectors are ready
+        if self._connector_manager:
+            try:
+                all_connectors = self._connector_manager.list_all()
+                configured = [c for c in all_connectors if c["configured"]]
+                if configured:
+                    names = ", ".join(c["display_name"] for c in configured)
+                    parts.append(
+                        f"\n## Connected Services\n"
+                        f"The following connectors are configured and ready to use "
+                        f"via the `connector` tool: **{names}**.\n"
+                        f"Use `connector(action='list')` to see all connectors. "
+                        f"Use `connector(action='status', service='...')` to check a specific one."
+                    )
+                    # Check if GitHub is configured — add specific guidance
+                    github_configured = any(
+                        c["name"] == "github" and c["configured"] for c in all_connectors
+                    )
+                    if github_configured:
+                        parts.append(
+                            "\n### GitHub Connector\n"
+                            "The user has connected their GitHub account. You can interact with "
+                            "their repositories, issues, pull requests, branches, files, workflows, "
+                            "and more using the `connector` tool with `action='github'`.\n\n"
+                            "**Quick reference:**\n"
+                            "  connector(action='github', service='github', github_action='list_repos')\n"
+                            "  connector(action='github', service='github', github_action='list_issues', owner='...', repo='...')\n"
+                            "  connector(action='github', service='github', github_action='create_issue', owner='...', repo='...', title='...', body='...')\n"
+                            "  connector(action='github', service='github', github_action='get_file', owner='...', repo='...', path='README.md')\n"
+                            "  connector(action='github', service='github', github_action='create_pull_request', owner='...', repo='...', title='...', head='feature', base='main')\n"
+                            "  connector(action='github', service='github', github_action='list_branches', owner='...', repo='...')\n"
+                            "  connector(action='github', service='github', github_action='search_code', query='...', owner='...', repo='...')\n\n"
+                            "When the user asks about their repos, code, issues, or PRs, use the "
+                            "GitHub connector FIRST instead of navigating to github.com in the browser. "
+                            "It is faster and more reliable."
+                        )
+                else:
+                    parts.append(
+                        "\n## Connected Services\n"
+                        "No connectors are configured yet. The user can set up "
+                        "Telegram, Email, WhatsApp, Discord, GitHub, and Google services "
+                        "in the Connectors tab."
+                    )
+            except Exception:
+                pass  # Don't break the prompt if connector listing fails
 
         # Add tier info
         tier = self._config.guardrails.tier

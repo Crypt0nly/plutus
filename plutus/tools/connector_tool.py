@@ -6,6 +6,7 @@ The agent can use this tool to:
   - List available connectors and their status
   - Check if a connector is configured
   - Read/send Gmail emails, manage Calendar events, manage Drive files
+  - Manage GitHub repos, issues, PRs, branches, files, workflows, and more
 
 Usage examples (from the agent):
   connector(action="send", service="telegram", message="Hello from Plutus!")
@@ -20,6 +21,11 @@ Usage examples (from the agent):
   connector(action="google", service="google_drive", google_action="list_files")
   connector(action="google", service="google_drive", google_action="upload_file",
             name="notes.txt", content="Hello world")
+  connector(action="github", service="github", github_action="list_repos")
+  connector(action="github", service="github", github_action="list_issues", owner="octocat", repo="Hello-World")
+  connector(action="github", service="github", github_action="create_issue", owner="octocat", repo="Hello-World",
+            title="Bug report", body="Something is broken")
+  connector(action="github", service="github", github_action="get_file", path="README.md", owner="me", repo="my-repo")
   connector(action="list")
   connector(action="status", service="telegram")
 """
@@ -54,7 +60,7 @@ class ConnectorTool(Tool):
         return (
             "Send messages or files through external services like "
             "Telegram, Email, WhatsApp, Discord, Gmail, Google Calendar, "
-            "and Google Drive. "
+            "Google Drive, and GitHub. "
             "Use action='list' to see available connectors. "
             "Use action='send' with service='telegram' to send a Telegram message. "
             "Use action='send_file' with service='telegram' or service='discord' "
@@ -71,6 +77,9 @@ class ConnectorTool(Tool):
             "service='google_drive' for managing files (google_action='list_files', "
             "'get_file', 'upload_file', 'get_file_metadata'). "
             "Use action='manage' with service='discord' to manage the Discord server. "
+            "Use action='github' with service='github' to interact with GitHub: "
+            "manage repos, issues, pull requests, branches, files, commits, releases, "
+            "workflows, collaborators, and search. Requires github_action parameter. "
             "The user configures connectors in the Connectors tab."
         )
 
@@ -83,7 +92,7 @@ class ConnectorTool(Tool):
                     "type": "string",
                     "enum": [
                         "send", "send_file", "list", "status",
-                        "manage", "google",
+                        "manage", "google", "github",
                     ],
                     "description": (
                         "Action to perform. "
@@ -93,7 +102,9 @@ class ConnectorTool(Tool):
                         "'status' = check if a specific connector is configured. "
                         "'manage' = manage Discord server. "
                         "'google' = interact with Google services "
-                        "(Gmail, Calendar, Drive)."
+                        "(Gmail, Calendar, Drive). "
+                        "'github' = interact with GitHub "
+                        "(repos, issues, PRs, branches, files, workflows, etc.)."
                     ),
                 },
                 "service": {
@@ -101,10 +112,12 @@ class ConnectorTool(Tool):
                     "enum": [
                         "telegram", "email", "whatsapp", "discord",
                         "google_gmail", "google_calendar", "google_drive",
+                        "github",
                     ],
                     "description": (
                         "Which connector to use. Required for 'send', "
-                        "'send_file', 'manage', 'google', and 'status' actions."
+                        "'send_file', 'manage', 'google', 'github', "
+                        "and 'status' actions."
                     ),
                 },
                 "message": {
@@ -178,7 +191,10 @@ class ConnectorTool(Tool):
                 },
                 "name": {
                     "type": "string",
-                    "description": "Name for creating channels or roles.",
+                    "description": (
+                        "Name for creating channels, roles, repos, branches, "
+                        "or releases."
+                    ),
                 },
                 "reason": {
                     "type": "string",
@@ -201,12 +217,222 @@ class ConnectorTool(Tool):
                         "Google-specific action. Required when action='google'."
                     ),
                 },
+                "github_action": {
+                    "type": "string",
+                    "enum": [
+                        # Repos
+                        "list_repos", "get_repo", "create_repo", "delete_repo",
+                        "fork_repo",
+                        # Issues
+                        "list_issues", "get_issue", "create_issue", "update_issue",
+                        "comment_on_issue",
+                        # Pull Requests
+                        "list_pull_requests", "get_pull_request",
+                        "create_pull_request", "merge_pull_request",
+                        "review_pull_request",
+                        # Branches
+                        "list_branches", "create_branch", "delete_branch",
+                        # Files
+                        "get_file", "create_or_update_file", "delete_file",
+                        # Commits & Releases
+                        "list_commits", "list_releases", "create_release",
+                        # Workflows
+                        "list_workflows", "list_workflow_runs", "trigger_workflow",
+                        # Collaborators
+                        "list_collaborators", "add_collaborator",
+                        "remove_collaborator",
+                        # Search
+                        "search_repos", "search_code",
+                    ],
+                    "description": (
+                        "GitHub-specific action. Required when action='github'. "
+                        "Covers repos, issues, PRs, branches, files, commits, "
+                        "releases, workflows, collaborators, and search."
+                    ),
+                },
+                "owner": {
+                    "type": "string",
+                    "description": (
+                        "GitHub repository owner (username or org). "
+                        "Falls back to the default owner configured in the "
+                        "GitHub connector if not provided."
+                    ),
+                },
+                "repo": {
+                    "type": "string",
+                    "description": (
+                        "GitHub repository name. Falls back to the default "
+                        "repo configured in the GitHub connector if not provided."
+                    ),
+                },
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Title for creating issues, PRs, or releases."
+                    ),
+                },
+                "body": {
+                    "type": "string",
+                    "description": (
+                        "Body text for issues, PRs, comments, or releases."
+                    ),
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Labels for issues (list of label names).",
+                },
+                "assignees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Assignees for issues (list of usernames).",
+                },
+                "state": {
+                    "type": "string",
+                    "description": (
+                        "State filter for listing issues/PRs ('open', 'closed', 'all'). "
+                        "Also used for updating issue state."
+                    ),
+                },
+                "issue_number": {
+                    "type": "integer",
+                    "description": "Issue or PR number for get/update/comment operations.",
+                },
+                "pr_number": {
+                    "type": "integer",
+                    "description": "Pull request number for PR operations.",
+                },
+                "head": {
+                    "type": "string",
+                    "description": "Head branch for creating a pull request.",
+                },
+                "base": {
+                    "type": "string",
+                    "description": "Base branch for creating a pull request.",
+                },
+                "draft": {
+                    "type": "boolean",
+                    "description": "Whether to create a draft PR (default false).",
+                },
+                "merge_method": {
+                    "type": "string",
+                    "enum": ["merge", "squash", "rebase"],
+                    "description": "Merge method for merging a PR (default 'merge').",
+                },
+                "event": {
+                    "type": "string",
+                    "enum": ["APPROVE", "REQUEST_CHANGES", "COMMENT"],
+                    "description": "Review event type for review_pull_request.",
+                },
+                "branch": {
+                    "type": "string",
+                    "description": (
+                        "Branch name for branch operations, file operations, "
+                        "or listing commits."
+                    ),
+                },
+                "from_branch": {
+                    "type": "string",
+                    "description": (
+                        "Source branch when creating a new branch (default 'main')."
+                    ),
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "File path within the repo for file operations "
+                        "(get_file, create_or_update_file, delete_file)."
+                    ),
+                },
+                "ref": {
+                    "type": "string",
+                    "description": (
+                        "Git ref (branch, tag, or SHA) for reading files "
+                        "at a specific version."
+                    ),
+                },
+                "sha": {
+                    "type": "string",
+                    "description": (
+                        "SHA of the existing file (required for updating "
+                        "or deleting files). Get it via get_file first."
+                    ),
+                },
+                "commit_message": {
+                    "type": "string",
+                    "description": "Commit message for file create/update/delete.",
+                },
+                "tag_name": {
+                    "type": "string",
+                    "description": "Tag name for creating a release.",
+                },
+                "prerelease": {
+                    "type": "boolean",
+                    "description": "Whether the release is a prerelease.",
+                },
+                "target": {
+                    "type": "string",
+                    "description": (
+                        "Target branch/commitish for creating a release "
+                        "(default 'main')."
+                    ),
+                },
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Workflow ID or filename for workflow operations.",
+                },
+                "workflow_status": {
+                    "type": "string",
+                    "description": (
+                        "Status filter for listing workflow runs "
+                        "(e.g. 'completed', 'in_progress', 'failure')."
+                    ),
+                },
+                "inputs": {
+                    "type": "object",
+                    "description": (
+                        "Input parameters for triggering a workflow dispatch."
+                    ),
+                },
+                "username": {
+                    "type": "string",
+                    "description": (
+                        "GitHub username for collaborator operations."
+                    ),
+                },
+                "permission": {
+                    "type": "string",
+                    "enum": ["pull", "push", "admin"],
+                    "description": (
+                        "Permission level for adding a collaborator "
+                        "(default 'push')."
+                    ),
+                },
+                "private": {
+                    "type": "boolean",
+                    "description": "Whether to create a private repo (default true).",
+                },
+                "auto_init": {
+                    "type": "boolean",
+                    "description": (
+                        "Whether to initialize the repo with a README "
+                        "(default true)."
+                    ),
+                },
+                "per_page": {
+                    "type": "integer",
+                    "description": (
+                        "Number of results per page for list operations "
+                        "(default varies by endpoint)."
+                    ),
+                },
                 "query": {
                     "type": "string",
                     "description": (
                         "Search query for Gmail (e.g. 'is:unread', "
-                        "'from:alice@example.com') or Drive "
-                        "(e.g. 'name contains \"report\"')."
+                        "'from:alice@example.com'), Drive "
+                        "(e.g. 'name contains \"report\"'), "
+                        "or GitHub search (repos/code)."
                     ),
                 },
                 "message_id": {
@@ -264,7 +490,8 @@ class ConnectorTool(Tool):
                 "content": {
                     "type": "string",
                     "description": (
-                        "File content for upload_file action."
+                        "File content for upload_file (Drive) or "
+                        "create_or_update_file (GitHub)."
                     ),
                 },
                 "mime_type": {
@@ -278,6 +505,12 @@ class ConnectorTool(Tool):
                     "description": (
                         "Updates dict for update_event "
                         "(e.g. {\"summary\": \"New title\"})."
+                    ),
+                },
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "Description for creating a repo or release."
                     ),
                 },
             },
@@ -331,10 +564,14 @@ class ConnectorTool(Tool):
                 return "Error: 'service' is required (google_gmail, google_calendar, google_drive)"
             return await self._handle_google(service, **kwargs)
 
+        elif action == "github":
+            return await self._handle_github(**kwargs)
+
         else:
             return (
                 f"Error: Unknown action '{action}'. "
-                "Use 'send', 'send_file', 'list', 'status', or 'manage'."
+                "Use 'send', 'send_file', 'list', 'status', 'manage', "
+                "'google', or 'github'."
             )
 
     def _list_connectors(self) -> str:
@@ -357,7 +594,7 @@ class ConnectorTool(Tool):
             lines.append(
                 "\nNo connectors configured yet. "
                 "Tell the user to go to the Connectors tab in the UI "
-                "to set up Telegram, Email, WhatsApp, or Discord."
+                "to set up Telegram, Email, WhatsApp, Discord, or GitHub."
             )
 
         return "\n".join(lines)
@@ -368,7 +605,7 @@ class ConnectorTool(Tool):
             return (
                 f"Error: Unknown connector '{service}'. "
                 "Available: telegram, email, whatsapp, discord, "
-                "google_gmail, google_calendar, google_drive"
+                "google_gmail, google_calendar, google_drive, github"
             )
 
         if connector.is_configured:
@@ -387,6 +624,13 @@ class ConnectorTool(Tool):
                     details.append(f"Bot: {config['bot_username']}")
                 if config.get("guild_name"):
                     details.append(f"Server: {config['guild_name']}")
+            elif service == "github":
+                if config.get("username"):
+                    details.append(f"User: @{config['username']}")
+                if config.get("default_owner"):
+                    details.append(f"Default owner: {config['default_owner']}")
+                if config.get("default_repo"):
+                    details.append(f"Default repo: {config['default_repo']}")
             detail_str = f" ({', '.join(details)})" if details else ""
             return (
                 f"{connector.display_name} is configured and ready{detail_str}"
@@ -404,7 +648,7 @@ class ConnectorTool(Tool):
             return (
                 f"Error: Unknown connector '{service}'. "
                 "Available: telegram, email, whatsapp, discord, "
-                "google_gmail, google_calendar, google_drive"
+                "google_gmail, google_calendar, google_drive, github"
             )
 
         if not connector.is_configured:
@@ -451,6 +695,12 @@ class ConnectorTool(Tool):
             if kwargs.get("channel_id"):
                 send_kwargs["channel_id"] = kwargs["channel_id"]
 
+        elif service == "github":
+            # For GitHub, send_message creates an issue
+            send_kwargs["owner"] = kwargs.get("owner")
+            send_kwargs["repo"] = kwargs.get("repo")
+            send_kwargs["title"] = kwargs.get("title", message[:80])
+
         result = await connector.send_message(message, **send_kwargs)
 
         if result.get("success"):
@@ -473,7 +723,7 @@ class ConnectorTool(Tool):
             return (
                 f"Error: Unknown connector '{service}'. "
                 "Available: telegram, email, whatsapp, discord, "
-                "google_gmail, google_calendar, google_drive"
+                "google_gmail, google_calendar, google_drive, github"
             )
 
         if not connector.is_configured:
@@ -807,6 +1057,412 @@ class ConnectorTool(Tool):
             return (
                 f"Error executing {google_action} on "
                 f"{connector.display_name}: {e}"
+            )
+
+    # ── GitHub ───────────────────────────────────────────────────
+
+    async def _handle_github(self, **kwargs: Any) -> str:
+        """Handle GitHub-specific actions (repos, issues, PRs, branches, files, etc.)."""
+        connector = self._manager.get("github")
+        if not connector:
+            return (
+                "Error: GitHub connector not available. "
+                "The user needs to set it up in the Connectors tab."
+            )
+        if not connector.is_configured:
+            return (
+                "Error: GitHub is not configured. "
+                "The user needs to add their Personal Access Token "
+                "in the Connectors tab first."
+            )
+
+        github_action = kwargs.get("github_action", "")
+        if not github_action:
+            return (
+                "Error: 'github_action' is required. Options: "
+                "list_repos, get_repo, create_repo, delete_repo, fork_repo, "
+                "list_issues, get_issue, create_issue, update_issue, comment_on_issue, "
+                "list_pull_requests, get_pull_request, create_pull_request, "
+                "merge_pull_request, review_pull_request, "
+                "list_branches, create_branch, delete_branch, "
+                "get_file, create_or_update_file, delete_file, "
+                "list_commits, list_releases, create_release, "
+                "list_workflows, list_workflow_runs, trigger_workflow, "
+                "list_collaborators, add_collaborator, remove_collaborator, "
+                "search_repos, search_code"
+            )
+
+        import json as _json
+
+        # Common params
+        owner = kwargs.get("owner")
+        repo = kwargs.get("repo")
+
+        try:
+            result: dict[str, Any] = {}
+
+            # ── Repository operations ──
+            if github_action == "list_repos":
+                result = await connector.list_repos(
+                    owner=owner,
+                    repo_type=kwargs.get("repo_type", "owner"),
+                    sort=kwargs.get("sort", "updated"),
+                    per_page=int(kwargs.get("per_page", 30)),
+                )
+
+            elif github_action == "get_repo":
+                result = await connector.get_repo(owner=owner, repo=repo)
+
+            elif github_action == "create_repo":
+                name = kwargs.get("name", "")
+                if not name:
+                    return "Error: 'name' is required to create a repository"
+                result = await connector.create_repo(
+                    name=name,
+                    description=kwargs.get("description", ""),
+                    private=kwargs.get("private", True),
+                    auto_init=kwargs.get("auto_init", True),
+                )
+
+            elif github_action == "delete_repo":
+                result = await connector.delete_repo(owner=owner, repo=repo)
+
+            elif github_action == "fork_repo":
+                result = await connector.fork_repo(owner=owner, repo=repo)
+
+            # ── Issue operations ──
+            elif github_action == "list_issues":
+                # labels can be a list or comma-separated string
+                raw_labels = kwargs.get("labels", "")
+                if isinstance(raw_labels, list):
+                    raw_labels = ",".join(raw_labels)
+                result = await connector.list_issues(
+                    state=kwargs.get("state", "open"),
+                    labels=raw_labels,
+                    per_page=int(kwargs.get("per_page", 30)),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "get_issue":
+                issue_number = kwargs.get("issue_number")
+                if not issue_number:
+                    return "Error: 'issue_number' is required"
+                result = await connector.get_issue(
+                    int(issue_number), owner=owner, repo=repo
+                )
+
+            elif github_action == "create_issue":
+                title = kwargs.get("title", "")
+                if not title:
+                    return "Error: 'title' is required to create an issue"
+                result = await connector.create_issue(
+                    title=title,
+                    body=kwargs.get("body", ""),
+                    labels=kwargs.get("labels"),
+                    assignees=kwargs.get("assignees"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "update_issue":
+                issue_number = kwargs.get("issue_number")
+                if not issue_number:
+                    return "Error: 'issue_number' is required"
+                result = await connector.update_issue(
+                    int(issue_number),
+                    title=kwargs.get("title"),
+                    body=kwargs.get("body"),
+                    state=kwargs.get("state"),
+                    labels=kwargs.get("labels"),
+                    assignees=kwargs.get("assignees"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "comment_on_issue":
+                issue_number = kwargs.get("issue_number")
+                body = kwargs.get("body", "")
+                if not issue_number:
+                    return "Error: 'issue_number' is required"
+                if not body:
+                    return "Error: 'body' is required for commenting"
+                result = await connector.comment_on_issue(
+                    int(issue_number), body, owner=owner, repo=repo
+                )
+
+            # ── Pull Request operations ──
+            elif github_action == "list_pull_requests":
+                result = await connector.list_pull_requests(
+                    state=kwargs.get("state", "open"),
+                    per_page=int(kwargs.get("per_page", 30)),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "get_pull_request":
+                pr_number = kwargs.get("pr_number")
+                if not pr_number:
+                    return "Error: 'pr_number' is required"
+                result = await connector.get_pull_request(
+                    int(pr_number), owner=owner, repo=repo
+                )
+
+            elif github_action == "create_pull_request":
+                title = kwargs.get("title", "")
+                head = kwargs.get("head", "")
+                base = kwargs.get("base", "")
+                if not title:
+                    return "Error: 'title' is required"
+                if not head:
+                    return "Error: 'head' (source branch) is required"
+                if not base:
+                    return "Error: 'base' (target branch) is required"
+                result = await connector.create_pull_request(
+                    title=title,
+                    head=head,
+                    base=base,
+                    body=kwargs.get("body", ""),
+                    draft=kwargs.get("draft", False),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "merge_pull_request":
+                pr_number = kwargs.get("pr_number")
+                if not pr_number:
+                    return "Error: 'pr_number' is required"
+                result = await connector.merge_pull_request(
+                    int(pr_number),
+                    merge_method=kwargs.get("merge_method", "merge"),
+                    commit_title=kwargs.get("title", ""),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "review_pull_request":
+                pr_number = kwargs.get("pr_number")
+                if not pr_number:
+                    return "Error: 'pr_number' is required"
+                result = await connector.review_pull_request(
+                    int(pr_number),
+                    event=kwargs.get("event", "COMMENT"),
+                    body=kwargs.get("body", ""),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            # ── Branch operations ──
+            elif github_action == "list_branches":
+                result = await connector.list_branches(
+                    per_page=int(kwargs.get("per_page", 30)),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "create_branch":
+                branch_name = kwargs.get("branch") or kwargs.get("name", "")
+                if not branch_name:
+                    return "Error: 'branch' (or 'name') is required"
+                result = await connector.create_branch(
+                    branch_name=branch_name,
+                    from_branch=kwargs.get("from_branch", "main"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "delete_branch":
+                branch_name = kwargs.get("branch") or kwargs.get("name", "")
+                if not branch_name:
+                    return "Error: 'branch' (or 'name') is required"
+                result = await connector.delete_branch(
+                    branch_name, owner=owner, repo=repo
+                )
+
+            # ── File operations ──
+            elif github_action == "get_file":
+                path = kwargs.get("path", "")
+                if not path:
+                    return "Error: 'path' is required (file path in the repo)"
+                result = await connector.get_file(
+                    path,
+                    ref=kwargs.get("ref"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "create_or_update_file":
+                path = kwargs.get("path", "")
+                content = kwargs.get("content", "")
+                message = kwargs.get("commit_message", "")
+                if not path:
+                    return "Error: 'path' is required"
+                if not content:
+                    return "Error: 'content' is required"
+                if not message:
+                    return "Error: 'commit_message' is required"
+                result = await connector.create_or_update_file(
+                    path=path,
+                    content=content,
+                    message=message,
+                    branch=kwargs.get("branch"),
+                    sha=kwargs.get("sha"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "delete_file":
+                path = kwargs.get("path", "")
+                message = kwargs.get("commit_message", "")
+                sha = kwargs.get("sha", "")
+                if not path:
+                    return "Error: 'path' is required"
+                if not message:
+                    return "Error: 'commit_message' is required"
+                if not sha:
+                    return "Error: 'sha' is required (get it via get_file first)"
+                result = await connector.delete_file(
+                    path=path,
+                    message=message,
+                    sha=sha,
+                    branch=kwargs.get("branch"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            # ── Commit & Release operations ──
+            elif github_action == "list_commits":
+                result = await connector.list_commits(
+                    branch=kwargs.get("branch"),
+                    per_page=int(kwargs.get("per_page", 20)),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "list_releases":
+                result = await connector.list_releases(
+                    per_page=int(kwargs.get("per_page", 10)),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "create_release":
+                tag_name = kwargs.get("tag_name", "")
+                if not tag_name:
+                    return "Error: 'tag_name' is required"
+                result = await connector.create_release(
+                    tag_name=tag_name,
+                    name=kwargs.get("name", ""),
+                    body=kwargs.get("body", ""),
+                    draft=kwargs.get("draft", False),
+                    prerelease=kwargs.get("prerelease", False),
+                    target=kwargs.get("target", "main"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            # ── Workflow operations ──
+            elif github_action == "list_workflows":
+                result = await connector.list_workflows(
+                    owner=owner, repo=repo
+                )
+
+            elif github_action == "list_workflow_runs":
+                result = await connector.list_workflow_runs(
+                    workflow_id=kwargs.get("workflow_id"),
+                    status=kwargs.get("workflow_status"),
+                    per_page=int(kwargs.get("per_page", 10)),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "trigger_workflow":
+                workflow_id = kwargs.get("workflow_id", "")
+                if not workflow_id:
+                    return "Error: 'workflow_id' is required"
+                result = await connector.trigger_workflow(
+                    workflow_id=workflow_id,
+                    ref=kwargs.get("ref", "main"),
+                    inputs=kwargs.get("inputs"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            # ── Collaborator operations ──
+            elif github_action == "list_collaborators":
+                result = await connector.list_collaborators(
+                    owner=owner, repo=repo
+                )
+
+            elif github_action == "add_collaborator":
+                username = kwargs.get("username", "")
+                if not username:
+                    return "Error: 'username' is required"
+                result = await connector.add_collaborator(
+                    username=username,
+                    permission=kwargs.get("permission", "push"),
+                    owner=owner,
+                    repo=repo,
+                )
+
+            elif github_action == "remove_collaborator":
+                username = kwargs.get("username", "")
+                if not username:
+                    return "Error: 'username' is required"
+                result = await connector.remove_collaborator(
+                    username=username, owner=owner, repo=repo
+                )
+
+            # ── Search operations ──
+            elif github_action == "search_repos":
+                query = kwargs.get("query", "")
+                if not query:
+                    return "Error: 'query' is required for search"
+                result = await connector.search_repos(
+                    query, per_page=int(kwargs.get("per_page", 10))
+                )
+
+            elif github_action == "search_code":
+                query = kwargs.get("query", "")
+                if not query:
+                    return "Error: 'query' is required for search"
+                result = await connector.search_code(
+                    query, owner=owner, repo=repo,
+                    per_page=int(kwargs.get("per_page", 10)),
+                )
+
+            else:
+                return f"Error: Unknown github_action '{github_action}'"
+
+            # ── Format result ──
+            if result.get("success"):
+                # Remove the success key for cleaner output
+                display = {k: v for k, v in result.items() if k != "success"}
+                msg = display.pop("message", "")
+
+                if msg and not display:
+                    return f"GitHub: {msg}"
+
+                if display:
+                    formatted = _json.dumps(
+                        display, indent=2, default=str, ensure_ascii=False
+                    )
+                    # Truncate very large responses
+                    if len(formatted) > 8000:
+                        formatted = formatted[:8000] + "\n... [truncated]"
+                    prefix = f"GitHub: {msg}\n" if msg else ""
+                    return f"{prefix}{formatted}"
+
+                return f"GitHub: Done"
+            else:
+                return (
+                    f"GitHub error: "
+                    f"{result.get('message', 'Unknown error')}"
+                )
+
+        except Exception as e:
+            return (
+                f"Error executing GitHub action '{github_action}': {e}"
             )
 
     async def _broadcast_attachment(
