@@ -28,7 +28,6 @@ OS="$(uname -s)"
 # ── Step 1: Check Python ──────────────────────────────────
 
 PYTHON_CMD=""
-MAX_PYTHON_MINOR=13  # Max supported Python minor version (3.x)
 
 check_python() {
     local cmd=$1
@@ -38,7 +37,7 @@ check_python() {
         local major minor
         major=$(echo "$version" | cut -d. -f1)
         minor=$(echo "$version" | cut -d. -f2)
-        if [ "$major" -eq 3 ] && [ "$minor" -ge 11 ] && [ "$minor" -le "$MAX_PYTHON_MINOR" ]; then
+        if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
             PYTHON_CMD="$cmd"
             return 0
         fi
@@ -53,32 +52,12 @@ elif check_python python; then
 fi
 
 if [ -z "$PYTHON_CMD" ]; then
-    # Check if Python exists but is too new
-    for cmd in python3 python; do
-        if command -v "$cmd" &>/dev/null; then
-            ver=$("$cmd" --version 2>&1 | sed -n 's/Python \([0-9]*\.[0-9]*\).*/\1/p' | head -1)
-            found_major=$(echo "$ver" | cut -d. -f1)
-            found_minor=$(echo "$ver" | cut -d. -f2)
-            if [ "$found_major" -eq 3 ] && [ "$found_minor" -gt "$MAX_PYTHON_MINOR" ]; then
-                echo "[ERROR] Python $ver detected, but Plutus requires Python 3.11–3.$MAX_PYTHON_MINOR."
-                echo "        Python $ver is too new — many dependencies don't support it yet."
-                echo ""
-                echo "  Install a supported Python version:"
-                echo "    macOS:  brew install python@3.$MAX_PYTHON_MINOR"
-                echo "    Ubuntu: sudo apt install python3.$MAX_PYTHON_MINOR"
-                echo "    Fedora: sudo dnf install python3.$MAX_PYTHON_MINOR"
-                echo ""
-                exit 1
-            fi
-        fi
-    done
-
-    echo "[ERROR] Python 3.11–3.$MAX_PYTHON_MINOR is required but not found."
+    echo "[ERROR] Python 3.11+ is required but not found."
     echo ""
     echo "  Install Python first:"
-    echo "    macOS:  brew install python@3.$MAX_PYTHON_MINOR"
-    echo "    Ubuntu: sudo apt install python3.$MAX_PYTHON_MINOR"
-    echo "    Fedora: sudo dnf install python3.$MAX_PYTHON_MINOR"
+    echo "    macOS:  brew install python@3.13"
+    echo "    Ubuntu: sudo apt install python3.13"
+    echo "    Fedora: sudo dnf install python3.13"
     echo ""
     exit 1
 fi
@@ -92,10 +71,10 @@ echo "[1/4] $PY_VER found."
 echo "[2/4] Installing Plutus..."
 
 $PYTHON_CMD -m pip install --upgrade pip >/dev/null 2>&1 || true
-$PYTHON_CMD -m pip install --upgrade "plutus-ai[all]" 2>/tmp/plutus_install_err.txt || {
+$PYTHON_CMD -m pip install --upgrade "plutus-ai" 2>/tmp/plutus_install_err.txt || {
     if grep -qi "no RECORD file" /tmp/plutus_install_err.txt 2>/dev/null; then
         echo "       Retrying with --force-reinstall (missing package metadata)..."
-        $PYTHON_CMD -m pip install --force-reinstall --upgrade "plutus-ai[all]"
+        $PYTHON_CMD -m pip install --force-reinstall --upgrade "plutus-ai"
     else
         cat /tmp/plutus_install_err.txt >&2
         rm -f /tmp/plutus_install_err.txt
