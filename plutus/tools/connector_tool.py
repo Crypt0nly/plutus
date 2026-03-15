@@ -28,6 +28,11 @@ Usage examples (from the agent):
   connector(action="github", service="github", github_action="get_file", path="README.md", owner="me", repo="my-repo")
   connector(action="list")
   connector(action="status", service="telegram")
+  connector(action="custom", service="custom_jira", method="GET", endpoint="/rest/api/2/issue/KEY-1")
+  connector(action="create_connector", connector_id="jira", connector_display_name="Jira",
+            connector_description="My Jira instance", base_url="https://mycompany.atlassian.net",
+            auth_type="basic_auth", connector_credentials={"username": "me", "password": "token"})
+  connector(action="delete_connector", connector_id="jira")
 """
 
 from __future__ import annotations
@@ -60,7 +65,7 @@ class ConnectorTool(Tool):
         return (
             "Send messages or files through external services like "
             "Telegram, Email, WhatsApp, Discord, Gmail, Google Calendar, "
-            "Google Drive, and GitHub. "
+            "Google Drive, GitHub, and custom API services. "
             "Use action='list' to see available connectors. "
             "Use action='send' with service='telegram' to send a Telegram message. "
             "Use action='send_file' with service='telegram' or service='discord' "
@@ -80,6 +85,10 @@ class ConnectorTool(Tool):
             "Use action='github' with service='github' to interact with GitHub: "
             "manage repos, issues, pull requests, branches, files, commits, releases, "
             "workflows, collaborators, and search. Requires github_action parameter. "
+            "Use action='custom' with a custom connector service name to make "
+            "HTTP requests to any user-configured API. "
+            "Use action='create_connector' to programmatically create a new custom "
+            "API connector. Use action='delete_connector' to remove one. "
             "The user configures connectors in the Connectors tab."
         )
 
@@ -93,6 +102,7 @@ class ConnectorTool(Tool):
                     "enum": [
                         "send", "send_file", "list", "status",
                         "manage", "google", "github",
+                        "custom", "create_connector", "delete_connector",
                     ],
                     "description": (
                         "Action to perform. "
@@ -104,7 +114,10 @@ class ConnectorTool(Tool):
                         "'google' = interact with Google services "
                         "(Gmail, Calendar, Drive). "
                         "'github' = interact with GitHub "
-                        "(repos, issues, PRs, branches, files, workflows, etc.)."
+                        "(repos, issues, PRs, branches, files, workflows, etc.). "
+                        "'custom' = make HTTP request to a custom API connector. "
+                        "'create_connector' = create a new custom API connector. "
+                        "'delete_connector' = delete a custom API connector."
                     ),
                 },
                 "service": {
@@ -513,6 +526,81 @@ class ConnectorTool(Tool):
                         "Description for creating a repo or release."
                     ),
                 },
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+                    "description": (
+                        "HTTP method for custom API requests. "
+                        "Default: GET."
+                    ),
+                },
+                "endpoint": {
+                    "type": "string",
+                    "description": (
+                        "API endpoint path for custom API requests "
+                        "(e.g. '/api/v2/users'). Appended to the base URL."
+                    ),
+                },
+                "request_body": {
+                    "type": "object",
+                    "description": (
+                        "Request body for custom API POST/PUT/PATCH requests."
+                    ),
+                },
+                "request_params": {
+                    "type": "object",
+                    "description": (
+                        "Query parameters for custom API requests."
+                    ),
+                },
+                "request_headers": {
+                    "type": "object",
+                    "description": (
+                        "Additional headers for this specific custom API request."
+                    ),
+                },
+                "connector_id": {
+                    "type": "string",
+                    "description": (
+                        "ID for creating/deleting custom connectors. "
+                        "Alphanumeric and underscores only."
+                    ),
+                },
+                "connector_display_name": {
+                    "type": "string",
+                    "description": "Display name for a new custom connector.",
+                },
+                "connector_description": {
+                    "type": "string",
+                    "description": "Description for a new custom connector.",
+                },
+                "base_url": {
+                    "type": "string",
+                    "description": (
+                        "Base URL for a new custom connector "
+                        "(e.g. 'https://api.example.com/v1')."
+                    ),
+                },
+                "auth_type": {
+                    "type": "string",
+                    "enum": ["none", "api_key", "bearer_token", "basic_auth"],
+                    "description": "Authentication type for a new custom connector.",
+                },
+                "connector_credentials": {
+                    "type": "object",
+                    "description": (
+                        "Credentials for a new custom connector. Keys depend on auth_type: "
+                        "api_key: {api_key: '...'}, bearer_token: {token: '...'}, "
+                        "basic_auth: {username: '...', password: '...'}"
+                    ),
+                },
+                "connector_headers": {
+                    "type": "object",
+                    "description": (
+                        "Default headers for a new custom connector "
+                        "(e.g. {'Accept': 'application/json'})."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -567,11 +655,21 @@ class ConnectorTool(Tool):
         elif action == "github":
             return await self._handle_github(**kwargs)
 
+        elif action == "custom":
+            return await self._handle_custom(**kwargs)
+
+        elif action == "create_connector":
+            return await self._handle_create_connector(**kwargs)
+
+        elif action == "delete_connector":
+            return await self._handle_delete_connector(**kwargs)
+
         else:
             return (
                 f"Error: Unknown action '{action}'. "
                 "Use 'send', 'send_file', 'list', 'status', 'manage', "
-                "'google', or 'github'."
+                "'google', 'github', 'custom', 'create_connector', "
+                "or 'delete_connector'."
             )
 
     def _list_connectors(self) -> str:
@@ -1494,3 +1592,137 @@ class ConnectorTool(Tool):
             await ws_manager.broadcast(event)
         except Exception as e:
             logger.debug(f"Could not broadcast attachment event: {e}")
+
+    # ── Custom API Connector handlers ──────────────────────────
+
+    async def _handle_custom(self, **kwargs: Any) -> str:
+        """Handle custom API connector requests."""
+        service = kwargs.get("service", "")
+        if not service:
+            return "Error: 'service' parameter is required for custom action (e.g. 'custom_jira')"
+
+        # Ensure the service name has the custom_ prefix
+        if not service.startswith("custom_"):
+            service = f"custom_{service}"
+
+        connector = self._manager.get(service)
+        if not connector:
+            # List available custom connectors
+            all_connectors = self._manager.list_all()
+            custom = [c for c in all_connectors if c.get("is_custom")]
+            if custom:
+                names = ", ".join(c["name"] for c in custom)
+                return f"Error: Custom connector '{service}' not found. Available custom connectors: {names}"
+            return (
+                f"Error: Custom connector '{service}' not found. "
+                "No custom connectors are configured. "
+                "Use action='create_connector' to create one, or the user can "
+                "add one in the Connectors tab."
+            )
+
+        if not connector.is_configured:
+            return f"Error: Custom connector '{service}' is not configured. The user needs to configure it in the Connectors tab."
+
+        # Import here to avoid circular imports
+        from plutus.connectors.custom_api import CustomAPIConnector
+        if not isinstance(connector, CustomAPIConnector):
+            return f"Error: '{service}' is not a custom API connector. Use the appropriate action instead."
+
+        method = kwargs.get("method", "GET")
+        endpoint = kwargs.get("endpoint", "/")
+        body = kwargs.get("request_body")
+        params = kwargs.get("request_params")
+        headers = kwargs.get("request_headers")
+
+        try:
+            result = await connector.request(
+                method=method,
+                endpoint=endpoint,
+                body=body,
+                headers=headers,
+                params=params,
+            )
+
+            if result.get("success"):
+                import json
+                response_body = result.get("body", "")
+                if isinstance(response_body, (dict, list)):
+                    body_str = json.dumps(response_body, indent=2)
+                    # Truncate very large responses
+                    if len(body_str) > 8000:
+                        body_str = body_str[:8000] + "\n... (truncated)"
+                else:
+                    body_str = str(response_body)[:8000]
+
+                return (
+                    f"HTTP {result.get('status_code')} — Success\n\n"
+                    f"Response:\n{body_str}"
+                )
+            else:
+                error = result.get("error", result.get("body", "Unknown error"))
+                return f"HTTP {result.get('status_code', '?')} — Error: {error}"
+
+        except Exception as e:
+            return f"Error making request to {service}: {str(e)}"
+
+    async def _handle_create_connector(self, **kwargs: Any) -> str:
+        """Handle creating a new custom API connector."""
+        from plutus.connectors.custom_api import CustomConnectorManager
+
+        connector_id = kwargs.get("connector_id", "")
+        if not connector_id:
+            return "Error: 'connector_id' is required (e.g. 'jira', 'notion', 'slack')"
+
+        display_name = kwargs.get("connector_display_name", "")
+        description = kwargs.get("connector_description", "")
+        base_url = kwargs.get("base_url", "")
+        auth_type = kwargs.get("auth_type", "none")
+        credentials = kwargs.get("connector_credentials")
+        default_headers = kwargs.get("connector_headers")
+
+        if not base_url:
+            return "Error: 'base_url' is required (e.g. 'https://api.example.com/v1')"
+
+        success, message, connector = CustomConnectorManager.create_custom_connector(
+            connector_id=connector_id,
+            display_name=display_name,
+            description=description,
+            base_url=base_url,
+            auth_type=auth_type,
+            credentials=credentials,
+            default_headers=default_headers,
+        )
+
+        if success and connector:
+            # Register it in the live connector manager
+            self._manager.register(connector)
+            return (
+                f"Custom connector created: {connector.display_name}\n"
+                f"  Service name: {connector.name}\n"
+                f"  Base URL: {base_url}\n"
+                f"  Auth: {auth_type}\n\n"
+                f"You can now use it with:\n"
+                f"  connector(action='custom', service='{connector.name}', "
+                f"method='GET', endpoint='/...')"
+            )
+        else:
+            return f"Error creating connector: {message}"
+
+    async def _handle_delete_connector(self, **kwargs: Any) -> str:
+        """Handle deleting a custom API connector."""
+        from plutus.connectors.custom_api import CustomConnectorManager
+
+        connector_id = kwargs.get("connector_id", "")
+        if not connector_id:
+            return "Error: 'connector_id' is required"
+
+        success, message = CustomConnectorManager.delete_custom_connector(connector_id)
+
+        if success:
+            # Remove from live connector manager
+            full_name = f"custom_{connector_id}"
+            if full_name in self._manager._connectors:
+                del self._manager._connectors[full_name]
+            return f"Custom connector '{connector_id}' deleted successfully."
+        else:
+            return f"Error: {message}"
