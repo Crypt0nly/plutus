@@ -241,10 +241,30 @@ if (-not (Test-Path $plutusDir)) {
     New-Item -ItemType Directory -Path $plutusDir -Force | Out-Null
 }
 
-# Create launcher VBS script.
-# This runs Plutus without a visible console window.
-# If Plutus is already running, it just opens the browser instead.
+# Create launcher scripts.
+# Two-file approach for reliability:
+#   start_plutus.bat  — runs Python and redirects ALL output to the log file
+#   start.vbs         — calls the .bat with a hidden window (no flash)
+#
+# Why a .bat wrapper instead of `cmd /c python ...` directly in VBS?
+# VBS window-style 0 creates a hidden console.  On some Python versions
+# (notably 3.14+), Python's console I/O init fails when the console is
+# invisible, causing a silent crash.  The .bat gives Python a real
+# console (hidden by VBS) and captures all output to the log file so
+# crashes are always diagnosable.
+
 $vbsPath = "$plutusDir\start.vbs"
+$batPath = "$plutusDir\start_plutus.bat"
+$logPath = "$plutusDir\plutus.log"
+
+# ── .bat launcher ──
+$batContent = @"
+@echo off
+"$pythonFull" -m plutus start > "$logPath" 2>&1
+"@
+Set-Content -Path $batPath -Value $batContent -Encoding ASCII
+
+# ── .vbs launcher (calls the .bat) ──
 $vbsContent = @"
 ' Plutus Launcher
 ' Double-click to start Plutus or open it in your browser.
@@ -266,9 +286,12 @@ If alreadyRunning Then
     ' Already running - just open the browser
     WshShell.Run "http://localhost:7777"
 Else
-    ' Start Plutus in the background (hidden console window)
-    ' Uses the full Python path to avoid issues with multiple Python versions
-    WshShell.Run "cmd /c ""$pythonFull"" -m plutus start", 0, False
+    ' Start Plutus via the .bat launcher (hidden window)
+    WshShell.Run """$batPath""", 0, False
+
+    ' Wait a moment, then open the browser
+    WScript.Sleep 2000
+    WshShell.Run "http://localhost:7777"
 End If
 "@
 Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII
@@ -331,3 +354,36 @@ Write-Host ""
 
 # Launch in the background via the VBS launcher
 Start-Process "wscript.exe" -ArgumentList "`"$vbsPath`""
+
+# Wait for the server to come up (up to 15 seconds)
+$serverOk = $false
+for ($i = 0; $i -lt 15; $i++) {
+    Start-Sleep -Seconds 1
+    try {
+        $resp = Invoke-WebRequest -Uri "http://localhost:7777/api/config" `
+                                  -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        if ($resp.StatusCode -eq 200) {
+            $serverOk = $true
+            break
+        }
+    } catch {
+        # Not ready yet — keep waiting
+    }
+}
+
+if ($serverOk) {
+    Write-Host "  Plutus is running at http://localhost:7777" -ForegroundColor Green
+} else {
+    Write-Host "  [WARN] Plutus may not have started correctly." -ForegroundColor Yellow
+    $logFile = "$env:USERPROFILE\.plutus\plutus.log"
+    if (Test-Path $logFile) {
+        Write-Host ""
+        Write-Host "  Last 10 lines of the log ($logFile):" -ForegroundColor DarkGray
+        Get-Content $logFile -Tail 10 | ForEach-Object {
+            Write-Host "    $_" -ForegroundColor DarkGray
+        }
+    }
+    Write-Host ""
+    Write-Host "  Try running manually to see the full error:" -ForegroundColor Yellow
+    Write-Host "    $pythonFull -m plutus start" -ForegroundColor White
+}
