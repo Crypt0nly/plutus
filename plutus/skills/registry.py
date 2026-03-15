@@ -1,4 +1,10 @@
-"""Skill Registry — discovers, stores, and matches skills to user requests."""
+"""Skill Registry — discovers, stores, and matches skills to user requests.
+
+NOTE: Skills are for desktop/browser automation workflows where no direct API
+connector exists. Services with connectors (WhatsApp, Gmail, Calendar, Telegram,
+Discord, GitHub, etc.) should use their connector instead — connectors are more
+reliable because they call APIs directly rather than automating browser UIs.
+"""
 
 from __future__ import annotations
 
@@ -59,57 +65,37 @@ class SkillRegistry:
 
 
 def create_default_registry() -> SkillRegistry:
-    """Create a registry with all built-in skills."""
+    """Create a registry with all built-in skills.
+
+    Only includes skills for apps/tasks that do NOT have a dedicated connector.
+    Services like WhatsApp, Gmail, Calendar, Telegram, Discord, and GitHub
+    are handled by their respective connectors (direct API calls), which are
+    far more reliable than browser automation.
+    """
     registry = SkillRegistry()
 
-    # Import and register all built-in skills
-    from plutus.skills.apps.whatsapp import (
-        WhatsAppSendMessage,
-        WhatsAppReadMessages,
-        WhatsAppSearchContact,
-    )
-    from plutus.skills.apps.calendar import (
-        GoogleCalendarCreateEvent,
-        GoogleCalendarCheckSchedule,
-        GoogleCalendarDeleteEvent,
-    )
-    from plutus.skills.apps.gmail import (
-        GmailSendEmail,
-        GmailReadInbox,
-        GmailSearchEmail,
-    )
+    # Spotify — no connector, uses web player / desktop app automation
     from plutus.skills.apps.spotify import (
         SpotifyPlaySong,
         SpotifyPlayPause,
         SpotifyNextTrack,
         SpotifySearchPlay,
     )
+    # Files — local filesystem operations via shell commands
     from plutus.skills.apps.files import (
         CreateFile,
         OrganizeFolder,
         FindFiles,
         ZipFiles,
     )
+    # Browser — general web navigation and downloads
     from plutus.skills.apps.browser import (
         GoogleSearch,
         OpenWebsite,
         DownloadFile,
     )
 
-    # Register all skills
     for skill_class in [
-        # WhatsApp
-        WhatsAppSendMessage,
-        WhatsAppReadMessages,
-        WhatsAppSearchContact,
-        # Calendar
-        GoogleCalendarCreateEvent,
-        GoogleCalendarCheckSchedule,
-        GoogleCalendarDeleteEvent,
-        # Gmail
-        GmailSendEmail,
-        GmailReadInbox,
-        GmailSearchEmail,
         # Spotify
         SpotifyPlaySong,
         SpotifyPlayPause,

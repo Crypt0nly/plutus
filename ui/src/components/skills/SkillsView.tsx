@@ -705,69 +705,7 @@ export default function SkillsView() {
               </div>
             </div>
 
-            {/* Featured Skills */}
-            <div className="w-full bg-surface border border-gray-800/60 rounded-xl p-6">
-              <h3 className="text-gray-100/80 font-semibold mb-3 flex items-center gap-2">
-                <span>⭐</span> Featured Community Skills
-              </h3>
-              <p className="text-gray-500 text-sm mb-4">
-                Popular skills shared by the community. Click to import directly.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {[
-                  { name: "slack_send_message", app: "Slack", cat: "messaging", desc: "Send a message in any Slack channel or DM", author: "community" },
-                  { name: "notion_create_page", app: "Notion", cat: "productivity", desc: "Create a new page in Notion with title and content", author: "community" },
-                  { name: "zoom_join_meeting", app: "Zoom", cat: "communication", desc: "Join a Zoom meeting by meeting ID", author: "community" },
-                  { name: "twitter_post", app: "Twitter/X", cat: "social", desc: "Post a tweet from your account", author: "community" },
-                  { name: "google_docs_create", app: "Google Docs", cat: "productivity", desc: "Create a new Google Doc with content", author: "community" },
-                  { name: "youtube_search_play", app: "YouTube", cat: "media", desc: "Search YouTube and play the first result", author: "community" },
-                ].map((s) => {
-                  const meta = getMeta(s.cat);
-                  return (
-                    <div
-                      key={s.name}
-                      className="bg-white/[0.03] border border-gray-800/60 rounded-xl p-4 hover:border-violet-500/30 transition-colors cursor-pointer group"
-                      onClick={() => {
-                        setActiveTab("import");
-                        setImportText(JSON.stringify({
-                          plutus_skill: true,
-                          skill: {
-                            name: s.name,
-                            description: s.desc,
-                            app: s.app,
-                            category: s.cat,
-                            triggers: [s.app.toLowerCase(), s.name.replace(/_/g, " ")],
-                            required_params: [],
-                            optional_params: [],
-                            steps: [
-                              { description: `Open ${s.app}`, operation: "open_app", params: { app_name: s.app } },
-                            ],
-                            reason: `Community skill for ${s.app}`,
-                          },
-                        }, null, 2));
-                      }}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`text-lg w-7 h-7 rounded-lg ${meta.bg} flex items-center justify-center`}>
-                          {meta.icon}
-                        </span>
-                        <div>
-                          <h4 className="text-xs font-semibold text-gray-300 group-hover:text-gray-100">{s.app}</h4>
-                          <code className="text-[9px] text-violet-400/50">{s.name}</code>
-                        </div>
-                      </div>
-                      <p className="text-gray-500 text-[11px] leading-relaxed">{s.desc}</p>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[9px] text-gray-600">by {s.author}</span>
-                        <span className="text-[9px] text-violet-400/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                          Click to import →
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            {/* Community is growing — featured skills will appear here once available */}
           </div>
         )}
 

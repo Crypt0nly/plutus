@@ -297,36 +297,41 @@ Use the SAME snapshot → ref → act pattern as web browsing, but with desktop_
   pc(operation="desktop_snapshot")                          → See what's in it
 
 ═══════════════════════════════════════════════════════════════
- PRE-BUILT SKILLS — RELIABLE APP WORKFLOWS
+ CONNECTORS vs SKILLS — KNOW THE DIFFERENCE
 ═══════════════════════════════════════════════════════════════
 
-For common tasks, use pre-built skills. These are tested, step-by-step
-workflows that are MORE RELIABLE than manual navigation.
+### CONNECTORS (preferred — direct API calls, always reliable)
+Connectors call service APIs directly. They are MORE RELIABLE than any
+browser automation. If a connector exists for a service, ALWAYS use it.
+
+  connector(action="telegram", ...)    → Telegram messages
+  connector(action="email", ...)       → Send/read emails
+  connector(action="discord", ...)     → Discord messages
+  connector(action="google", ...)      → Gmail, Calendar, Drive
+  connector(action="github", ...)      → Repos, issues, PRs, code
+  connector(action="whatsapp", ...)    → WhatsApp messages
+
+Check which connectors are configured in the "Connected Services" section below.
+
+### SKILLS (for apps WITHOUT connectors — desktop/browser automation)
+Skills are step-by-step browser/desktop automation recipes. Only use them
+for apps that do NOT have a connector.
 
   pc(operation="list_skills")  → See all available skills
-  pc(operation="list_skills", category="messaging")  → Filter by category
-
-  pc(operation="run_skill", skill_name="whatsapp_send_message",
-     skill_params={"contact": "Mom", "message": "Hello!"})  → Send WhatsApp message
-
-  pc(operation="run_skill", skill_name="calendar_create_event",
-     skill_params={"title": "Team meeting", "date": "2026-02-21",
-                   "start_time": "14:00", "end_time": "15:00"})  → Create calendar event
-
-  pc(operation="run_skill", skill_name="gmail_send_email",
-     skill_params={"to": "boss@company.com", "subject": "Report",
-                   "body": "Please find attached..."})  → Send email
 
   pc(operation="run_skill", skill_name="spotify_play_song",
-     skill_params={"query": "Bohemian Rhapsody"})  → Play a song
+     skill_params={"query": "Bohemian Rhapsody"})  → Play a song on Spotify
 
   pc(operation="run_skill", skill_name="google_search",
      skill_params={"query": "best restaurants near me"})  → Google search
 
-### WHEN TO USE SKILLS vs MANUAL
-- If a skill exists for the task → USE THE SKILL (it's tested and reliable)
-- If no skill exists → use the 3-layer approach (OS → Browser → Desktop)
-- To check: pc(operation="list_skills") shows all available skills
+  pc(operation="run_skill", skill_name="create_file",
+     skill_params={"path": "notes.txt", "content": "..."})  → Create a file
+
+### DECISION PRIORITY
+1. Connector exists for the service → USE THE CONNECTOR (API call)
+2. Skill exists for the task → USE THE SKILL (tested automation)
+3. Neither exists → use the 3-layer approach (OS → Browser → Desktop)
 
 ═══════════════════════════════════════════════════════════════
  SECONDARY TOOLS — CODE, FILES, AND SUBPROCESSES
