@@ -79,6 +79,7 @@ if (-not $pythonCmd) {
             Write-Host "[ERROR] Python was installed but isn't on PATH yet." -ForegroundColor Red
             Write-Host "        Close this terminal, open a new one, and run this installer again." -ForegroundColor Yellow
             Write-Host ""
+            Read-Host "Press Enter to close"
             exit 1
         }
         Write-Host "       Python installed successfully." -ForegroundColor Green
@@ -88,6 +89,7 @@ if (-not $pythonCmd) {
         Write-Host "        Install it from https://www.python.org/downloads/" -ForegroundColor Yellow
         Write-Host "        Make sure to check 'Add Python to PATH' during install." -ForegroundColor Yellow
         Write-Host ""
+        Read-Host "Press Enter to close"
         exit 1
     }
 } else {
@@ -105,25 +107,28 @@ if (-not $pythonFull) { $pythonFull = $pythonCmd }
 
 Write-Host "[2/4] Installing Plutus..." -ForegroundColor Cyan
 
-try {
-    # Use *>$null (direct redirection) instead of 2>&1 | Out-Null (pipeline).
-    # When the script runs via `iwr ... | iex`, piping stderr through Out-Null
-    # creates ErrorRecord objects that collide with the iex pipeline and crash
-    # the terminal. *>$null redirects all streams at the shell level without
-    # touching the pipeline, and $LASTEXITCODE is still set correctly.
-    & $pythonFull -m pip install --upgrade pip *>$null
-    & $pythonFull -m pip install --upgrade "plutus-ai" *>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "pip install failed"
-    }
-    Write-Host "       Plutus installed successfully." -ForegroundColor Green
-} catch {
+# Temporarily allow errors so pip's stderr warnings/notices don't crash the
+# script. PowerShell 5.1 converts any stderr output from native commands into
+# ErrorRecords; with $ErrorActionPreference = "Stop" those become terminating
+# exceptions that kill the installer before *>$null can suppress them.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+
+& $pythonFull -m pip install --upgrade pip *>$null
+& $pythonFull -m pip install --upgrade "plutus-ai" *>$null
+$pipExit = $LASTEXITCODE
+
+$ErrorActionPreference = $prevEAP
+
+if ($pipExit -ne 0) {
     Write-Host ""
-    Write-Host "[ERROR] Failed to install Plutus." -ForegroundColor Red
-    Write-Host "        Try running: pip install plutus-ai" -ForegroundColor Yellow
+    Write-Host "[ERROR] Failed to install Plutus (pip exit code $pipExit)." -ForegroundColor Red
+    Write-Host "        Try running manually: $pythonFull -m pip install plutus-ai" -ForegroundColor Yellow
     Write-Host ""
+    Read-Host "Press Enter to close"
     exit 1
 }
+Write-Host "       Plutus installed successfully." -ForegroundColor Green
 
 # Refresh PATH so the plutus command is available in this session
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + `
@@ -131,7 +136,9 @@ $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";
 
 # pip may install to the per-user site-packages (AppData\Roaming\Python\PythonXYZ\Scripts)
 # which often isn't on PATH. Detect this and add it so `plutus` works immediately.
+$prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
 $userScriptsDir = & $pythonFull -c "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))" 2>$null
+$ErrorActionPreference = $prevEAP
 if ($userScriptsDir -and (Test-Path $userScriptsDir)) {
     $pathLower = $env:Path.ToLower()
     if (-not $pathLower.Contains($userScriptsDir.ToLower())) {
