@@ -861,14 +861,26 @@ def update() -> None:
         text=True,
     )
 
-    # Retry with --force-reinstall if pip can't uninstall due to missing RECORD
+    # Retry if pip can't uninstall due to missing RECORD file.
+    # Remove the broken dist-info first, then install normally (with deps).
     if result.returncode != 0 and "no record file" in result.stderr.lower():
-        console.print("  [yellow]Detected missing package metadata, retrying...[/yellow]")
+        console.print("  [yellow]Detected missing package metadata, fixing...[/yellow]")
+        import importlib.metadata
+
+        from pathlib import Path as _Path
+
+        try:
+            dist = importlib.metadata.distribution("plutus-ai")
+            dist_info = _Path(dist._path)  # type: ignore[attr-defined]
+            if dist_info.is_dir():
+                import shutil
+
+                shutil.rmtree(dist_info, ignore_errors=True)
+        except Exception:
+            pass
+
         result = subprocess.run(
-            [
-                sys.executable, "-m", "pip", "install",
-                "--force-reinstall", "--no-deps", "--upgrade", "plutus-ai",
-            ],
+            [sys.executable, "-m", "pip", "install", "--upgrade", "plutus-ai"],
             capture_output=True,
             text=True,
         )
