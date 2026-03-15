@@ -118,6 +118,16 @@ $ErrorActionPreference = "Continue"
 & $pythonFull -m pip install --upgrade "plutus-ai" *>$null
 $pipExit = $LASTEXITCODE
 
+# If the first attempt fails (e.g. stale metadata, pip cache corruption),
+# retry with --force-reinstall.  IMPORTANT: do NOT use --no-deps here —
+# on a fresh install the dependencies (fastapi, uvicorn, etc.) have never
+# been installed, so skipping them leaves the server unable to start.
+if ($pipExit -ne 0) {
+    Write-Host "       Retrying with --force-reinstall..." -ForegroundColor DarkGray
+    & $pythonFull -m pip install --force-reinstall --upgrade "plutus-ai" *>$null
+    $pipExit = $LASTEXITCODE
+}
+
 $ErrorActionPreference = $prevEAP
 
 if ($pipExit -ne 0) {
@@ -128,6 +138,16 @@ if ($pipExit -ne 0) {
     Read-Host "Press Enter to close"
     exit 1
 }
+
+# Verify that critical runtime dependencies were installed (not just plutus
+# itself).  This catches the case where --force-reinstall --no-deps was used
+# by mistake, or where a dependency couldn't be resolved for this Python version.
+$depCheck = & $pythonFull -c "import fastapi; import uvicorn; import pydantic; print('ok')" 2>$null
+if ($depCheck -ne "ok") {
+    Write-Host "       Installing missing dependencies..." -ForegroundColor DarkGray
+    & $pythonFull -m pip install --upgrade "fastapi>=0.115.0" "uvicorn[standard]>=0.32.0" "pydantic>=2.10.0" "websockets>=14.0" "click>=8.1.0" "rich>=13.9.0" "aiosqlite>=0.20.0" "httpx>=0.28.0" "psutil>=6.1.0" "litellm>=1.55.0" *>$null
+}
+
 Write-Host "       Plutus installed successfully." -ForegroundColor Green
 
 # Refresh PATH so the plutus command is available in this session
