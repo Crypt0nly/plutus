@@ -88,11 +88,46 @@ def start(
     force: bool,
 ) -> None:
     """Launch the Plutus agent and web interface."""
+    import logging
     import uvicorn
 
     config = PlutusConfig.load()
     bind_host = host or config.gateway.host
     bind_port = port or config.gateway.port
+
+    # ── Configure file logging ───────────────────────────────────────────
+    # When launched from a GUI shortcut (e.g. the Windows VBS launcher) all
+    # console output is invisible.  Writing a log file lets users diagnose
+    # startup failures via  ~/.plutus/plutus.log
+    log_file = plutus_dir() / "plutus.log"
+    try:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(str(log_file), mode="w", encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
+        )
+        logging.getLogger().addHandler(file_handler)
+    except OSError:
+        pass  # non-critical — console logging still works
+
+    logger = logging.getLogger("plutus.startup")
+
+    # ── Pre-flight checks ────────────────────────────────────────────────
+    # Catch the most common startup failures *before* uvicorn forks into a
+    # hidden process so users get an actionable error message.
+    try:
+        import fastapi  # noqa: F401
+        from plutus.gateway.server import create_app as _check_import  # noqa: F401
+    except Exception as exc:
+        msg = (
+            f"\n  [red bold]Startup failed:[/red bold] {exc}\n\n"
+            f"  This usually means the installation is incomplete or corrupted.\n"
+            f"  Try reinstalling:  pip install --force-reinstall plutus-ai\n"
+        )
+        console.print(msg)
+        logger.critical("Pre-flight import check failed: %s", exc, exc_info=True)
+        sys.exit(1)
 
     # Check if port is already in use and handle it
     if _port_in_use(bind_host, bind_port):
@@ -138,6 +173,7 @@ def start(
         threading.Thread(target=_open, daemon=True).start()
 
     try:
+        logger.info("Starting uvicorn on %s:%s", bind_host, bind_port)
         uvicorn.run(
             "plutus.gateway.server:create_app",
             host=bind_host,
@@ -148,6 +184,11 @@ def start(
             ws_ping_interval=20,   # Send WS ping frame every 20s
             ws_ping_timeout=20,    # Close if no pong within 20s
         )
+    except Exception as exc:
+        logger.critical("Server crashed: %s", exc, exc_info=True)
+        console.print(f"\n  [red bold]Server crashed:[/red bold] {exc}")
+        console.print(f"  Check the log for details: {log_file}\n")
+        raise
     finally:
         _remove_pid_file(bind_port)
 
