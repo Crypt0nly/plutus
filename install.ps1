@@ -1,5 +1,6 @@
 # Plutus Installer for Windows
 # Usage: iwr -useb https://useplutus.ai/install.ps1 | iex
+# (The -useb flag avoids a security warning prompt on older PowerShell versions)
 #
 # What this script does:
 #   1. Checks if Python 3.11+ is installed (installs via winget if not)
@@ -111,7 +112,7 @@ try {
     # the terminal. *>$null redirects all streams at the shell level without
     # touching the pipeline, and $LASTEXITCODE is still set correctly.
     & $pythonFull -m pip install --upgrade pip *>$null
-    & $pythonFull -m pip install --upgrade "plutus-ai[all]" *>$null
+    & $pythonFull -m pip install --upgrade "plutus-ai" *>$null
     if ($LASTEXITCODE -ne 0) {
         throw "pip install failed"
     }

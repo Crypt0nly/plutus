@@ -55,9 +55,9 @@ if [ -z "$PYTHON_CMD" ]; then
     echo "[ERROR] Python 3.11+ is required but not found."
     echo ""
     echo "  Install Python first:"
-    echo "    macOS:  brew install python@3.11"
-    echo "    Ubuntu: sudo apt install python3.11"
-    echo "    Fedora: sudo dnf install python3.11"
+    echo "    macOS:  brew install python@3.13"
+    echo "    Ubuntu: sudo apt install python3.13"
+    echo "    Fedora: sudo dnf install python3.13"
     echo ""
     exit 1
 fi
@@ -71,10 +71,10 @@ echo "[1/4] $PY_VER found."
 echo "[2/4] Installing Plutus..."
 
 $PYTHON_CMD -m pip install --upgrade pip >/dev/null 2>&1 || true
-$PYTHON_CMD -m pip install --upgrade "plutus-ai[all]" 2>/tmp/plutus_install_err.txt || {
+$PYTHON_CMD -m pip install --upgrade "plutus-ai" 2>/tmp/plutus_install_err.txt || {
     if grep -qi "no RECORD file" /tmp/plutus_install_err.txt 2>/dev/null; then
         echo "       Retrying with --force-reinstall (missing package metadata)..."
-        $PYTHON_CMD -m pip install --force-reinstall --upgrade "plutus-ai[all]"
+        $PYTHON_CMD -m pip install --force-reinstall --upgrade "plutus-ai"
     else
         cat /tmp/plutus_install_err.txt >&2
         rm -f /tmp/plutus_install_err.txt
