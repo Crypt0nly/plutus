@@ -17,7 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable
+from typing import Any
 
 from plutus.config import PlutusConfig, SecretsStore
 from plutus.core.conversation import ConversationManager
