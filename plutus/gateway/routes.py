@@ -2297,7 +2297,7 @@ def create_router() -> APIRouter:
             # --host/--port/etc.
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
-        asyncio.get_event_loop().create_task(_restart_server())
+        asyncio.get_running_loop().create_task(_restart_server())
 
         return {
             "success": True,

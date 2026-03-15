@@ -9,7 +9,8 @@ import json
 import logging
 import os
 import warnings
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import litellm
 from pydantic import BaseModel
