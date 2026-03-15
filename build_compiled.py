@@ -3,12 +3,17 @@
 Usage:
     python build_compiled.py build_ext --inplace
 
-This compiles the "magic" modules (agent orchestration, PC control, workers, etc.)
-into platform-specific .so (Linux/macOS) or .pyd (Windows) binaries. The resulting
-files are importable by Python but not human-readable.
+This compiles the "product glue" modules — the installer, onboarding, server
+orchestration, and auto-configuration that turn the raw engine into a polished
+product — into platform-specific .so (Linux/macOS) or .pyd (Windows) binaries.
+The resulting files are importable by Python but not human-readable.
 
-After compilation, the original .py source files for these modules should be removed
-from the wheel (see scripts/strip_sources.py).
+The engine underneath (core agent, tools, PC control, skills, connectors,
+guardrails) is shipped as readable .py so developers can inspect, fork, and
+contribute.
+
+After compilation, the original .py source files for these modules should be
+removed from the wheel (see the exclude list in pyproject.toml).
 """
 
 from __future__ import annotations
@@ -20,52 +25,28 @@ from Cython.Build import cythonize
 from setuptools import Extension, setup
 
 # ──────────────────────────────────────────────────────────────
-# Protected modules — the core IP that gets compiled
+# Protected modules — the product glue that gets compiled
 # ──────────────────────────────────────────────────────────────
-# These are the files that contain the "magic" — the orchestration
-# logic, PC control, subprocess isolation, etc. Everything else
-# (CLI, config, gateway, guardrails, basic tools) stays as readable .py.
+# These are the files that turn raw code into a product a non-technical
+# person can use: the CLI (installer, onboarding wizard, auto-setup),
+# the gateway (server startup, API routes, WebSocket orchestration),
+# and product-level features (heartbeat monitoring, task scheduler).
+#
+# Everything else — the AI engine, tools, PC control, skills, connectors,
+# guardrails — stays as readable .py and is open source.
 
 PROTECTED_MODULES = [
-    # Core orchestration
-    "plutus/core/agent.py",
-    "plutus/core/computer_use_agent.py",
-    "plutus/core/conversation.py",
-    "plutus/core/heartbeat.py",
-    "plutus/core/llm.py",
-    "plutus/core/model_router.py",
-    "plutus/core/planner.py",
-    "plutus/core/scheduler.py",
-    "plutus/core/subprocess_manager.py",
-    "plutus/core/summarizer.py",
-    "plutus/core/worker_pool.py",
-    # Gateway (WebSocket orchestration)
+    # CLI — installer, onboarding wizard, setup commands, auto-configuration
+    "plutus/cli.py",
+
+    # Gateway — server startup orchestration, API surface, WebSocket handling
+    "plutus/gateway/server.py",
+    "plutus/gateway/routes.py",
     "plutus/gateway/ws.py",
-    # PC control
-    "plutus/pc/browser_control.py",
-    "plutus/pc/computer_use.py",
-    "plutus/pc/context.py",
-    "plutus/pc/desktop_control.py",
-    "plutus/pc/smart_click.py",
-    "plutus/pc/workflow.py",
-    # Advanced tools
-    "plutus/tools/code_analysis.py",
-    "plutus/tools/code_editor.py",
-    "plutus/tools/pc_control.py",
-    "plutus/tools/tool_creator.py",
-    # Skills engine
-    "plutus/skills/engine.py",
-    "plutus/skills/creator.py",
-    "plutus/skills/loader.py",
-    "plutus/skills/python_runner.py",
-    # Workers
-    "plutus/workers/code_analysis_worker.py",
-    "plutus/workers/file_edit_worker.py",
-    "plutus/workers/shell_worker.py",
-    "plutus/workers/custom_worker.py",
-    # Connector bridges (agent ↔ external app orchestration)
-    "plutus/connectors/discord_bridge.py",
-    "plutus/connectors/telegram_bridge.py",
+
+    # Product features — monitoring and scheduling that make it "just work"
+    "plutus/core/heartbeat.py",
+    "plutus/core/scheduler.py",
 ]
 
 

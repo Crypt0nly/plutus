@@ -84,43 +84,20 @@ packages = ["plutus"]
 artifacts = ["plutus/**/*.so", "plutus/**/*.pyd"]
 # Exclude .py source for compiled/protected modules — only .so/.pyd ship in wheels.
 # The sdist still includes all .py files for building from source.
+#
+# Strategy: protect the "product glue" (installer, server, onboarding, auto-config)
+# that turns raw code into a polished product. The engine underneath (core agent,
+# tools, PC control, skills, connectors, guardrails) is open source.
 exclude = [
-    # Core orchestration
-    "plutus/core/agent.py",
-    "plutus/core/computer_use_agent.py",
-    "plutus/core/conversation.py",
-    "plutus/core/heartbeat.py",
-    "plutus/core/llm.py",
-    "plutus/core/model_router.py",
-    "plutus/core/planner.py",
-    "plutus/core/scheduler.py",
-    "plutus/core/subprocess_manager.py",
-    "plutus/core/summarizer.py",
-    "plutus/core/worker_pool.py",
-    # Gateway
+    # CLI — installer, onboarding wizard, setup commands
+    "plutus/cli.py",
+    # Gateway — server startup, API routes, WebSocket orchestration
+    "plutus/gateway/server.py",
+    "plutus/gateway/routes.py",
     "plutus/gateway/ws.py",
-    # PC control
-    "plutus/pc/browser_control.py",
-    "plutus/pc/computer_use.py",
-    "plutus/pc/context.py",
-    "plutus/pc/desktop_control.py",
-    "plutus/pc/smart_click.py",
-    "plutus/pc/workflow.py",
-    # Advanced tools
-    "plutus/tools/code_analysis.py",
-    "plutus/tools/code_editor.py",
-    "plutus/tools/pc_control.py",
-    "plutus/tools/tool_creator.py",
-    # Skills engine
-    "plutus/skills/engine.py",
-    "plutus/skills/creator.py",
-    "plutus/skills/loader.py",
-    "plutus/skills/python_runner.py",
-    # Workers — NOT excluded: these are subprocess scripts that must ship as .py
-    # (they are executed via subprocess, not imported, so .so/.pyd won't work)
-    # Connector bridges
-    "plutus/connectors/discord_bridge.py",
-    "plutus/connectors/telegram_bridge.py",
+    # Product features — heartbeat monitoring, task scheduler
+    "plutus/core/heartbeat.py",
+    "plutus/core/scheduler.py",
 ]
 
 [tool.hatch.build.targets.sdist.force-include]
