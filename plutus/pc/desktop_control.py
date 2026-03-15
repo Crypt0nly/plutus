@@ -178,7 +178,7 @@ class DesktopControl:
                 "hint": "This feature requires pywinauto installed.",
             }
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            result = await asyncio.get_running_loop().run_in_executor(
                 None, self._snapshot_sync, window_title, max_depth
             )
             return result
@@ -921,7 +921,7 @@ print(json.dumps({{
         backend = elem_info.get("backend", "pywinauto")
 
         try:
-            await asyncio.get_event_loop().run_in_executor(
+            await asyncio.get_running_loop().run_in_executor(
                 None, self._click_element_sync, element, backend, double_click
             )
             return {
@@ -1101,7 +1101,7 @@ print(json.dumps({{
         backend = elem_info.get("backend", "pywinauto")
 
         try:
-            await asyncio.get_event_loop().run_in_executor(
+            await asyncio.get_running_loop().run_in_executor(
                 None, self._type_element_sync, element, backend, text, clear_first, press_enter
             )
             return {
@@ -1280,7 +1280,7 @@ print(json.dumps({{
         element = elem_info["element"]
 
         try:
-            await asyncio.get_event_loop().run_in_executor(
+            await asyncio.get_running_loop().run_in_executor(
                 None, self._select_element_sync, element, backend, value
             )
             return {
@@ -1351,7 +1351,7 @@ print(json.dumps({{
         element = elem_info["element"]
 
         try:
-            await asyncio.get_event_loop().run_in_executor(
+            await asyncio.get_running_loop().run_in_executor(
                 None, self._toggle_element_sync, element, backend
             )
             return {
@@ -1402,7 +1402,7 @@ print(json.dumps({{
         if not self._uia_available:
             return {"success": False, "error": "UIA not available"}
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            result = await asyncio.get_running_loop().run_in_executor(
                 None, self._get_focused_window_sync
             )
             return result
@@ -1493,7 +1493,7 @@ print(json.dumps({{
         if not self._uia_available:
             return {"success": False, "error": "UIA not available"}
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            result = await asyncio.get_running_loop().run_in_executor(
                 None, self._list_windows_sync
             )
             return result
@@ -1607,7 +1607,7 @@ print(json.dumps({{
         if not self._pywinauto_available:
             return {"success": False, "error": "pywinauto not available"}
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
+            result = await asyncio.get_running_loop().run_in_executor(
                 None, self._focus_window_sync, title
             )
             return result
@@ -1701,7 +1701,7 @@ print(json.dumps({{
                         (rect.left + rect.right) // 2,
                         (rect.top + rect.bottom) // 2,
                     )
-            return await asyncio.get_event_loop().run_in_executor(None, _get_center)
+            return await asyncio.get_running_loop().run_in_executor(None, _get_center)
         except Exception:
             return None
 
@@ -1756,10 +1756,10 @@ print(json.dumps({{
                             combo += "#"
                     last = parts[-1]
                     combo += key_map.get(last, last)
-                    await asyncio.get_event_loop().run_in_executor(None, send_keys, combo)
+                    await asyncio.get_running_loop().run_in_executor(None, send_keys, combo)
                 else:
                     pw_key = key_map.get(key.lower(), key)
-                    await asyncio.get_event_loop().run_in_executor(None, send_keys, pw_key)
+                    await asyncio.get_running_loop().run_in_executor(None, send_keys, pw_key)
                 return {"success": True, "action": "key_press", "key": key}
 
             elif SYSTEM == "Darwin" and self._macos_available:

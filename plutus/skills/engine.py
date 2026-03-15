@@ -19,7 +19,8 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger("plutus.skills.engine")
 
