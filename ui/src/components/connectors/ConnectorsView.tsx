@@ -1151,43 +1151,17 @@ export default function ConnectorsView() {
               )}
             </div>
 
-            {/* Connected messaging */}
-            {msgConfigured.length > 0 && (
-              <div className="mb-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {msgConfigured.map((c) => (
-                    <ConnectorCard
-                      key={c.name}
-                      connector={c}
-                      onConfigure={setConfiguring}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Available messaging */}
-            {msgAvailable.length > 0 && (
-              <div>
-                {msgConfigured.length > 0 && (
-                  <div className="flex items-center gap-2 mb-3 mt-5">
-                    <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-                      Available
-                    </h4>
-                    <div className="flex-1 border-t border-gray-800/30" />
-                  </div>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {msgAvailable.map((c) => (
-                    <ConnectorCard
-                      key={c.name}
-                      connector={c}
-                      onConfigure={setConfiguring}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Messaging cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Show configured first, then unconfigured */}
+              {[...msgConfigured, ...msgAvailable].map((c) => (
+                <ConnectorCard
+                  key={c.name}
+                  connector={c}
+                  onConfigure={setConfiguring}
+                />
+              ))}
+            </div>
           </div>
         )}
 
