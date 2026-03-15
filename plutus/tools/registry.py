@@ -192,6 +192,7 @@ def create_default_registry() -> ToolRegistry:
     if loaded:
         logger.info(f"Loaded {loaded} custom tools from disk")
 
-    # Note: ConnectorTool is registered in server.py after the connector_manager is created
+    # Note: ConnectorTool and GitTool are registered in server.py after
+    # the connector_manager is created (they need access to connector state).
 
     return registry

@@ -102,6 +102,18 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "openai_computer": ToolPolicy(
             tool_name="openai_computer", permission=ToolPermission.DENIED
         ),
+        # Git: read-only operations only (status, log, diff, branch listing)
+        "git": ToolPolicy(
+            tool_name="git",
+            permission=ToolPermission.ALLOWED,
+            allowed_operations=["status", "log", "diff", "branch", "remote"],
+        ),
+        # Connector: read-only API calls (list repos, get issues, etc.)
+        "connector": ToolPolicy(
+            tool_name="connector",
+            permission=ToolPermission.ALLOWED,
+            allowed_operations=["send", "github"],
+        ),
     },
     Tier.ASSISTANT: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.REQUIRES_APPROVAL),
@@ -119,6 +131,14 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         ),
         "openai_computer": ToolPolicy(
             tool_name="openai_computer", permission=ToolPermission.REQUIRES_APPROVAL
+        ),
+        # Git: all operations require approval
+        "git": ToolPolicy(
+            tool_name="git", permission=ToolPermission.REQUIRES_APPROVAL
+        ),
+        # Connector: all operations require approval
+        "connector": ToolPolicy(
+            tool_name="connector", permission=ToolPermission.REQUIRES_APPROVAL
         ),
     },
     Tier.OPERATOR: {
@@ -150,6 +170,10 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "openai_computer": ToolPolicy(
             tool_name="openai_computer", permission=ToolPermission.ALLOWED
         ),
+        # Git: all operations allowed (clone, commit, push, etc.)
+        "git": ToolPolicy(tool_name="git", permission=ToolPermission.ALLOWED),
+        # Connector: all operations allowed (send messages, GitHub API, etc.)
+        "connector": ToolPolicy(tool_name="connector", permission=ToolPermission.ALLOWED),
     },
     Tier.AUTONOMOUS: {
         "shell": ToolPolicy(tool_name="shell", permission=ToolPermission.ALLOWED),
@@ -164,6 +188,10 @@ TIER_DEFAULTS: dict[Tier, dict[str, ToolPolicy]] = {
         "openai_computer": ToolPolicy(
             tool_name="openai_computer", permission=ToolPermission.ALLOWED
         ),
+        # Git: full unrestricted access
+        "git": ToolPolicy(tool_name="git", permission=ToolPermission.ALLOWED),
+        # Connector: full unrestricted access
+        "connector": ToolPolicy(tool_name="connector", permission=ToolPermission.ALLOWED),
     },
 }
 

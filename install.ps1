@@ -326,6 +326,14 @@ if (-not (Test-Path $plutusDir)) {
     New-Item -ItemType Directory -Path $plutusDir -Force | Out-Null
 }
 
+# Create the workspace directory — Plutus uses this as its default
+# working directory for projects, code, downloads, and generated files.
+$workspaceDir = "$env:USERPROFILE\plutus-workspace"
+if (-not (Test-Path $workspaceDir)) {
+    New-Item -ItemType Directory -Path $workspaceDir -Force | Out-Null
+    Write-Host "       Workspace created at $workspaceDir" -ForegroundColor Green
+}
+
 # Create launcher scripts.
 # Two-file approach for reliability:
 #   start_plutus.bat  — runs Python and redirects ALL output to the log file
