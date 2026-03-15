@@ -37,6 +37,43 @@ Write-Host "  Plutus Installer" -ForegroundColor White
 Write-Host "  ─────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
 
+# ── Spinner helper ───────────────────────────────────────────
+# Runs a script block in a background job and displays an animated
+# spinner on the current line until the job completes.  Returns the
+# exit code captured inside the job.
+function Invoke-WithSpinner {
+    param(
+        [string]$Label,
+        [scriptblock]$Action
+    )
+
+    # Write the label without a newline so the spinner appears on the same line
+    Write-Host "`r       $Label " -NoNewline -ForegroundColor DarkGray
+
+    $frames = @('|', '/', '-', '\')
+    $frameIdx = 0
+
+    # Start the work in a background job
+    $job = Start-Job -ScriptBlock $Action
+
+    # Animate while the job is running
+    while ($job.State -eq 'Running') {
+        Write-Host "`r       $Label $($frames[$frameIdx])" -NoNewline -ForegroundColor DarkGray
+        $frameIdx = ($frameIdx + 1) % $frames.Count
+        Start-Sleep -Milliseconds 120
+    }
+
+    # Collect output and clean up
+    $result = Receive-Job -Job $job
+    Remove-Job -Job $job -Force
+
+    # Clear the spinner character
+    Write-Host "`r       $Label  " -NoNewline -ForegroundColor DarkGray
+    Write-Host ""
+
+    return $result
+}
+
 # ── Step 1: Check Python ──────────────────────────────────
 
 function Get-PythonCommand {
@@ -114,9 +151,42 @@ Write-Host "[2/4] Installing Plutus..." -ForegroundColor Cyan
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 
-& $pythonFull -m pip install --upgrade pip *>$null
-& $pythonFull -m pip install --upgrade "plutus-ai" *>$null
-$pipExit = $LASTEXITCODE
+# ── Upgrade pip (with spinner) ──
+$pipUpgradeJob = Start-Job -ScriptBlock {
+    param($py)
+    & $py -m pip install --upgrade pip *>$null
+    $LASTEXITCODE
+} -ArgumentList $pythonFull
+
+$frames = @('|', '/', '-', '\')
+$frameIdx = 0
+Write-Host "`r       Updating pip... " -NoNewline -ForegroundColor DarkGray
+while ($pipUpgradeJob.State -eq 'Running') {
+    Write-Host "`r       Updating pip... $($frames[$frameIdx])" -NoNewline -ForegroundColor DarkGray
+    $frameIdx = ($frameIdx + 1) % $frames.Count
+    Start-Sleep -Milliseconds 120
+}
+Receive-Job -Job $pipUpgradeJob | Out-Null
+Remove-Job -Job $pipUpgradeJob -Force
+Write-Host "`r       Updating pip... done.  " -ForegroundColor DarkGray
+
+# ── Install plutus-ai (with spinner) ──
+$pipInstallJob = Start-Job -ScriptBlock {
+    param($py)
+    & $py -m pip install --upgrade "plutus-ai" *>$null
+    $LASTEXITCODE
+} -ArgumentList $pythonFull
+
+$frameIdx = 0
+Write-Host "`r       Downloading and installing packages... " -NoNewline -ForegroundColor DarkGray
+while ($pipInstallJob.State -eq 'Running') {
+    Write-Host "`r       Downloading and installing packages... $($frames[$frameIdx])" -NoNewline -ForegroundColor DarkGray
+    $frameIdx = ($frameIdx + 1) % $frames.Count
+    Start-Sleep -Milliseconds 120
+}
+$pipExit = Receive-Job -Job $pipInstallJob
+Remove-Job -Job $pipInstallJob -Force
+Write-Host "`r       Downloading and installing packages... done.  " -ForegroundColor DarkGray
 
 # If the first attempt fails (e.g. stale metadata, pip cache corruption),
 # retry with --force-reinstall.  IMPORTANT: do NOT use --no-deps here —
@@ -124,8 +194,23 @@ $pipExit = $LASTEXITCODE
 # been installed, so skipping them leaves the server unable to start.
 if ($pipExit -ne 0) {
     Write-Host "       Retrying with --force-reinstall..." -ForegroundColor DarkGray
-    & $pythonFull -m pip install --force-reinstall --upgrade "plutus-ai" *>$null
-    $pipExit = $LASTEXITCODE
+
+    $retryJob = Start-Job -ScriptBlock {
+        param($py)
+        & $py -m pip install --force-reinstall --upgrade "plutus-ai" *>$null
+        $LASTEXITCODE
+    } -ArgumentList $pythonFull
+
+    $frameIdx = 0
+    Write-Host "`r       Reinstalling packages... " -NoNewline -ForegroundColor DarkGray
+    while ($retryJob.State -eq 'Running') {
+        Write-Host "`r       Reinstalling packages... $($frames[$frameIdx])" -NoNewline -ForegroundColor DarkGray
+        $frameIdx = ($frameIdx + 1) % $frames.Count
+        Start-Sleep -Milliseconds 120
+    }
+    $pipExit = Receive-Job -Job $retryJob
+    Remove-Job -Job $retryJob -Force
+    Write-Host "`r       Reinstalling packages... done.  " -ForegroundColor DarkGray
 }
 
 $ErrorActionPreference = $prevEAP
@@ -250,8 +335,10 @@ if (-not (Test-Path $plutusDir)) {
 # VBS window-style 0 creates a hidden console.  On some Python versions
 # (notably 3.14+), Python's console I/O init fails when the console is
 # invisible, causing a silent crash.  The .bat gives Python a real
-# console (hidden by VBS) and captures all output to the log file so
-# crashes are always diagnosable.
+# console (hidden by VBS) and captures all output to a log file.
+#
+# NOTE: --no-browser is passed because the VBS launcher handles opening
+# the browser itself, preventing a duplicate tab.
 
 $vbsPath = "$plutusDir\start.vbs"
 $batPath = "$plutusDir\start_plutus.bat"
@@ -260,7 +347,7 @@ $logPath = "$plutusDir\plutus.log"
 # ── .bat launcher ──
 $batContent = @"
 @echo off
-"$pythonFull" -m plutus start > "$logPath" 2>&1
+"$pythonFull" -m plutus start --no-browser > "$logPath" 2>&1
 "@
 Set-Content -Path $batPath -Value $batContent -Encoding ASCII
 
@@ -352,7 +439,7 @@ Write-Host "  Tip: After setup, go to Settings to enable Linux Superpowers (WSL)
 Write-Host "  ─────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
 
-# Launch in the background via the VBS launcher
+# Launch in the background via the VBS launcher (which handles opening the browser)
 Start-Process "wscript.exe" -ArgumentList "`"$vbsPath`""
 
 # Wait for the server to come up (up to 15 seconds)
