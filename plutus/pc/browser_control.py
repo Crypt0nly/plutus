@@ -1028,13 +1028,24 @@ class BrowserControl:
             path = screenshot_dir / f"screenshot_{int(time.time())}.png"
             path.write_bytes(screenshot_bytes)
 
-            return {
+            # Also return the accessibility tree snapshot so the agent can continue
+            # without needing to call snapshot() separately.
+            try:
+                snap_result = await self.snapshot()
+                snapshot_text = snap_result.get("snapshot") if isinstance(snap_result, dict) else None
+            except Exception:
+                snapshot_text = None
+
+            result: dict = {
                 "success": True,
                 "saved_to": str(path),
                 "url": page.url,
                 "title": await page.title(),
-                "note": "For LLM interaction, use snapshot() instead — it's text-based and much more efficient.",
+                "ACTION_REQUIRED": "DO NOT call browser_screenshot again. Use snapshot() to read the page. The accessibility tree is included below — use the [ref] numbers to interact.",
             }
+            if snapshot_text:
+                result["snapshot"] = snapshot_text
+            return result
         except Exception as e:
             return {"success": False, "error": str(e)}
 
