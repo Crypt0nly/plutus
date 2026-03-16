@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Zap, Globe, EyeOff, RefreshCw, CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
+import { Zap, Globe, EyeOff, RefreshCw, CheckCircle, AlertCircle, ExternalLink, FolderOpen } from "lucide-react";
 import { api } from "../../lib/api";
 
 interface BrowserInfo {
@@ -141,6 +141,8 @@ export function BrowserConfig({
   const [launchStatus, setLaunchStatus] = useState<"idle" | "ok" | "error">("idle");
   const [launchMsg, setLaunchMsg] = useState("");
   const [scanned, setScanned] = useState(false);
+  const [customPath, setCustomPath] = useState("");
+  const [customPathError, setCustomPathError] = useState("");
 
   const scanBrowsers = useCallback(async () => {
     setScanning(true);
@@ -199,6 +201,20 @@ export function BrowserConfig({
   };
 
   const selectedBrowser = browsers.find((b) => b.path === config.executable_path);
+  // If the configured path isn't in the detected list, it's a custom path
+  const isCustomPath = config.executable_path && !selectedBrowser;
+
+  const handleCustomPathApply = () => {
+    const p = customPath.trim();
+    if (!p) return;
+    if (!p.includes("/") && !p.includes("\\")) {
+      setCustomPathError("Please enter a full path to the executable");
+      return;
+    }
+    setCustomPathError("");
+    handleBrowserSelect(p);
+    setCustomPath("");
+  };
 
   const modes = [
     {
@@ -319,20 +335,46 @@ export function BrowserConfig({
           )}
 
           {!scanning && scanned && browsers.length === 0 && (
-            <div className="flex flex-col items-center gap-2 py-6 rounded-xl text-center"
+            <div className="flex flex-col items-center gap-2 py-5 rounded-xl text-center"
                  style={{ background: "rgb(var(--surface))", border: "1px solid rgb(var(--border))" }}>
               <Globe size={20} style={{ color: "rgb(var(--text-secondary))", opacity: 0.4 }} />
               <p className="text-sm" style={{ color: "rgb(var(--text-secondary))" }}>
-                No Chromium-based browsers found
+                No browsers detected automatically
               </p>
               <p className="text-xs" style={{ color: "rgb(var(--text-secondary))", opacity: 0.6 }}>
-                Install Chrome, Brave, or Edge and click Rescan
+                Use the custom path field below to add your browser
               </p>
             </div>
           )}
 
           {!scanning && browsers.length > 0 && (
             <div className="space-y-2">
+              {/* Show custom path entry at top if current selection isn't in detected list */}
+              {isCustomPath && (
+                <div
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                  style={{
+                    background: "rgba(99, 179, 237, 0.08)",
+                    border: "1px solid rgba(99, 179, 237, 0.35)",
+                  }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: "rgba(99,179,237,0.1)", border: "1px solid rgba(99,179,237,0.2)" }}
+                  >
+                    <GenericBrowserIcon size={20} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: "rgb(var(--text-primary))" }}>
+                      Custom Browser
+                    </p>
+                    <p className="text-xs truncate font-mono mt-0.5" style={{ color: "rgb(var(--text-secondary))", opacity: 0.6 }}>
+                      {config.executable_path}
+                    </p>
+                  </div>
+                  <CheckCircle size={16} style={{ color: "rgba(99,179,237,0.9)", flexShrink: 0 }} />
+                </div>
+              )}
               {browsers.map((b) => {
                 const isSelected = config.executable_path === b.path;
                 return (
@@ -403,6 +445,53 @@ export function BrowserConfig({
               })}
             </div>
           )}
+
+          {/* Manual path input */}
+          <div className="mt-3">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2"
+               style={{ color: "rgb(var(--text-secondary))" }}>
+              Or enter path manually
+            </p>
+            <div className="flex gap-2">
+              <div
+                className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                style={{
+                  background: "rgb(var(--surface))",
+                  border: `1px solid ${customPathError ? "rgba(239,68,68,0.5)" : "rgb(var(--border))"}`,
+                }}
+              >
+                <FolderOpen size={13} style={{ color: "rgb(var(--text-secondary))", flexShrink: 0, opacity: 0.6 }} />
+                <input
+                  type="text"
+                  value={customPath}
+                  onChange={(e) => { setCustomPath(e.target.value); setCustomPathError(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleCustomPathApply()}
+                  placeholder="C:\Program Files\Comet\Application\comet.exe"
+                  className="flex-1 bg-transparent text-xs outline-none font-mono"
+                  style={{ color: "rgb(var(--text-primary))" }}
+                  spellCheck={false}
+                />
+              </div>
+              <button
+                onClick={handleCustomPathApply}
+                disabled={!customPath.trim()}
+                className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
+                style={{
+                  background: customPath.trim() ? "rgba(99,179,237,0.15)" : "rgb(var(--surface))",
+                  border: `1px solid ${customPath.trim() ? "rgba(99,179,237,0.3)" : "rgb(var(--border))"}`,
+                  color: customPath.trim() ? "rgba(99,179,237,0.9)" : "rgb(var(--text-secondary))",
+                  cursor: customPath.trim() ? "pointer" : "not-allowed",
+                }}
+              >
+                Use this
+              </button>
+            </div>
+            {customPathError && (
+              <p className="text-xs mt-1.5" style={{ color: "rgba(239,68,68,0.8)" }}>
+                {customPathError}
+              </p>
+            )}
+          </div>
         </div>
       )}
 

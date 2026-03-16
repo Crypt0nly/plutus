@@ -309,35 +309,200 @@ def _read_registry_value(key_path: str) -> Optional[str]:
     return None
 
 
+def _is_chromium_exe(exe_path: str) -> bool:
+    """Heuristic: run the exe with --version and check if it looks like a Chromium build."""
+    try:
+        out = _exec_text([exe_path, "--version"], timeout=3.0)
+        if not out:
+            return False
+        low = out.lower()
+        # Chromium-based browsers typically output something like:
+        # "Google Chrome 120.0.6099.130", "Brave Browser 1.61.109", "Comet 120.0.0.1"
+        # We accept anything that has a version-like number in the output.
+        import re
+        return bool(re.search(r'\d+\.\d+\.\d+', out))
+    except Exception:
+        return False
+
+
+def _get_exe_display_name_windows(exe_path: str) -> str:
+    """Read the FileDescription from the exe's version info via PowerShell."""
+    out = _exec_text(
+        ["powershell", "-Command",
+         f"(Get-Item '{exe_path}').VersionInfo.FileDescription"],
+        timeout=4.0,
+    )
+    return out.strip() if out and out.strip() else Path(exe_path).stem.replace("-", " ").replace("_", " ").title()
+
+
+def _scan_windows_registry_app_paths() -> list[tuple[str, str]]:
+    """Scan ALL entries under App Paths in the registry, not just the hardcoded ones."""
+    found: list[tuple[str, str]] = []
+    try:
+        import winreg  # type: ignore[import]
+        base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
+        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            try:
+                with winreg.OpenKey(hive, base) as root:
+                    i = 0
+                    while True:
+                        try:
+                            sub_name = winreg.EnumKey(root, i)
+                            i += 1
+                            if not sub_name.lower().endswith(".exe"):
+                                continue
+                            try:
+                                with winreg.OpenKey(root, sub_name) as sub:
+                                    val, _ = winreg.QueryValueEx(sub, "")
+                                    exe = str(val).strip('"')
+                                    found.append((exe, sub_name))
+                            except OSError:
+                                pass
+                        except OSError:
+                            break
+            except OSError:
+                continue
+    except ImportError:
+        pass
+    return found
+
+
+def _scan_windows_default_browser() -> Optional[str]:
+    """Return the executable path of the Windows default browser."""
+    try:
+        import winreg  # type: ignore[import]
+        # Read ProgId for https scheme
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(hive,
+                    r"SOFTWARE\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice") as k:
+                    prog_id, _ = winreg.QueryValueEx(k, "ProgId")
+                    # Resolve ProgId to exe
+                    with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT,
+                        f"{prog_id}\\shell\\open\\command") as cmd_key:
+                        cmd, _ = winreg.QueryValueEx(cmd_key, "")
+                        # cmd looks like: "C:\...\chrome.exe" -- "%1"
+                        import re
+                        m = re.match(r'"?([^"]+\.exe)"?', cmd.strip())
+                        if m:
+                            return m.group(1)
+            except OSError:
+                continue
+    except ImportError:
+        pass
+    return None
+
+
 def _scan_windows() -> list[BrowserInfo]:
     results: list[BrowserInfo] = []
     seen: set[str] = set()
+    default_exe = _scan_windows_default_browser()
 
-    # 1. Registry App Paths
+    def _add(exe: str, kind: Optional[str] = None, name: Optional[str] = None):
+        """Add a browser to results if not already seen."""
+        norm = exe.lower()
+        if norm in seen or not _exists(exe):
+            return
+        seen.add(norm)
+        k = kind or _infer_kind(exe)
+        n = name or _display_name(k, Path(exe).stem)
+        version = _get_version_windows(exe)
+        is_default = bool(default_exe and Path(default_exe).resolve() == Path(exe).resolve())
+        results.append(BrowserInfo(kind=k, name=n, path=exe, version=version, is_default=is_default))
+
+    # 1. Windows default browser
+    if default_exe:
+        _add(default_exe)
+
+    # 2. Hardcoded registry App Paths (fast, reliable for known browsers)
     for reg_path in _WIN_REGISTRY_PATHS:
         exe = _read_registry_value(reg_path)
-        if exe and _exists(exe) and exe.lower() not in seen:
-            seen.add(exe.lower())
+        if exe:
+            _add(exe.strip('"'))
+
+    # 3. Scan ALL App Paths registry entries — catches any browser registered there
+    for exe, sub_name in _scan_windows_registry_app_paths():
+        if not exe:
+            continue
+        exe = exe.strip('"')
+        # Quick filter: skip obviously non-browser exes
+        stem = Path(exe).stem.lower()
+        skip_stems = {"iexplore", "firefox", "thunderbird", "outlook", "winword",
+                      "excel", "powerpnt", "notepad", "explorer", "mspaint"}
+        if stem in skip_stems:
+            continue
+        if _exists(exe):
+            # Only add if it looks like a Chromium build
             kind = _infer_kind(exe)
-            version = _get_version_windows(exe)
-            results.append(BrowserInfo(kind=kind, name=_display_name(kind), path=exe, version=version))
+            if kind != "chrome":  # known non-chrome kind → add directly
+                _add(exe)
+            else:
+                # Unknown exe name → verify it's actually Chromium-based
+                if _is_chromium_exe(exe):
+                    name = _get_exe_display_name_windows(exe)
+                    _add(exe, kind="custom", name=name)
 
-    # 2. Well-known Program Files paths
+    # 4. Well-known Program Files paths
     for path, kind in _WIN_KNOWN_PATHS:
-        if _exists(path) and path.lower() not in seen:
-            seen.add(path.lower())
-            version = _get_version_windows(path)
-            results.append(BrowserInfo(kind=kind, name=_display_name(kind), path=path, version=version))
+        _add(path, kind)
 
-    # 3. LocalAppData (user installs)
+    # 5. LocalAppData (user installs)
     local_appdata = os.environ.get("LOCALAPPDATA", "")
     if local_appdata:
         for rel, kind in _WIN_LOCAL_APPDATA_PATHS:
-            full = os.path.join(local_appdata, rel)
-            if _exists(full) and full.lower() not in seen:
-                seen.add(full.lower())
-                version = _get_version_windows(full)
-                results.append(BrowserInfo(kind=kind, name=_display_name(kind), path=full, version=version))
+            _add(os.path.join(local_appdata, rel), kind)
+
+    # 6. Broad filesystem scan: look for *.exe files in common install dirs
+    #    that contain "browser", "chrome", or match known patterns.
+    #    This catches completely custom browsers like Comet.
+    scan_roots = [
+        os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+        os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
+        local_appdata,
+        os.path.join(os.environ.get("APPDATA", ""), "..", "Local"),
+    ]
+    chromium_markers = {
+        # Files that exist in every Chromium build's application directory
+        "chrome.dll", "chrome_100_percent.pak", "chrome_200_percent.pak",
+        "resources.pak", "icudtl.dat",
+    }
+    for root_dir in scan_roots:
+        if not root_dir:
+            continue
+        try:
+            root_path = Path(root_dir).resolve()
+            if not root_path.exists():
+                continue
+            # Walk one level deep into each top-level directory
+            for vendor_dir in root_path.iterdir():
+                if not vendor_dir.is_dir():
+                    continue
+                # Look for Application subdirectory (standard Chromium layout)
+                for app_dir in [vendor_dir / "Application", vendor_dir]:
+                    if not app_dir.is_dir():
+                        continue
+                    # Check if this looks like a Chromium app dir
+                    files_here = {f.name.lower() for f in app_dir.iterdir() if f.is_file()}
+                    if not chromium_markers.intersection(files_here):
+                        continue
+                    # Find the main exe
+                    for f in app_dir.iterdir():
+                        if f.suffix.lower() != ".exe":
+                            continue
+                        stem = f.stem.lower()
+                        # Skip helper/installer exes
+                        if any(x in stem for x in ("setup", "install", "update", "helper", "crash", "uninstall")):
+                            continue
+                        exe = str(f)
+                        if exe.lower() not in seen:
+                            kind = _infer_kind(exe)
+                            if kind == "chrome":  # unknown → use display name from exe
+                                name = _get_exe_display_name_windows(exe)
+                                _add(exe, kind="custom", name=name)
+                            else:
+                                _add(exe, kind)
+        except Exception:
+            continue
 
     return results
 
