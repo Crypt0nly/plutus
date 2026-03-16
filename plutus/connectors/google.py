@@ -434,7 +434,10 @@ class GoogleDriveConnector(GoogleConnector):
         params: dict[str, str] = {
             "pageSize": str(max_results),
             "orderBy": order_by,
-            "fields": "files(id,name,mimeType,size,modifiedTime,webViewLink)",
+            "fields": "files(id,name,mimeType,size,modifiedTime,webViewLink,shared,owners)",
+            "includeItemsFromAllDrives": "true",
+            "supportsAllDrives": "true",
+            "corpora": "allDrives",
         }
         if query:
             params["q"] = query
