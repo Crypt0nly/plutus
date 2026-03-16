@@ -351,4 +351,25 @@ export const api = {
       steps?: { step: string; success: boolean; output: string }[];
       restart_required?: boolean;
     }>("/updates/apply", { method: "POST" }),
+
+  // Browser selection
+  detectBrowsers: () =>
+    request<{
+      browsers: {
+        kind: string;
+        name: string;
+        path: string;
+        version: string;
+        is_default: boolean;
+      }[];
+    }>("/browser/detect"),
+  launchBrowserForCDP: (opts: {
+    executable_path: string;
+    cdp_port?: number;
+    use_profile?: boolean;
+  }) =>
+    request<{ message: string; port: number }>("/browser/launch", {
+      method: "POST",
+      body: JSON.stringify({ patch: opts }),
+    }),
 };

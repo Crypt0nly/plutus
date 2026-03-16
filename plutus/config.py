@@ -92,6 +92,16 @@ class SchedulerConfig(BaseModel):
     max_concurrent_jobs: int = 3  # max jobs running simultaneously
 
 
+class BrowserConfig(BaseModel):
+    mode: str = "auto"  # "auto" | "user" | "headless"
+    # When mode="user": path to the browser executable the user selected
+    executable_path: str = ""
+    # CDP debug port to use when launching the user's browser
+    cdp_port: int = 9222
+    # Whether to pass --user-data-dir so Plutus inherits existing logins
+    use_profile: bool = True
+
+
 class WSLConfig(BaseModel):
     enabled: bool = False  # user has opted in to WSL superpowers
     setup_completed: bool = False  # WSL install + distro confirmed working
@@ -130,6 +140,7 @@ class PlutusConfig(BaseSettings):
     model_routing: ModelRoutingConfig = Field(default_factory=ModelRoutingConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     keep_alive: KeepAliveConfig = Field(default_factory=KeepAliveConfig)
+    browser: BrowserConfig = Field(default_factory=BrowserConfig)
     wsl: WSLConfig = Field(default_factory=WSLConfig)
     updates: UpdateConfig = Field(default_factory=UpdateConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills

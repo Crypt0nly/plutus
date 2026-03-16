@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X, Minus, Plus, Check } from "lucide-react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X, Minus, Plus, Check, Globe } from "lucide-react";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
+import { BrowserConfig } from "./BrowserConfig";
 import { useAppStore } from "../../stores/appStore";
 import { applyTheme, type ThemeMode } from "../../hooks/useTheme";
 
@@ -311,6 +312,23 @@ export function SettingsView() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Browser */}
+        <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(59, 130, 246, 0.08)", border: "1px solid rgba(59, 130, 246, 0.12)" }}>
+              <Globe className="w-4 h-4 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-200">Browser</h3>
+              <p className="text-xs text-gray-500">Choose which browser Plutus uses for web tasks</p>
+            </div>
+          </div>
+          <BrowserConfig
+            config={config.browser || { mode: "auto", executable_path: "", cdp_port: 9222, use_profile: true }}
+            onUpdate={handleSave}
+          />
         </div>
 
         {/* Network & Storage */}

@@ -1284,6 +1284,56 @@ def create_router() -> APIRouter:
         ]
         return {"shortcuts": shortcuts}
 
+    # ── Browser Detection & Selection ─────────────────────────────
+
+    @router.get("/browser/detect")
+    async def detect_browsers() -> dict[str, Any]:
+        """Scan the user's machine for installed Chromium-family browsers."""
+        from plutus.pc.browser_detect import detect_browsers as _detect
+        browsers = _detect()
+        return {
+            "browsers": [
+                {
+                    "kind": b.kind,
+                    "name": b.name,
+                    "path": b.path,
+                    "version": b.version,
+                    "is_default": b.is_default,
+                }
+                for b in browsers
+            ]
+        }
+
+    @router.post("/browser/launch")
+    async def launch_browser_for_cdp(body: ConfigUpdate) -> dict[str, Any]:
+        """Launch the user's chosen browser with --remote-debugging-port so Plutus
+        can connect to it via CDP and inherit existing logins/cookies."""
+        import asyncio
+        import subprocess as _sp
+        from plutus.pc.browser_detect import get_browser_launch_args, get_user_data_dir
+        from plutus.gateway.server import get_state
+
+        exe = body.patch.get("executable_path", "")
+        port = int(body.patch.get("cdp_port", 9222))
+        use_profile = bool(body.patch.get("use_profile", True))
+
+        if not exe:
+            raise HTTPException(400, "executable_path is required")
+
+        args = get_browser_launch_args(exe, debug_port=port)
+        if use_profile:
+            udd = get_user_data_dir(exe)
+            if udd:
+                args.append(f"--user-data-dir={udd}")
+
+        try:
+            _sp.Popen(args, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            # Give the browser a moment to start its debug server
+            await asyncio.sleep(1.5)
+            return {"message": f"Browser launched on port {port}", "port": port}
+        except Exception as e:
+            raise HTTPException(500, f"Failed to launch browser: {e}")
+
     # ── Skill Import / Export / Community ──────────────────────────
 
     @router.get("/skills/{skill_name}/export")

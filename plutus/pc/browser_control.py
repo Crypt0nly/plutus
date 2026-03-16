@@ -68,34 +68,79 @@ class BrowserControl:
         self._ref_counter = 0
 
     async def _ensure_browser(self) -> bool:
-        """Ensure Playwright browser is running. Lazy-initializes on first use."""
+        """Ensure Playwright browser is running. Lazy-initializes on first use.
+
+        Respects the BrowserConfig from ~/.plutus/config.json:
+          - mode="auto"     → try CDP on configured port first, fall back to headless Chromium
+          - mode="user"     → launch the user's chosen browser with CDP, then connect
+          - mode="headless" → always launch headless Chromium (no CDP attempt)
+        """
         if self._initialized and self._browser and self._browser.is_connected():
             return True
 
         try:
             from playwright.async_api import async_playwright
+            from plutus.config import PlutusConfig
+            from plutus.pc.browser_detect import get_browser_launch_args, get_user_data_dir
+            import subprocess as _sp
+            import asyncio as _asyncio
+
+            cfg = PlutusConfig.load()
+            browser_cfg = cfg.browser
+            mode = browser_cfg.mode          # "auto" | "user" | "headless"
+            exe = browser_cfg.executable_path
+            cdp_port = browser_cfg.cdp_port or 9222
+            use_profile = browser_cfg.use_profile
 
             self._playwright = await async_playwright().start()
-
-            # Try to connect to existing Chrome first (user's browser via CDP)
             cdp_connected = False
-            try:
-                self._browser = await self._playwright.chromium.connect_over_cdp(
-                    "http://localhost:9222"
-                )
-                if self._browser.contexts:
-                    self._context = self._browser.contexts[0]
-                else:
-                    self._context = await self._browser.new_context()
-                cdp_connected = True
-                logger.info("Connected to existing Chrome via CDP")
-            except Exception:
-                pass
 
+            # ── Mode: user ────────────────────────────────────────────
+            # Launch the user's chosen browser with --remote-debugging-port,
+            # then connect to it via CDP so we inherit their logins/cookies.
+            if mode == "user" and exe:
+                try:
+                    args = get_browser_launch_args(exe, debug_port=cdp_port)
+                    if use_profile:
+                        udd = get_user_data_dir(exe)
+                        if udd:
+                            args.append(f"--user-data-dir={udd}")
+                    _sp.Popen(args, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                    # Wait for the debug server to start
+                    await _asyncio.sleep(2.0)
+                    self._browser = await self._playwright.chromium.connect_over_cdp(
+                        f"http://localhost:{cdp_port}"
+                    )
+                    if self._browser.contexts:
+                        self._context = self._browser.contexts[0]
+                    else:
+                        self._context = await self._browser.new_context()
+                    cdp_connected = True
+                    logger.info(f"Connected to user's browser via CDP (port {cdp_port})")
+                except Exception as e:
+                    logger.warning(f"User browser CDP connect failed: {e} — falling back to Chromium")
+
+            # ── Mode: auto ────────────────────────────────────────────
+            # Try to connect to an already-running browser on the CDP port first.
+            elif mode == "auto":
+                try:
+                    self._browser = await self._playwright.chromium.connect_over_cdp(
+                        f"http://localhost:{cdp_port}"
+                    )
+                    if self._browser.contexts:
+                        self._context = self._browser.contexts[0]
+                    else:
+                        self._context = await self._browser.new_context()
+                    cdp_connected = True
+                    logger.info(f"Connected to existing browser via CDP (port {cdp_port})")
+                except Exception:
+                    pass  # fall through to Chromium launch below
+
+            # ── Fallback / headless ───────────────────────────────────
             if not cdp_connected:
-                # Launch a new browser instance
+                headless = (mode == "headless")
                 self._browser = await self._playwright.chromium.launch(
-                    headless=False,
+                    headless=headless,
                     args=[
                         "--no-first-run",
                         "--no-default-browser-check",
@@ -110,7 +155,7 @@ class BrowserControl:
                         "Chrome/120.0.0.0 Safari/537.36"
                     ),
                 )
-                logger.info("Launched new Chromium browser")
+                logger.info(f"Launched {'headless' if headless else 'visible'} Chromium browser")
 
             # Index existing pages
             for i, page in enumerate(self._context.pages):
