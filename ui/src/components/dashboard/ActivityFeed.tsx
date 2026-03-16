@@ -24,17 +24,12 @@ function timeAgo(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString();
 }
 
-const cardStyle = {
-  background: "rgba(15, 18, 30, 0.8)",
-  border: "1px solid rgba(255, 255, 255, 0.06)",
-};
-
 export function ActivityFeed({ entries: rawEntries }: Props) {
   const entries = Array.isArray(rawEntries) ? rawEntries : [];
 
   if (entries.length === 0) {
     return (
-      <div className="rounded-2xl p-5" style={cardStyle}>
+      <div className="dashboard-card rounded-2xl p-5">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center"
             style={{ background: "rgba(107, 114, 128, 0.08)", border: "1px solid rgba(107, 114, 128, 0.12)" }}
@@ -47,20 +42,18 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
           </div>
         </div>
         <div className="flex flex-col items-center justify-center py-10">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgb(var(--gray-700) / 0.3)" }}
-          >
-            <Zap className="w-5 h-5 text-gray-700" />
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3 bg-gray-800/30 border border-gray-700/30">
+            <Zap className="w-5 h-5 text-gray-500" />
           </div>
           <p className="text-sm text-gray-500">No activity yet</p>
-          <p className="text-xs text-gray-700 mt-1">Start a conversation to see actions here</p>
+          <p className="text-xs text-gray-600 mt-1">Start a conversation to see actions here</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl p-5" style={cardStyle}>
+    <div className="dashboard-card rounded-2xl p-5">
       <div className="flex items-center gap-3 mb-5">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center"
           style={{ background: "rgba(107, 114, 128, 0.08)", border: "1px solid rgba(107, 114, 128, 0.12)" }}
@@ -71,9 +64,7 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
           <h3 className="text-sm font-semibold text-gray-200">Recent Activity</h3>
           <p className="text-xs text-gray-500">Last {Math.min(entries.length, 10)} tool calls</p>
         </div>
-        <span className="text-[11px] text-gray-500 px-2.5 py-1 rounded-full"
-          style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
-        >
+        <span className="dashboard-badge text-[11px] text-gray-500 px-2.5 py-1 rounded-full">
           {entries.length} total
         </span>
       </div>
@@ -85,13 +76,7 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
           return (
             <div
               key={entry.id || i}
-              className="flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all duration-150 group cursor-default"
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLDivElement).style.background = "";
-              }}
+              className="activity-row flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all duration-150 cursor-default"
             >
               <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                 style={{ background: config.bg, border: `1px solid ${config.border}` }}
@@ -102,11 +87,11 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-gray-300">{entry.tool_name}</span>
                   {entry.operation && (
-                    <span className="text-xs text-gray-600 font-mono">.{entry.operation}</span>
+                    <span className="text-xs text-gray-500 font-mono">.{entry.operation}</span>
                   )}
                 </div>
                 {entry.reason && (
-                  <p className="text-xs text-gray-600 truncate mt-0.5">{entry.reason}</p>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">{entry.reason}</p>
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -115,7 +100,7 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
                 >
                   {config.label}
                 </span>
-                <span className="text-[10px] text-gray-700">{timeAgo(entry.timestamp)}</span>
+                <span className="text-[10px] text-gray-500">{timeAgo(entry.timestamp)}</span>
               </div>
             </div>
           );

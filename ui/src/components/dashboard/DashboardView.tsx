@@ -24,11 +24,6 @@ import { useAppStore } from "../../stores/appStore";
 import { StatusCard } from "./StatusCard";
 import { ActivityFeed } from "./ActivityFeed";
 
-const cardStyle = {
-  background: "rgba(15, 18, 30, 0.8)",
-  border: "1px solid rgba(255, 255, 255, 0.06)",
-};
-
 export function DashboardView() {
   const { currentTier, connected } = useAppStore();
   const [status, setStatus] = useState<Record<string, any> | null>(null);
@@ -96,8 +91,7 @@ export function DashboardView() {
             <button
               onClick={fetchAll}
               disabled={refreshing}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-400 hover:text-gray-200 transition-all"
-              style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}
+              className="dashboard-badge flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-400 hover:text-gray-200 transition-all"
             >
               <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
               Refresh
@@ -117,9 +111,7 @@ export function DashboardView() {
               {connected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
               {connected ? "Connected" : "Disconnected"}
             </div>
-            <span className="text-xs text-gray-600 font-mono px-2.5 py-1.5 rounded-xl"
-              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
-            >
+            <span className="dashboard-badge text-xs text-gray-500 font-mono px-2.5 py-1.5 rounded-xl">
               v{status?.version || "—"}
             </span>
           </div>
@@ -136,7 +128,7 @@ export function DashboardView() {
         {/* Secondary Metrics */}
         <div className="grid grid-cols-5 gap-3">
           {secondaryMetrics.map(({ icon: Icon, label, value, iconColor, bg, border }) => (
-            <div key={label} className="rounded-2xl p-3.5 flex items-center gap-3" style={cardStyle}>
+            <div key={label} className="dashboard-card rounded-2xl p-3.5 flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ background: bg, border: `1px solid ${border}` }}
               >
@@ -153,7 +145,7 @@ export function DashboardView() {
         {/* Middle Section */}
         <div className="grid grid-cols-3 gap-4">
           {/* Action Decisions */}
-          <div className="col-span-2 rounded-2xl p-5" style={cardStyle}>
+          <div className="col-span-2 dashboard-card rounded-2xl p-5">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center"
                 style={{ background: "rgba(59, 130, 246, 0.08)", border: "1px solid rgba(59, 130, 246, 0.12)" }}
@@ -195,7 +187,7 @@ export function DashboardView() {
             ) : (
               <div className="flex flex-col items-center justify-center py-8">
                 <p className="text-sm text-gray-500">No action data yet</p>
-                <p className="text-xs text-gray-700 mt-1">Tool calls will appear here as you use Plutus</p>
+                <p className="text-xs text-gray-600 mt-1">Tool calls will appear here as you use Plutus</p>
               </div>
             )}
           </div>
@@ -203,7 +195,7 @@ export function DashboardView() {
           {/* Right column */}
           <div className="space-y-3">
             {/* Heartbeat */}
-            <div className="rounded-2xl p-4" style={cardStyle}>
+            <div className="dashboard-card rounded-2xl p-4">
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center"
                   style={{ background: "rgba(244, 63, 94, 0.08)", border: "1px solid rgba(244, 63, 94, 0.12)" }}
@@ -221,9 +213,7 @@ export function DashboardView() {
                     Active
                   </span>
                 ) : (
-                  <span className="text-[10px] text-gray-500 px-2 py-0.5 rounded-full"
-                    style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
-                  >Off</span>
+                  <span className="dashboard-badge text-[10px] text-gray-500 px-2 py-0.5 rounded-full">Off</span>
                 )}
               </div>
               {heartbeat?.running ? (
@@ -240,12 +230,12 @@ export function DashboardView() {
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-gray-700">Configure in Settings to enable autonomous operation</p>
+                <p className="text-xs text-gray-600">Configure in Settings to enable autonomous operation</p>
               )}
             </div>
 
             {/* Coordinator Model */}
-            <div className="rounded-2xl p-4" style={cardStyle}>
+            <div className="dashboard-card rounded-2xl p-4">
               <div className="flex items-center gap-2.5 mb-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center"
                   style={{ background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.12)" }}
@@ -272,7 +262,7 @@ export function DashboardView() {
 
         {/* Tool Usage */}
         {auditSummary?.by_tool && Object.keys(auditSummary.by_tool).length > 0 && (
-          <div className="rounded-2xl p-5" style={cardStyle}>
+          <div className="dashboard-card rounded-2xl p-5">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center"
                 style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.12)" }}
@@ -283,9 +273,7 @@ export function DashboardView() {
                 <h3 className="text-sm font-semibold text-gray-200">Tool Usage</h3>
                 <p className="text-xs text-gray-500">Distribution of tool calls</p>
               </div>
-              <span className="text-[11px] text-gray-500 px-2.5 py-1 rounded-full"
-                style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
-              >
+              <span className="dashboard-badge text-[11px] text-gray-500 px-2.5 py-1 rounded-full">
                 {Object.keys(auditSummary.by_tool).length} tools used
               </span>
             </div>

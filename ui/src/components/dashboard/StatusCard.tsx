@@ -65,11 +65,9 @@ export function StatusCard({ icon: Icon, label, value, sublabel, color, capitali
 
   return (
     <div
-      className="rounded-2xl p-4 transition-all duration-200 hover:scale-[1.01]"
+      className="dashboard-card rounded-2xl p-4 transition-all duration-200 hover:scale-[1.01]"
       style={{
-        background: "rgba(15, 18, 30, 0.8)",
-        border: "1px solid rgba(255, 255, 255, 0.06)",
-        boxShadow: colors.glow ? `0 4px 24px ${colors.glow}` : "0 4px 24px rgba(0,0,0,0.2)"
+        boxShadow: colors.glow ? `0 4px 24px ${colors.glow}` : undefined
       }}
     >
       <div className="flex items-center justify-between mb-4">
@@ -84,7 +82,7 @@ export function StatusCard({ icon: Icon, label, value, sublabel, color, capitali
         {value}
       </p>
       <p className="text-xs text-gray-500 mt-1.5">{label}</p>
-      {sublabel && <p className="text-[10px] text-gray-700 mt-1">{sublabel}</p>}
+      {sublabel && <p className="text-[10px] text-gray-600 mt-1">{sublabel}</p>}
     </div>
   );
 }
