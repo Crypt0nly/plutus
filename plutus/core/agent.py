@@ -1296,12 +1296,24 @@ class AgentRuntime:
                     "Continue from where you left off.]"
                 )
                 logger.info("Injecting mid-task context reminder after conversation resume")
-                # Prepend to the user message that was just added
-                msgs = self._conversation._messages  # type: ignore[attr-defined]
-                if msgs and msgs[-1].get('role') == 'user':
-                    original = msgs[-1].get('content', '')
-                    if isinstance(original, str):
-                        msgs[-1]['content'] = f"{reminder}\n\n{original}"
+                # Prepend to the user message that was just added by updating it
+                # in the memory store (ConversationManager uses DB-backed storage,
+                # not an in-memory _messages list).
+                try:
+                    conv_id = self._conversation.conversation_id
+                    if conv_id:
+                        recent = await self._conversation._memory.get_messages(conv_id, limit=1)
+                        if recent and recent[-1].get('role') == 'user':
+                            last_msg = recent[-1]
+                            original = last_msg.get('content', '') or ''
+                            updated_content = f"{reminder}\n\n{original}"
+                            await self._conversation._memory._db.execute(
+                                "UPDATE messages SET content = ? WHERE id = ?",
+                                (updated_content, last_msg['id'])
+                            )
+                            await self._conversation._memory._db.commit()
+                except Exception as _reminder_err:
+                    logger.warning("Could not inject resume reminder: %s", _reminder_err)
 
         # Drain any pending worker results into the conversation.
         # These are queued by background workers to avoid injecting
