@@ -1010,6 +1010,373 @@ class BrowserControl:
         else:
             raise ValueError("Provide selector, text, or role to target an element")
 
+    # ═══════════════════════════════════════════════════════════════
+    # OPENCLAW-PARITY: New capabilities matching chrome-mcp.ts
+    # ═══════════════════════════════════════════════════════════════
+
+    async def drag_ref(self, from_ref: int, to_ref: int) -> dict:
+        """Drag one element onto another by ref numbers (OpenClaw: drag from_uid → to_uid)."""
+        if from_ref not in self._ref_map:
+            return {"success": False, "error": f"Source ref [{from_ref}] not found. Take a new snapshot first."}
+        if to_ref not in self._ref_map:
+            return {"success": False, "error": f"Target ref [{to_ref}] not found. Take a new snapshot first."}
+
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        try:
+            src_locator = await self._resolve_ref_locator(from_ref, page)
+            dst_locator = await self._resolve_ref_locator(to_ref, page)
+            if not src_locator or not dst_locator:
+                return {"success": False, "error": "Could not resolve one or both refs to page elements."}
+
+            src_box = await src_locator.bounding_box()
+            dst_box = await dst_locator.bounding_box()
+            if not src_box or not dst_box:
+                return {"success": False, "error": "Could not get bounding boxes for drag source or target."}
+
+            sx = src_box["x"] + src_box["width"] / 2
+            sy = src_box["y"] + src_box["height"] / 2
+            dx = dst_box["x"] + dst_box["width"] / 2
+            dy = dst_box["y"] + dst_box["height"] / 2
+
+            await page.mouse.move(sx, sy)
+            await page.mouse.down()
+            await asyncio.sleep(0.1)
+            # Move in steps for smoother drag (required by some apps)
+            steps = 10
+            for i in range(1, steps + 1):
+                await page.mouse.move(sx + (dx - sx) * i / steps, sy + (dy - sy) * i / steps)
+                await asyncio.sleep(0.02)
+            await page.mouse.up()
+
+            from_elem = self._ref_map[from_ref]
+            to_elem = self._ref_map[to_ref]
+            return {
+                "success": True,
+                "action": "drag",
+                "from": f'{from_elem["role"]} "{from_elem["name"]}"',
+                "to": f'{to_elem["role"]} "{to_elem["name"]}"',
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Drag failed: {e}"}
+
+    async def handle_dialog(self, action: str = "accept", prompt_text: str = "") -> dict:
+        """
+        Accept or dismiss a browser dialog (alert/confirm/prompt).
+        OpenClaw equivalent: handle_dialog(action, promptText).
+        Must be called BEFORE the dialog appears (register handler first).
+        """
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        try:
+            def _on_dialog(dialog):
+                asyncio.ensure_future(
+                    dialog.accept(prompt_text) if action == "accept" else dialog.dismiss()
+                )
+
+            page.once("dialog", _on_dialog)
+            return {
+                "success": True,
+                "action": "handle_dialog",
+                "registered": action,
+                "hint": "Dialog handler registered. Trigger the action that causes the dialog now.",
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def upload_file_ref(self, ref: int, file_path: str) -> dict:
+        """
+        Upload a file to a file input element by its ref number.
+        OpenClaw equivalent: upload_file(uid, filePath).
+        """
+        import os
+        if not os.path.exists(file_path):
+            return {"success": False, "error": f"File not found: {file_path}"}
+
+        if ref not in self._ref_map:
+            return {"success": False, "error": f"Ref [{ref}] not found. Take a new snapshot first."}
+
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        try:
+            locator = await self._resolve_ref_locator(ref, page)
+            if not locator:
+                return {"success": False, "error": f"Could not resolve ref [{ref}] to a page element."}
+
+            await locator.set_input_files(file_path, timeout=10000)
+            return {
+                "success": True,
+                "action": "upload_file",
+                "ref": ref,
+                "file": os.path.basename(file_path),
+            }
+        except Exception as e:
+            # Fallback: find nearest file input
+            try:
+                file_inputs = page.locator('input[type="file"]')
+                count = await file_inputs.count()
+                for i in range(count):
+                    try:
+                        await file_inputs.nth(i).set_input_files(file_path, timeout=5000)
+                        return {
+                            "success": True,
+                            "action": "upload_file",
+                            "method": "fallback_file_input",
+                            "file": os.path.basename(file_path),
+                        }
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            return {"success": False, "error": f"Upload failed: {e}"}
+
+    async def get_page_content(self, max_chars: int = 20000) -> dict:
+        """
+        Extract the full readable text content of the current page.
+        Useful for scraping, reading articles, extracting data.
+        Returns both the raw text and a Markdown-formatted version.
+        """
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        try:
+            title = await page.title()
+            url = page.url
+
+            # Get inner text (strips HTML tags, preserves structure)
+            inner_text = await page.evaluate("""
+                () => {
+                    // Remove script, style, nav, footer, header elements
+                    const clone = document.body.cloneNode(true);
+                    const remove = clone.querySelectorAll(
+                        'script, style, noscript, nav, footer, header, aside, [aria-hidden="true"]'
+                    );
+                    remove.forEach(el => el.remove());
+                    return clone.innerText || clone.textContent || '';
+                }
+            """)
+
+            # Also get page metadata
+            meta = await page.evaluate("""
+                () => ({
+                    description: document.querySelector('meta[name="description"]')?.content || '',
+                    og_title: document.querySelector('meta[property="og:title"]')?.content || '',
+                    og_description: document.querySelector('meta[property="og:description"]')?.content || '',
+                    canonical: document.querySelector('link[rel="canonical"]')?.href || '',
+                    h1: Array.from(document.querySelectorAll('h1')).map(h => h.innerText.trim()).filter(Boolean),
+                    h2: Array.from(document.querySelectorAll('h2')).map(h => h.innerText.trim()).filter(Boolean).slice(0, 10),
+                    links: Array.from(document.querySelectorAll('a[href]')).map(a => ({
+                        text: a.innerText.trim(),
+                        href: a.href
+                    })).filter(l => l.text).slice(0, 30),
+                })
+            """)
+
+            text = (inner_text or "").strip()
+            if len(text) > max_chars:
+                text = text[:max_chars] + f"\n... [truncated at {max_chars} chars]"
+
+            return {
+                "success": True,
+                "url": url,
+                "title": title,
+                "content": text,
+                "meta": meta,
+                "char_count": len(inner_text or ""),
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def get_cookies(self, url: str = "") -> dict:
+        """Get cookies for the current page or a specific URL."""
+        if not await self._ensure_browser():
+            return {"success": False, "error": "Browser not available"}
+
+        try:
+            if url:
+                cookies = await self._context.cookies([url])
+            else:
+                page = self._get_active_page()
+                cookies = await self._context.cookies([page.url] if page else [])
+            return {"success": True, "cookies": cookies, "count": len(cookies)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def set_cookies(self, cookies: list[dict]) -> dict:
+        """
+        Set cookies in the browser context.
+        Each cookie dict: {name, value, url?, domain?, path?, httpOnly?, secure?, sameSite?, expires?}
+        """
+        if not await self._ensure_browser():
+            return {"success": False, "error": "Browser not available"}
+
+        try:
+            await self._context.add_cookies(cookies)
+            return {"success": True, "action": "set_cookies", "count": len(cookies)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def clear_storage(self, storage_type: str = "all") -> dict:
+        """
+        Clear browser storage: cookies, localStorage, sessionStorage, or all.
+        storage_type: 'cookies' | 'local_storage' | 'session_storage' | 'all'
+        """
+        if not await self._ensure_browser():
+            return {"success": False, "error": "Browser not available"}
+
+        page = self._get_active_page()
+        cleared = []
+
+        try:
+            if storage_type in ("cookies", "all"):
+                await self._context.clear_cookies()
+                cleared.append("cookies")
+
+            if storage_type in ("local_storage", "all") and page:
+                await page.evaluate("localStorage.clear()")
+                cleared.append("localStorage")
+
+            if storage_type in ("session_storage", "all") and page:
+                await page.evaluate("sessionStorage.clear()")
+                cleared.append("sessionStorage")
+
+            return {"success": True, "action": "clear_storage", "cleared": cleared}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def scroll_to_ref(self, ref: int) -> dict:
+        """Scroll a specific element into view by its ref number."""
+        if ref not in self._ref_map:
+            return {"success": False, "error": f"Ref [{ref}] not found. Take a new snapshot first."}
+
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        try:
+            locator = await self._resolve_ref_locator(ref, page)
+            if not locator:
+                return {"success": False, "error": f"Could not resolve ref [{ref}] to a page element."}
+
+            await locator.scroll_into_view_if_needed(timeout=5000)
+            elem = self._ref_map[ref]
+            return {
+                "success": True,
+                "action": "scroll_to_ref",
+                "ref": ref,
+                "element": f'{elem["role"]} "{elem["name"]}"',
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Scroll to ref [{ref}] failed: {e}"}
+
+    async def wait_for_any(self, texts: list[str], timeout: int = 15000) -> dict:
+        """
+        Wait for any of several text strings to appear on the page.
+        OpenClaw equivalent: wait_for(text=[...], timeoutMs).
+        Returns which text was found first.
+        """
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        if not texts:
+            return {"success": False, "error": "Provide at least one text string to wait for"}
+
+        try:
+            import asyncio
+            tasks = [
+                asyncio.ensure_future(
+                    page.get_by_text(t, exact=False).first.wait_for(timeout=timeout)
+                )
+                for t in texts
+            ]
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+
+            # Find which text was found
+            for i, task in enumerate(tasks):
+                if task in done and not task.exception():
+                    return {"success": True, "found": texts[i], "all_texts": texts}
+
+            return {"success": False, "error": "None of the texts appeared within the timeout", "texts": texts}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def resize_viewport(self, width: int, height: int) -> dict:
+        """
+        Resize the browser viewport.
+        OpenClaw equivalent: resize_page(width, height).
+        """
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        try:
+            await page.set_viewport_size({"width": width, "height": height})
+            return {"success": True, "action": "resize_viewport", "width": width, "height": height}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def iframe_snapshot(self, frame_selector: str = "", frame_index: int = 0) -> dict:
+        """
+        Take an accessibility tree snapshot of content inside an iframe.
+        Use frame_selector (CSS selector for the iframe element) or frame_index (0-based).
+        """
+        page = self._get_active_page()
+        if not page:
+            return {"success": False, "error": "No active tab"}
+
+        try:
+            frames = page.frames
+            # frames[0] is always the main frame — skip it
+            inner_frames = [f for f in frames if f != page.main_frame]
+
+            if not inner_frames:
+                return {"success": False, "error": "No iframes found on this page"}
+
+            if frame_selector:
+                # Find frame by its src URL or name
+                frame = next(
+                    (f for f in inner_frames if frame_selector in (f.url or "") or frame_selector in (f.name or "")),
+                    None
+                )
+                if not frame:
+                    return {"success": False, "error": f"No iframe matching '{frame_selector}' found"}
+            else:
+                if frame_index >= len(inner_frames):
+                    return {"success": False, "error": f"Frame index {frame_index} out of range (found {len(inner_frames)} iframes)"}
+                frame = inner_frames[frame_index]
+
+            # Get accessibility tree of the frame
+            ax_tree = await frame.accessibility.snapshot()
+            if not ax_tree:
+                return {"success": False, "error": "Could not get accessibility tree from iframe"}
+
+            # Reset ref map and walk the frame's tree
+            self._ref_map = {}
+            self._ref_counter = 0
+            self._current_path = []
+            lines = [f"IFrame: {frame.url}", ""]
+            lines.extend(self._walk_ax_tree(ax_tree))
+
+            return {
+                "success": True,
+                "snapshot": "\n".join(lines),
+                "frame_url": frame.url,
+                "element_count": self._ref_counter,
+                "hint": "Refs from this snapshot are now active. Use click_ref/type_ref to interact.",
+            }
+        except Exception as e:
+            return {"success": False, "error": f"iframe_snapshot failed: {e}"}
+
     async def close(self):
         """Close the browser and cleanup."""
         try:

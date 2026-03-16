@@ -145,6 +145,16 @@ class PCControlTool(Tool):
             "Then: desktop_type_ref(ref=4, text='New content', clear_first=true)\n\n"
             "IMPORTANT: Use desktop_snapshot (NOT screenshot) to see native app content.\n"
             "IMPORTANT: Use desktop_click_ref (NOT mouse_click) to interact with native apps.\n\n"
+            "=== ADVANCED BROWSER OPS (OpenClaw-parity) ===\n"
+            "  drag_ref(from_ref, to_ref) → drag element onto another\n"
+            "  scroll_to_ref(ref) → scroll element into view\n"
+            "  upload_file_ref(ref, file_path) → upload file to input element\n"
+            "  handle_dialog(dialog_action='accept'|'dismiss') → handle alert/confirm/prompt\n"
+            "  get_page_content() → extract full readable text of the page\n"
+            "  get_cookies() / set_cookies(cookies) / clear_storage(storage_type)\n"
+            "  wait_for_any(texts=[...]) → wait for any of several strings to appear\n"
+            "  resize_viewport(width, height) → resize browser window\n"
+            "  iframe_snapshot(frame_selector?, frame_index?) → snapshot inside an iframe\n\n"
             "Other browser ops: new_tab, close_tab, switch_tab, list_tabs,\n"
             "  fill_form, evaluate_js, wait_for_text, wait_for_navigation\n\n"
             "=== DESKTOP FALLBACK (ONLY when UIA is not available) ===\n"
@@ -178,6 +188,11 @@ class PCControlTool(Tool):
                         # Browser operations — snapshot + ref-based
                         "navigate", "snapshot",
                         "click_ref", "type_ref", "select_ref", "check_ref",
+                        "drag_ref", "scroll_to_ref", "upload_file_ref",
+                        "handle_dialog",
+                        "get_page_content",
+                        "get_cookies", "set_cookies", "clear_storage",
+                        "wait_for_any", "resize_viewport", "iframe_snapshot",
                         # Browser operations — legacy (selector/text-based)
                         "browser_click", "browser_type", "browser_press",
                         "fill_form", "select_option", "browser_hover", "browser_scroll",
@@ -238,6 +253,20 @@ class PCControlTool(Tool):
                 "full_page": {"type": "boolean", "description": "Full page screenshot"},
                 "browser": {"type": "string", "description": "Specific browser for open_url"},
                 "right_click": {"type": "boolean", "description": "Right-click"},
+                # New OpenClaw-parity params
+                "from_ref": {"type": "integer", "description": "Source ref for drag_ref"},
+                "to_ref": {"type": "integer", "description": "Target ref for drag_ref"},
+                "dialog_action": {"type": "string", "enum": ["accept", "dismiss"], "description": "Dialog action for handle_dialog"},
+                "prompt_text": {"type": "string", "description": "Text to enter in a prompt dialog"},
+                "file_path": {"type": "string", "description": "Local file path for upload_file_ref"},
+                "max_chars": {"type": "integer", "description": "Max characters for get_page_content (default 20000)"},
+                "cookies": {"type": "array", "description": "Cookie objects for set_cookies", "items": {"type": "object"}},
+                "storage_type": {"type": "string", "enum": ["cookies", "local_storage", "session_storage", "all"], "description": "Storage type for clear_storage"},
+                "texts": {"type": "array", "description": "List of text strings for wait_for_any", "items": {"type": "string"}},
+                "width": {"type": "integer", "description": "Viewport width for resize_viewport"},
+                "height": {"type": "integer", "description": "Viewport height for resize_viewport"},
+                "frame_selector": {"type": "string", "description": "CSS selector or URL fragment to identify iframe for iframe_snapshot"},
+                "frame_index": {"type": "integer", "description": "0-based iframe index for iframe_snapshot (default 0)"},
                 # Desktop fallback params
                 "x": {"type": "integer", "description": "X coordinate for mouse"},
                 "y": {"type": "integer", "description": "Y coordinate for mouse"},
@@ -492,6 +521,81 @@ class PCControlTool(Tool):
             if ref is None:
                 return {"error": "Provide ref number"}
             return await self._browser.check_ref(int(ref), checked=kwargs.get("checked", True))
+
+        elif op == "drag_ref":
+            from_ref = kwargs.get("from_ref")
+            to_ref = kwargs.get("to_ref")
+            if from_ref is None or to_ref is None:
+                return {"error": "Provide from_ref and to_ref numbers from snapshot"}
+            return await self._browser.drag_ref(int(from_ref), int(to_ref))
+
+        elif op == "scroll_to_ref":
+            ref = kwargs.get("ref")
+            if ref is None:
+                return {"error": "Provide ref number"}
+            return await self._browser.scroll_to_ref(int(ref))
+
+        elif op == "upload_file_ref":
+            ref = kwargs.get("ref")
+            file_path = kwargs.get("file_path", "")
+            if ref is None:
+                return {"error": "Provide ref number of the file input element"}
+            if not file_path:
+                return {"error": "Provide file_path"}
+            return await self._browser.upload_file_ref(int(ref), file_path)
+
+        elif op == "handle_dialog":
+            action = kwargs.get("dialog_action", "accept")
+            return await self._browser.handle_dialog(
+                action=action,
+                prompt_text=kwargs.get("prompt_text", ""),
+            )
+
+        elif op == "get_page_content":
+            return await self._browser.get_page_content(
+                max_chars=kwargs.get("max_chars", 20000)
+            )
+
+        elif op == "get_cookies":
+            return await self._browser.get_cookies(url=kwargs.get("url", ""))
+
+        elif op == "set_cookies":
+            cookies = kwargs.get("cookies", [])
+            if not cookies:
+                return {"error": "Provide cookies array"}
+            return await self._browser.set_cookies(cookies)
+
+        elif op == "clear_storage":
+            return await self._browser.clear_storage(
+                storage_type=kwargs.get("storage_type", "all")
+            )
+
+        elif op == "wait_for_any":
+            texts = kwargs.get("texts", [])
+            if not texts:
+                # Also accept single text= param
+                single = kwargs.get("text", "")
+                if single:
+                    texts = [single]
+                else:
+                    return {"error": "Provide texts array"}
+            return await self._browser.wait_for_any(
+                texts=texts,
+                timeout=kwargs.get("timeout", 15000),
+            )
+
+        elif op == "resize_viewport":
+            width = kwargs.get("width")
+            height = kwargs.get("height")
+            if not width or not height:
+                return {"error": "Provide width and height"}
+            return await self._browser.resize_viewport(int(width), int(height))
+
+        elif op == "iframe_snapshot":
+            return await self._browser.iframe_snapshot(
+                frame_selector=kwargs.get("frame_selector", ""),
+                frame_index=kwargs.get("frame_index", 0),
+            )
 
         # ═══════════════════════════════════════════════
         # LAYER 2: Browser — Legacy (selector/text-based)
