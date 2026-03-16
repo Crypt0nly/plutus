@@ -5,9 +5,9 @@ import { CommandCenter } from "./CommandCenter";
 
 export interface Attachment {
   name: string;
-  type: string; // MIME type
-  data: string; // base64
-  preview?: string; // data URL for image preview
+  type: string;
+  data: string;
+  preview?: string;
 }
 
 interface Props {
@@ -21,25 +21,25 @@ const ACCEPTED_TYPES = [
   "application/pdf",
 ].join(",");
 
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 export function ChatInput({ onSend, onStop, disabled }: Props) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isProcessing } = useAppStore();
 
-  // Auto-resize textarea — reset to single line then grow to fit content
+  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "24px"; // Reset to single line height
+    el.style.height = "24px";
     const scrollH = el.scrollHeight;
-    el.style.height = Math.min(scrollH, 160) + "px"; // Max ~6 lines
+    el.style.height = Math.min(scrollH, 160) + "px";
   }, [input]);
 
-  // Focus on mount
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
@@ -62,26 +62,14 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
     }
   };
 
-  const handleStop = () => {
-    if (onStop) onStop();
-  };
-
   const readFileAsBase64 = (file: File): Promise<Attachment> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // Strip the data URL prefix to get raw base64
         const base64 = result.split(",")[1] || "";
-        const att: Attachment = {
-          name: file.name,
-          type: file.type,
-          data: base64,
-        };
-        // Create preview for images
-        if (file.type.startsWith("image/")) {
-          att.preview = result;
-        }
+        const att: Attachment = { name: file.name, type: file.type, data: base64 };
+        if (file.type.startsWith("image/")) att.preview = result;
         resolve(att);
       };
       reader.onerror = reject;
@@ -93,24 +81,19 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
     if (!files) return;
     const newAttachments: Attachment[] = [];
     for (const file of Array.from(files)) {
-      if (file.size > MAX_FILE_SIZE) {
-        continue; // Skip oversized files
-      }
+      if (file.size > MAX_FILE_SIZE) continue;
       try {
         const att = await readFileAsBase64(file);
         newAttachments.push(att);
-      } catch {
-        // Skip files that fail to read
-      }
+      } catch { /* skip */ }
     }
-    setAttachments((prev: Attachment[]) => [...prev, ...newAttachments].slice(0, 10)); // Max 10
+    setAttachments((prev: Attachment[]) => [...prev, ...newAttachments].slice(0, 10));
   }, []);
 
   const removeAttachment = (index: number) => {
     setAttachments((prev: Attachment[]) => prev.filter((_: Attachment, i: number) => i !== index));
   };
 
-  // Handle paste events for images
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -132,13 +115,9 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
     return () => document.removeEventListener("paste", handlePaste);
   }, [handleFileSelect]);
 
-  // Handle drag and drop
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -149,12 +128,25 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
   const hasInput = input.trim().length > 0 || attachments.length > 0;
 
   return (
-    <div className="bg-gray-950/80 backdrop-blur-md px-4 pt-2 pb-4">
+    <div className="flex-shrink-0 px-4 pt-2 pb-5"
+      style={{ background: "linear-gradient(to top, rgba(8, 10, 20, 1) 60%, rgba(8, 10, 20, 0))" }}
+    >
       <div className="max-w-3xl mx-auto">
         <div
-          className={`relative bg-gray-900 border rounded-2xl shadow-lg shadow-black/20 transition-all focus-within:border-gray-700 focus-within:shadow-xl focus-within:shadow-black/30 ${
-            isDragging ? "border-plutus-500/50 bg-plutus-500/5" : "border-gray-800"
-          }`}
+          className="relative rounded-2xl transition-all duration-200"
+          style={{
+            background: isDragging
+              ? "rgba(99, 102, 241, 0.06)"
+              : "rgba(15, 18, 30, 0.95)",
+            border: isDragging
+              ? "1px solid rgba(99, 102, 241, 0.4)"
+              : isFocused
+              ? "1px solid rgba(99, 102, 241, 0.35)"
+              : "1px solid rgba(255, 255, 255, 0.07)",
+            boxShadow: isFocused
+              ? "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.1), 0 0 20px rgba(99, 102, 241, 0.06)"
+              : "0 4px 24px rgba(0, 0, 0, 0.3)",
+          }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -165,16 +157,18 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
               {attachments.map((att, i) => (
                 <div
                   key={`${att.name}-${i}`}
-                  className="relative group flex items-center gap-2 bg-gray-800/70 border border-gray-700/50 rounded-lg px-2.5 py-1.5 max-w-[200px]"
+                  className="relative group flex items-center gap-2 rounded-xl px-2.5 py-1.5 max-w-[200px]"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)"
+                  }}
                 >
                   {att.preview ? (
-                    <img
-                      src={att.preview}
-                      alt={att.name}
-                      className="w-8 h-8 rounded object-cover flex-shrink-0"
-                    />
+                    <img src={att.preview} alt={att.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
                   ) : (
-                    <div className="w-8 h-8 rounded bg-gray-700/50 flex items-center justify-center flex-shrink-0">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: "rgba(255,255,255,0.05)" }}
+                    >
                       {att.type === "application/pdf" ? (
                         <FileText className="w-4 h-4 text-red-400" />
                       ) : (
@@ -185,7 +179,8 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
                   <span className="text-[11px] text-gray-400 truncate">{att.name}</span>
                   <button
                     onClick={() => removeAttachment(i)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-700 border border-gray-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ background: "rgba(31, 41, 55, 1)", border: "1px solid rgba(75, 85, 99, 0.5)" }}
                   >
                     <X className="w-2.5 h-2.5 text-gray-300" />
                   </button>
@@ -199,18 +194,15 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              isProcessing
-                ? "Plutus is working..."
-                : "Message Plutus..."
-            }
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder={isProcessing ? "Plutus is working..." : "Message Plutus..."}
             disabled={disabled}
             rows={1}
             className="w-full bg-transparent border-none outline-none text-sm text-gray-100 placeholder-gray-600 resize-none leading-6 pl-4 pr-4 pt-3.5 pb-14"
             style={{ height: "24px", minHeight: "24px", maxHeight: "160px" }}
           />
 
-          {/* Hidden file input */}
           <input
             ref={fileInputRef}
             type="file"
@@ -218,34 +210,47 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
             multiple
             onChange={(e) => {
               handleFileSelect(e.target.files);
-              e.target.value = ""; // Reset so same file can be selected again
+              e.target.value = "";
             }}
             className="hidden"
           />
 
-          {/* Bottom bar inside the input — bg ensures text never shows through */}
-          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 pb-2.5 pt-1.5 bg-gray-900 rounded-b-2xl">
+          {/* Bottom bar */}
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 pb-3 pt-2 rounded-b-2xl"
+            style={{ background: "rgba(15, 18, 30, 0.95)" }}
+          >
             <div className="flex items-center gap-1">
               <CommandCenter />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={disabled || isProcessing}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-600 hover:text-gray-300 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ background: "transparent" }}
+                onMouseEnter={(e) => {
+                  if (!disabled && !isProcessing) {
+                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                }}
                 title="Attach files (images, PDFs)"
               >
                 <Paperclip className="w-4 h-4" />
               </button>
-              <span className="text-[11px] text-gray-600 ml-0.5 select-none">
-                {isProcessing
-                  ? "Working on your task"
-                  : "Enter to send"
-                }
+              <span className="text-[11px] text-gray-700 ml-1 select-none">
+                {isProcessing ? "Working on your task" : "Enter to send · Shift+Enter for newline"}
               </span>
             </div>
+
             {isProcessing ? (
               <button
-                onClick={handleStop}
-                className="w-7 h-7 rounded-lg bg-red-500/90 hover:bg-red-500 flex items-center justify-center transition-colors"
+                onClick={onStop}
+                className="w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95"
+                style={{
+                  background: "rgba(239, 68, 68, 0.9)",
+                  boxShadow: "0 2px 8px rgba(239, 68, 68, 0.3)"
+                }}
                 title="Stop current task"
               >
                 <Square className="w-3 h-3 text-white fill-white" />
@@ -254,13 +259,19 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
               <button
                 onClick={handleSubmit}
                 disabled={disabled || !hasInput}
-                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
-                  hasInput
-                    ? "bg-plutus-600 hover:bg-plutus-500 text-white shadow-sm shadow-plutus-600/30"
-                    : "bg-gray-800 text-gray-600 cursor-not-allowed"
-                }`}
+                className="w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95"
+                style={hasInput ? {
+                  background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                  boxShadow: "0 2px 12px rgba(99, 102, 241, 0.4)"
+                } : {
+                  background: "rgba(255,255,255,0.05)",
+                  cursor: "not-allowed"
+                }}
               >
-                <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
+                <ArrowUp
+                  className={`w-4 h-4 ${hasInput ? "text-white" : "text-gray-600"}`}
+                  strokeWidth={2.5}
+                />
               </button>
             )}
           </div>

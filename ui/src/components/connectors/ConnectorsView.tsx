@@ -88,32 +88,26 @@ function AIProviderCard({
 
   return (
     <div
-      className={`group relative rounded-2xl border transition-all duration-200 hover:shadow-lg ${
-        connector.configured
-          ? "border-violet-500/25 bg-violet-500/[0.03] hover:border-violet-500/40 hover:shadow-violet-500/5"
-          : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
-      }`}
+      className="group relative rounded-2xl transition-all duration-200"
+      style={connector.configured ? { background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.2)" } : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}
     >
       <div className="p-5 flex flex-col h-full">
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${
-              connector.configured
-                ? "bg-violet-500/15 text-violet-400"
-                : "bg-gray-800/80 text-gray-500 group-hover:bg-gray-800 group-hover:text-gray-400"
-            }`}
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+          style={connector.configured ? { background: "rgba(168, 85, 247, 0.12)", color: "#c084fc" } : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }}
           >
             <Icon className="w-5 h-5" />
           </div>
 
           {connector.configured ? (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/20">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-violet-400" style={{ background: "rgba(168, 85, 247, 0.1)", border: "1px solid rgba(168, 85, 247, 0.2)" }}>
               <KeyRound className="w-3 h-3" />
               Active
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/30">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <Power className="w-3 h-3" />
               No key
             </span>
@@ -147,9 +141,10 @@ function AIProviderCard({
           onClick={() => onConfigure(connector)}
           className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
             connector.configured
-              ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
-              : "bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-600/15 hover:shadow-lg hover:shadow-violet-500/20 active:scale-[0.98]"
+              ? "text-gray-300 hover:text-gray-100"
+              : "text-white active:scale-[0.98]"
           }`}
+          style={connector.configured ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" } : { background: "rgba(168, 85, 247, 0.8)", boxShadow: "0 4px 14px rgba(168, 85, 247, 0.2)" }}
         >
           {connector.configured ? (
             <>
@@ -182,42 +177,42 @@ function ConnectorCard({
 
   return (
     <div
-      className={`group relative rounded-2xl border transition-all duration-200 hover:shadow-lg ${
-        connector.configured
-          ? isListening
-            ? "border-blue-500/25 bg-blue-500/[0.03] hover:border-blue-500/40 hover:shadow-blue-500/5"
-            : "border-emerald-500/25 bg-emerald-500/[0.03] hover:border-emerald-500/40 hover:shadow-emerald-500/5"
-          : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
-      }`}
+      className="group relative rounded-2xl transition-all duration-200"
+      style={connector.configured
+        ? isListening
+          ? { background: "rgba(59, 130, 246, 0.04)", border: "1px solid rgba(59, 130, 246, 0.2)" }
+          : { background: "rgba(16, 185, 129, 0.04)", border: "1px solid rgba(16, 185, 129, 0.2)" }
+        : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }
+      }
     >
       <div className="p-5 flex flex-col h-full">
         {/* Icon + Status */}
         <div className="flex items-start justify-between mb-3">
           <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${
-              isListening
-                ? "bg-blue-500/15 text-blue-400"
-                : connector.configured
-                ? "bg-emerald-500/15 text-emerald-400"
-                : "bg-gray-800/80 text-gray-500 group-hover:bg-gray-800 group-hover:text-gray-400"
-            }`}
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+          style={isListening
+            ? { background: "rgba(59, 130, 246, 0.12)", color: "#60a5fa" }
+            : connector.configured
+            ? { background: "rgba(16, 185, 129, 0.12)", color: "#34d399" }
+            : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
+          }
           >
             <Icon className="w-5 h-5" />
           </div>
 
           {/* Status pill */}
           {isListening ? (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/20">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-blue-400" style={{ background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
               <Radio className="w-3 h-3 animate-pulse" />
               Listening
             </span>
           ) : connector.configured ? (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-emerald-400" style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
               <CheckCircle2 className="w-3 h-3" />
               Connected
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/30">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <Power className="w-3 h-3" />
               Not configured
             </span>
@@ -237,9 +232,10 @@ function ConnectorCard({
           onClick={() => onConfigure(connector)}
           className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
             connector.configured
-              ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
-              : "bg-plutus-600 hover:bg-plutus-500 text-white shadow-md shadow-plutus-600/15 hover:shadow-lg hover:shadow-plutus-500/20 active:scale-[0.98]"
+              ? "text-gray-300 hover:text-gray-100"
+              : "text-white active:scale-[0.98]"
           }`}
+          style={connector.configured ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" } : { background: "rgba(99, 102, 241, 0.8)", boxShadow: "0 4px 14px rgba(99, 102, 241, 0.2)" }}
         >
           {connector.configured ? (
             <>
@@ -270,32 +266,26 @@ function GoogleConnectorCard({
 
   return (
     <div
-      className={`group relative rounded-2xl border transition-all duration-200 hover:shadow-lg ${
-        connector.configured
-          ? "border-sky-500/25 bg-sky-500/[0.03] hover:border-sky-500/40 hover:shadow-sky-500/5"
-          : "border-gray-800/60 bg-surface hover:border-gray-700/80 hover:shadow-gray-900/20"
-      }`}
+      className="group relative rounded-2xl transition-all duration-200"
+      style={connector.configured ? { background: "rgba(14, 165, 233, 0.04)", border: "1px solid rgba(14, 165, 233, 0.2)" } : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}
     >
       <div className="p-5 flex flex-col h-full">
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${
-              connector.configured
-                ? "bg-sky-500/15 text-sky-400"
-                : "bg-gray-800/80 text-gray-500 group-hover:bg-gray-800 group-hover:text-gray-400"
-            }`}
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+          style={connector.configured ? { background: "rgba(14, 165, 233, 0.12)", color: "#38bdf8" } : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }}
           >
             <Icon className="w-5 h-5" />
           </div>
 
           {connector.configured ? (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-sky-500/15 text-sky-400 ring-1 ring-sky-500/20">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-sky-400" style={{ background: "rgba(14, 165, 233, 0.1)", border: "1px solid rgba(14, 165, 233, 0.2)" }}>
               <Shield className="w-3 h-3" />
               Authorized
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/30">
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <Power className="w-3 h-3" />
               Not connected
             </span>
@@ -316,7 +306,8 @@ function GoogleConnectorCard({
             {connector.features.map((feat) => (
               <span
                 key={feat}
-                className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/20"
+              className="text-[10px] font-medium px-2 py-0.5 rounded-md text-gray-500"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
               >
                 {feat}
               </span>
@@ -329,9 +320,10 @@ function GoogleConnectorCard({
           onClick={() => onConfigure(connector)}
           className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
             connector.configured
-              ? "bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100"
-              : "bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/15 hover:shadow-lg hover:shadow-sky-500/20 active:scale-[0.98]"
+              ? "text-gray-300 hover:text-gray-100"
+              : "text-white active:scale-[0.98]"
           }`}
+          style={connector.configured ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" } : { background: "rgba(14, 165, 233, 0.8)", boxShadow: "0 4px 14px rgba(14, 165, 233, 0.2)" }}
         >
           {connector.configured ? (
             <>
@@ -563,9 +555,9 @@ function ConfigureModal({
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg mx-4 max-h-[85vh] flex flex-col bg-gray-950 border border-gray-800/60 rounded-2xl shadow-2xl shadow-black/40 animate-fade-in">
+      <div className="relative w-full max-w-lg mx-4 max-h-[85vh] flex flex-col rounded-2xl shadow-2xl animate-fade-in" style={{ background: "rgba(10, 12, 22, 0.98)", border: "1px solid rgba(255, 255, 255, 0.08)", boxShadow: "0 25px 60px rgba(0, 0, 0, 0.6)" }}>
         {/* Modal header */}
-        <div className="flex items-center gap-4 px-6 pt-6 pb-4 border-b border-gray-800/40">
+        <div className="flex items-center gap-4 px-6 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
           <div
             className={`w-11 h-11 rounded-xl flex items-center justify-center ${
               isGoogle
@@ -607,7 +599,10 @@ function ConfigureModal({
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 transition-colors"
+            className="p-2 rounded-xl text-gray-500 hover:text-gray-300 transition-colors"
+            style={{ background: "transparent" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
             <X className="w-5 h-5" />
           </button>
@@ -631,15 +626,12 @@ function ConfigureModal({
 
           {/* Two-Way Messaging (Telegram/Discord) */}
           {supportsTwoWay && connector.configured && (
-            <div className="rounded-xl bg-gray-900/80 border border-gray-800/40 p-4 space-y-3">
+              <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                      listening
-                        ? "bg-blue-500/15 text-blue-400"
-                        : "bg-gray-800 text-gray-500"
-                    }`}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={listening ? { background: "rgba(59, 130, 246, 0.12)", color: "#60a5fa" } : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }}
                   >
                     <Phone className="w-4 h-4" />
                   </div>
@@ -682,7 +674,7 @@ function ConfigureModal({
               )}
 
               {/* Auto-start */}
-              <div className="flex items-center justify-between pt-3 border-t border-gray-800/30">
+              <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                 <div>
                   <p className="text-xs font-medium text-gray-300">
                     Start on launch
@@ -923,7 +915,7 @@ function ConfigureModal({
         </div>
 
         {/* Modal footer */}
-        <div className="flex items-center gap-2 px-6 py-4 border-t border-gray-800/40">
+        <div className="flex items-center gap-2 px-6 py-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)" }}>
           <button
             onClick={handleSave}
             disabled={saving}
@@ -1102,7 +1094,7 @@ export default function ConnectorsView() {
           <div>
             {/* Section header */}
             <div className="flex items-center gap-3 mb-5">
-              <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.12)" }}>
                 <Brain className="w-4 h-4 text-violet-400" />
               </div>
               <div>
@@ -1114,7 +1106,7 @@ export default function ConnectorsView() {
                 </p>
               </div>
               {aiConfigured.length > 0 && (
-                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20">
+                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full text-violet-400" style={{ background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.15)" }}>
                   {aiConfigured.length} active
                 </span>
               )}
@@ -1136,7 +1128,7 @@ export default function ConnectorsView() {
 
         {/* Divider */}
         {aiConnectors.length > 0 && (googleConnectors.length > 0 || messagingConnectors.length > 0) && (
-          <div className="border-t border-gray-800/40" />
+          <div className="h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)" }} />
         )}
 
         {/* ═══════════════════════════════════════════════ */}
@@ -1146,7 +1138,7 @@ export default function ConnectorsView() {
           <div>
             {/* Section header */}
             <div className="flex items-center gap-3 mb-5">
-              <div className="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(14, 165, 233, 0.08)", border: "1px solid rgba(14, 165, 233, 0.12)" }}>
                 <Shield className="w-4 h-4 text-sky-400" />
               </div>
               <div>
@@ -1158,7 +1150,7 @@ export default function ConnectorsView() {
                 </p>
               </div>
               {googleConfigured.length > 0 && (
-                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
+                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full text-sky-400" style={{ background: "rgba(14, 165, 233, 0.08)", border: "1px solid rgba(14, 165, 233, 0.15)" }}>
                   {googleConfigured.length} authorized
                 </span>
               )}
@@ -1179,7 +1171,7 @@ export default function ConnectorsView() {
 
         {/* Divider */}
         {(aiConnectors.length > 0 || googleConnectors.length > 0) && messagingConnectors.length > 0 && (
-          <div className="border-t border-gray-800/40" />
+          <div className="h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)" }} />
         )}
 
         {/* ═══════════════════════════════════════════════ */}
@@ -1189,7 +1181,7 @@ export default function ConnectorsView() {
           <div>
             {/* Section header */}
             <div className="flex items-center gap-3 mb-5">
-              <div className="w-8 h-8 rounded-lg bg-plutus-500/10 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.12)" }}>
                 <Globe className="w-4 h-4 text-plutus-400" />
               </div>
               <div>
@@ -1201,7 +1193,7 @@ export default function ConnectorsView() {
                 </p>
               </div>
               {msgConfigured.length > 0 && (
-                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full text-emerald-400" style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.15)" }}>
                   {msgConfigured.length} connected
                 </span>
               )}
@@ -1224,7 +1216,7 @@ export default function ConnectorsView() {
         {/* Empty state */}
         {connectors.length === 0 && (
           <div className="text-center py-16">
-            <div className="w-14 h-14 rounded-2xl bg-gray-800/60 flex items-center justify-center mx-auto mb-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <Plug className="w-7 h-7 text-gray-600" />
             </div>
             <h3 className="text-sm font-semibold text-gray-300 mb-1">
@@ -1241,11 +1233,11 @@ export default function ConnectorsView() {
         {/* CUSTOM API CONNECTORS SECTION                   */}
         {/* ═══════════════════════════════════════════════ */}
         <div>
-          <div className="border-t border-gray-800/40 mb-10" />
+           <div className="h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)" }} />
 
           {/* Section header */}
           <div className="flex items-center gap-3 mb-5">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.12)" }}>
               <Link className="w-4 h-4 text-amber-400" />
             </div>
             <div>
@@ -1257,7 +1249,7 @@ export default function ConnectorsView() {
               </p>
             </div>
             {customConnectors.length > 0 && (
-              <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">
+              <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full text-amber-400" style={{ background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.15)" }}>
                 {customConnectors.length} custom
               </span>
             )}
@@ -1279,7 +1271,8 @@ export default function ConnectorsView() {
           {/* Add Custom Connector button / form */}
           <button
             onClick={() => setShowAddCustom(!showAddCustom)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 bg-gray-800/60 hover:bg-gray-800 text-gray-300 hover:text-gray-100 border border-gray-700/40 hover:border-gray-600/60"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-gray-300 hover:text-gray-100"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
           >
             {showAddCustom ? (
               <>
@@ -1295,7 +1288,7 @@ export default function ConnectorsView() {
           </button>
 
           {showAddCustom && (
-            <div className="mt-4 rounded-2xl border border-gray-800/60 bg-surface p-6 space-y-4">
+            <div className="mt-4 rounded-2xl p-6 space-y-4" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Connector ID */}
                 <div>
@@ -1463,39 +1456,20 @@ export default function ConnectorsView() {
         </div>
 
         {/* How it works */}
-        <div className="rounded-2xl bg-gray-900/40 border border-gray-800/60 p-5">
-          <h4 className="text-sm font-semibold text-gray-300 mb-3">
-            How It Works
-          </h4>
+        <div className="rounded-2xl p-5" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+          <h4 className="text-sm font-semibold text-gray-300 mb-4">How It Works</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-              {
-                step: "1",
-                text: "Add your AI provider API keys to unlock models and generation tools",
-              },
-              {
-                step: "2",
-                text: "Configure messaging connectors for notifications and two-way chat",
-              },
-              {
-                step: "3",
-                text: 'Test each connection to verify it works — hit "Test Connection"',
-              },
-              {
-                step: "4",
-                text: 'Ask Plutus to "generate an image" or "send me a Telegram message"',
-              },
+              { step: "1", text: "Add your AI provider API keys to unlock models and generation tools" },
+              { step: "2", text: "Configure messaging connectors for notifications and two-way chat" },
+              { step: "3", text: 'Test each connection to verify it works — hit "Test Connection"' },
+              { step: "4", text: 'Ask Plutus to "generate an image" or "send me a Telegram message"' },
             ].map((item) => (
-              <div
-                key={item.step}
-                className="flex items-start gap-3 p-3 rounded-xl bg-gray-900/40"
-              >
-                <span className="w-6 h-6 rounded-lg bg-plutus-500/10 text-plutus-400 text-xs font-bold flex items-center justify-center flex-shrink-0">
+              <div key={item.step} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                <span className="w-6 h-6 rounded-lg text-plutus-400 text-xs font-bold flex items-center justify-center flex-shrink-0" style={{ background: "rgba(99, 102, 241, 0.1)", border: "1px solid rgba(99, 102, 241, 0.15)" }}>
                   {item.step}
                 </span>
-                <span className="text-xs text-gray-500 leading-relaxed">
-                  {item.text}
-                </span>
+                <span className="text-xs text-gray-500 leading-relaxed">{item.text}</span>
               </div>
             ))}
           </div>
