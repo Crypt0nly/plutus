@@ -311,20 +311,25 @@ class ComputerUseExecutor:
             else:
                 return {"type": "error", "error": f"No screenshot method for {system}"}
 
-            from PIL import Image
-            img = Image.open(str(screenshot_path))
+            # Try PIL for scaling; fall back to raw bytes if not installed
+            try:
+                from PIL import Image
+                img = Image.open(str(screenshot_path))
+                if self._scale_factor < 1.0:
+                    img = img.resize(
+                        (self._api_width, self._api_height),
+                        resample=3
+                    )
+                    img.save(str(screenshot_path), format="PNG")
+                buffer = io.BytesIO()
+                img.save(buffer, format="PNG", optimize=True)
+                b64_data = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
+            except ImportError:
+                # PIL not installed — read raw PNG bytes directly
+                logger.warning("PIL/Pillow not installed; sending unscaled screenshot")
+                with open(str(screenshot_path), "rb") as _f:
+                    b64_data = base64.standard_b64encode(_f.read()).decode("utf-8")
 
-            # Resize if needed
-            if self._scale_factor < 1.0:
-                img = img.resize(
-                    (self._api_width, self._api_height),
-                    resample=3
-                )
-                img.save(str(screenshot_path), format="PNG")
-
-            buffer = io.BytesIO()
-            img.save(buffer, format="PNG", optimize=True)
-            b64_data = base64.standard_b64encode(buffer.getvalue()).decode("utf-8")
             self._last_screenshot_path = str(screenshot_path)
 
             return {

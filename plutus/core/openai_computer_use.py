@@ -217,7 +217,6 @@ class OpenAIComputerUseAgent:
             response = await client.responses.create(
                 model=self._model,
                 tools=[{"type": "computer"}],
-                truncation="auto",
                 input=user_message,
             )
         except Exception as e:
@@ -321,14 +320,16 @@ class OpenAIComputerUseAgent:
                 response = await client.responses.create(
                     model=self._model,
                     tools=[{"type": "computer"}],
-                    truncation="auto",
                     previous_response_id=previous_response_id,
                     input=[{
                         "type": "computer_call_output",
                         "call_id": call_id,
                         "output": {
                             "type": "computer_screenshot",
+                            # detail="original" preserves full resolution (up to 10.24M px)
+                            # and maximizes click accuracy per OpenAI docs recommendation.
                             "image_url": screenshot_url,
+                            "detail": "original",
                         },
                     }],
                 )

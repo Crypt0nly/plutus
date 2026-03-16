@@ -100,11 +100,14 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
     # Select model for this worker
     model_string = "anthropic/claude-sonnet-4-6"  # fallback
     model_display = "Claude Sonnet 4-6"
+    _worker_is_openai = False
 
     if model_router:
         spec = model_router.select_for_worker(task.prompt, model_key=task.model_key)
         model_string = model_router.get_litellm_model_string(spec)
         model_display = spec.display_name
+        _worker_is_openai = (spec.provider == "openai")
+        logger.info(f"Worker {task.id} selected model: {model_string} (openai={_worker_is_openai})")
         # Record usage
         try:
             from plutus.core.model_router import AVAILABLE_MODELS
@@ -132,6 +135,8 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
     })
 
     # Build tool definitions from the registry (exclude 'worker' to prevent recursion)
+    # OpenAI Chat Completions (via litellm) uses the nested format, same as Anthropic.
+    # The flat Responses API format is only needed when calling OpenAI SDK directly.
     tools_for_llm = []
     if tool_registry:
         for tool in tool_registry._tools.values():
@@ -247,9 +252,14 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
             call_kwargs: dict[str, Any] = {
                 "model": model_string,
                 "messages": messages,
-                "temperature": 0.7,
                 "max_tokens": 16384,  # Must be high — tool calls with file content can be 5000+ tokens
             }
+            # OpenAI reasoning models (gpt-5.x) do NOT support the temperature
+            # parameter — passing it causes a BadRequestError which previously
+            # caused the worker to silently fall back to claude-haiku.
+            # Non-OpenAI models (Anthropic) do support temperature.
+            if not _worker_is_openai:
+                call_kwargs["temperature"] = 0.7
 
             if force_summary:
                 # Force the LLM to respond with text only.

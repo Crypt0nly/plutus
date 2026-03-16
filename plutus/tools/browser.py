@@ -27,11 +27,13 @@ class BrowserTool(Tool):
     def description(self) -> str:
         return (
             "Control a web browser. Navigate to URLs, take screenshots, extract page content, "
-            "click elements, fill forms, and run JavaScript. "
-            "Operations: navigate, screenshot, extract, click, click_text, fill, evaluate, wait, back, forward, close.\n"
+            "click elements, fill forms, run JavaScript, and upload files. "
+            "Operations: navigate, screenshot, extract, click, click_text, fill, evaluate, wait, back, forward, upload_file, close.\n"
             "Use click_text to click buttons/links by their visible text (e.g. 'Accept all', 'Sign in') — "
             "this is more reliable than CSS selectors on dynamic sites.\n"
-            "Use wait to wait for a selector to appear before interacting with it."
+            "Use wait to wait for a selector to appear before interacting with it.\n"
+            "Use upload_file to upload files via file input elements or drag-and-drop zones. "
+            "Pass 'path' as the local file path and optionally 'selector' to target a specific input."
         )
 
     @property
@@ -61,7 +63,7 @@ class BrowserTool(Tool):
                 },
                 "path": {
                     "type": "string",
-                    "description": "File path for screenshot output",
+                    "description": "File path for screenshot output or file to upload (upload_file operation)",
                 },
             },
             "required": ["operation"],
@@ -138,6 +140,7 @@ class BrowserTool(Tool):
             "wait": self._wait,
             "back": self._back,
             "forward": self._forward,
+            "upload_file": self._upload_file,
         }
 
         handler = handlers.get(operation)
@@ -279,6 +282,102 @@ class BrowserTool(Tool):
     async def _forward(self, kwargs: dict) -> str:
         await self._page.go_forward()
         return f"Navigated forward to: {self._page.url}"
+
+    async def _upload_file(self, kwargs: dict) -> str:
+        """Upload a file via a file input element or drag-and-drop zone."""
+        file_path = kwargs.get("path", "")
+        if not file_path:
+            return "[ERROR] upload_file requires a 'path' parameter with the local file path"
+
+        import os
+        if not os.path.exists(file_path):
+            return f"[ERROR] File not found: {file_path}"
+
+        selector = kwargs.get("selector", "")
+
+        # Strategy 1: Use a specific selector if provided
+        if selector:
+            try:
+                file_input = self._page.locator(selector)
+                await file_input.set_input_files(file_path, timeout=10000)
+                return f"File uploaded via selector '{selector}': {os.path.basename(file_path)}"
+            except Exception as e:
+                return f"[ERROR] Upload via selector '{selector}' failed: {e}"
+
+        # Strategy 2: Auto-detect file input elements on the page
+        try:
+            # Find all visible file inputs
+            file_inputs = self._page.locator('input[type="file"]')
+            count = await file_inputs.count()
+            if count > 0:
+                # Use the first visible one
+                for i in range(count):
+                    inp = file_inputs.nth(i)
+                    try:
+                        await inp.set_input_files(file_path, timeout=5000)
+                        return f"File uploaded via file input #{i + 1}: {os.path.basename(file_path)}"
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        # Strategy 3: Drag-and-drop simulation via JavaScript
+        try:
+            import base64
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+            b64 = base64.b64encode(file_bytes).decode()
+            mime = "application/octet-stream"
+            ext = os.path.splitext(file_path)[1].lower()
+            mime_map = {
+                ".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg", ".gif": "image/gif", ".txt": "text/plain",
+                ".csv": "text/csv", ".json": "application/json",
+                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                ".zip": "application/zip",
+            }
+            mime = mime_map.get(ext, "application/octet-stream")
+            filename = os.path.basename(file_path)
+
+            # Simulate a DataTransfer drop event on the document body
+            js_result = await self._page.evaluate(f"""
+                (function() {{
+                    const b64 = '{b64}';
+                    const mime = '{mime}';
+                    const filename = '{filename}';
+                    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                    const file = new File([bytes], filename, {{type: mime}});
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+
+                    // Try to find a drop zone
+                    const dropTargets = [
+                        document.querySelector('[data-testid*="drop"]'),
+                        document.querySelector('[class*="drop"]'),
+                        document.querySelector('[class*="upload"]'),
+                        document.querySelector('[aria-label*="upload"]'),
+                        document.querySelector('[aria-label*="drop"]'),
+                        document.body,
+                    ].filter(Boolean);
+
+                    const target = dropTargets[0];
+                    if (!target) return 'no_target';
+
+                    const events = ['dragenter', 'dragover', 'drop'];
+                    for (const evtName of events) {{
+                        const evt = new DragEvent(evtName, {{
+                            bubbles: true, cancelable: true, dataTransfer: dt
+                        }});
+                        target.dispatchEvent(evt);
+                    }}
+                    return 'dispatched_to:' + (target.className || target.tagName);
+                }})()
+            """)
+            return f"File upload attempted via drag-and-drop simulation: {filename} ({js_result})"
+        except Exception as e:
+            return f"[ERROR] All upload strategies failed for {file_path}: {e}"
 
     async def _close(self) -> str:
         await self._cleanup()
