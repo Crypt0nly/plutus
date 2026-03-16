@@ -810,6 +810,12 @@ async def lifespan(app: FastAPI):
         tool_registry.register(git_tool)
         agent.set_connector_manager(connector_manager)
 
+        # Register web deploy tool
+        from plutus.tools.web_deploy import WebDeployTool
+        web_deploy_tool = WebDeployTool(secrets=secrets)
+        tool_registry.register(web_deploy_tool)
+        logger.info("Registered web_deploy tool")
+
         # Start conversation auto-cleanup background task
         if config.memory.conversation_auto_delete_days > 0:
             cleanup_task = asyncio.create_task(
