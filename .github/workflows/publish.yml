@@ -102,9 +102,17 @@ jobs:
             cibw_archs: x86_64
             artifact_name: wheels-linux-x86_64
           # macOS arm64 (Apple Silicon) — Intel users can use Rosetta
+          # macOS arm64 (Apple Silicon — M1/M2/M3/M4)
           - os: macos-latest
             cibw_archs: arm64
             artifact_name: wheels-macos-arm64
+          # macOS x86_64 (Intel — covers all Macs pre-2021 including Monterey/Ventura on Intel)
+          # macos-13 is the last GitHub-hosted Intel runner; macos-14+ are arm64 only.
+          - os: macos-13
+            cibw_archs: x86_64
+            artifact_name: wheels-macos-x86_64
+          # Windows x86_64
+
           # Windows x86_64
           - os: windows-latest
             cibw_archs: AMD64
