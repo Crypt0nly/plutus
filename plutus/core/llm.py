@@ -138,10 +138,12 @@ class LLMClient:
         # Try secrets store (checks env var first, then file)
         key = self._secrets.get_key(self._config.provider)
         if key:
-            # Ensure it's in os.environ for LiteLLM
+            # Always overwrite os.environ so a stale or wrong key from a previous
+            # provider never blocks the real key.  The startup inject_all() guard
+            # ("don't overwrite existing env vars") is intentional for startup only;
+            # here we are explicitly reloading so we must force the update.
             env_var = self._config.api_key_env
-            if not os.environ.get(env_var):
-                os.environ[env_var] = key
+            os.environ[env_var] = key
             return True
 
         logger.warning(
