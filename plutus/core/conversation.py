@@ -102,6 +102,9 @@ class ConversationManager:
             self._summarized_up_to = self._current_summary.get("summarized_up_to", 0)
         else:
             self._summarized_up_to = 0
+        # Signal to the agent that this was a resume (not a fresh start)
+        # so it can inject a mid-task context reminder if needed.
+        self._just_resumed = True
 
     async def add_user_message(self, content: str) -> int:
         assert self._active_conversation_id
@@ -310,9 +313,14 @@ class ConversationManager:
 
             for entry in raw:
                 # Skip orphaned tool results (no matching assistant tool_use)
+                # IMPORTANT: use explicit flag so we don't fall through to append
                 if entry["role"] == "tool" and entry.get("tool_call_id"):
                     if entry["tool_call_id"] not in tool_use_ids:
-                        continue
+                        logger.debug(
+                            "Dropping orphaned tool result %s (no matching tool_call in window)",
+                            entry["tool_call_id"],
+                        )
+                        continue  # skip — do NOT append
                 # Strip orphaned tool_calls from assistant messages
                 # (tool_results were summarized away or truncated)
                 if entry.get("tool_calls"):
@@ -321,8 +329,14 @@ class ConversationManager:
                         if tc["id"] in tool_result_ids
                     ]
                     if not paired:
-                        # All tool_calls are orphaned — drop them entirely
+                        # All tool_calls are orphaned — drop the tool_calls list
+                        # but KEEP the message itself (it may have text content)
                         entry.pop("tool_calls", None)
+                        # If the assistant message now has no content AND no tool_calls,
+                        # skip it entirely to avoid sending an empty assistant turn
+                        if not entry.get("content"):
+                            logger.debug("Dropping empty assistant message (all tool_calls orphaned)")
+                            continue
                     elif len(paired) < len(entry["tool_calls"]):
                         entry["tool_calls"] = paired
                 messages.append(entry)

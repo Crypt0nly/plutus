@@ -62,6 +62,18 @@ before taking any other action:
    - If you see an "Active Plan", CONTINUE from where you left off.
    - If you see "Known facts", USE them.
 
+╔═══════════════════════════════════════════════════════════════╗
+║  ⛔  NEVER GREET THE USER MID-TASK                           ║
+║                                                               ║
+║  If your context contains ANY prior messages, a summary,     ║
+║  an active plan, or known facts — you are MID-TASK.          ║
+║  Do NOT say "Hi there!", "How can I help?", or any greeting. ║
+║  Instead: read the context and CONTINUE the work.            ║
+║                                                               ║
+║  Greeting mid-task = critical failure. Always check context  ║
+║  BEFORE composing any response.                              ║
+╚═══════════════════════════════════════════════════════════════╝
+
 4. **As you work, keep memory updated:**
    - Mark plan steps: plan(action="update_step", step_index=0, status="in_progress")
    - Save discoveries: memory(action="save_fact", category="technical", content="...")
@@ -1239,14 +1251,57 @@ class AgentRuntime:
             )
             return
 
-        # Ensure we have an active conversation
+        # Ensure we have an active conversation.
+        # On server restart the in-memory conversation_id is None even though
+        # a conversation exists in the DB.  Try to resume the most recent one
+        # before starting a brand-new conversation so we don't lose context.
         if not self._conversation.conversation_id:
-            await self._conversation.start_conversation(title=user_message[:50])
+            try:
+                recent = await self._conversation.list_conversations(limit=1)
+                if recent:
+                    latest_id = recent[0]["id"]
+                    await self._conversation.resume_conversation(latest_id)
+                    logger.info(
+                        "Resumed most recent conversation %s after context reset",
+                        latest_id,
+                    )
+                else:
+                    await self._conversation.start_conversation(title=user_message[:50])
+            except Exception as _resume_err:
+                logger.warning(
+                    "Could not resume conversation: %s — starting fresh", _resume_err
+                )
+                await self._conversation.start_conversation(title=user_message[:50])
 
         await self._conversation.add_user_message(user_message)
 
         # Store attachments for the current message (transient, not persisted)
         self._conversation.pending_attachments = attachments or []
+
+        # If the conversation was just resumed from DB (context reset recovery),
+        # inject a brief system reminder so the LLM knows it's mid-task and
+        # should not greet the user.  This is a belt-and-suspenders guard
+        # alongside the system prompt rule and the summary injection.
+        if getattr(self._conversation, '_just_resumed', False):
+            self._conversation._just_resumed = False
+            summary = self._conversation._current_summary
+            if summary and (summary.get('goals') or summary.get('key_facts')):
+                goals_text = '; '.join(summary.get('goals', [])[:3])
+                facts_text = '; '.join(summary.get('key_facts', [])[:3])
+                reminder = (
+                    "[SYSTEM: Context restored after restart. "
+                    "You are mid-task — DO NOT greet the user. "
+                    f"Active goals: {goals_text or 'see summary above'}. "
+                    f"Key facts: {facts_text or 'see summary above'}. "
+                    "Continue from where you left off.]"
+                )
+                logger.info("Injecting mid-task context reminder after conversation resume")
+                # Prepend to the user message that was just added
+                msgs = self._conversation._messages  # type: ignore[attr-defined]
+                if msgs and msgs[-1].get('role') == 'user':
+                    original = msgs[-1].get('content', '')
+                    if isinstance(original, str):
+                        msgs[-1]['content'] = f"{reminder}\n\n{original}"
 
         # Drain any pending worker results into the conversation.
         # These are queued by background workers to avoid injecting
