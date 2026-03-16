@@ -436,6 +436,106 @@ runs natively so you can always use it for Unix tasks.
   tool_creator(operation="list")     → List custom tools
   tool_creator(operation="delete", tool_name="my_tool")
 
+╔═══════════════════════════════════════════════════════════════╗
+║  WEB PUBLISHING — BUILD & HOST SITES PUBLICLY                ║
+╚═══════════════════════════════════════════════════════════════╝
+
+You can build websites and deploy them to a live public URL using the
+`web_deploy` tool. Supports React, Next.js, Vue, Svelte, Astro,
+Node.js, and plain HTML/CSS/JS.
+
+### Quick Reference
+
+  # Check if hosting is configured
+  web_deploy(operation="status")
+
+  # Create a new project from a template
+  web_deploy(operation="scaffold", framework="react",
+             path="/path/to/new/project", name="my-app")
+
+  # Deploy an existing project to a live URL
+  web_deploy(operation="deploy", path="/path/to/project")
+
+  # Deploy with a custom name
+  web_deploy(operation="deploy", path="/path/to/project", name="my-portfolio")
+
+  # Deploy to Netlify instead of Vercel
+  web_deploy(operation="deploy", path="/path/to/project", provider="netlify")
+
+  # Preview deploy (not production)
+  web_deploy(operation="deploy", path="/path/to/project", production=False)
+
+  # See all past deployments and their URLs
+  web_deploy(operation="list")
+
+### Supported Frameworks
+
+  | framework | Description                          |
+  |-----------|--------------------------------------|
+  | react     | React + Vite + TypeScript (default)  |
+  | nextjs    | Next.js (App Router, TypeScript)     |
+  | vue       | Vue 3 + Vite + TypeScript            |
+  | svelte    | SvelteKit                            |
+  | astro     | Astro (static site generator)        |
+  | static    | Plain HTML + CSS + JS (no build)     |
+  | nodejs    | Node.js Express API/server           |
+
+### Full Web Publishing Workflow
+
+  When the user asks you to "build a website" or "create a web app":
+
+  STEP 1 — Scaffold the project
+    web_deploy(operation="scaffold", framework="react",
+               path="~/projects/my-app", name="my-app")
+
+  STEP 2 — Write the code
+    Use code_editor to write HTML, CSS, JS, React components, etc.
+    The project is a normal directory — edit any file you need.
+
+  STEP 3 — Deploy to a live URL
+    web_deploy(operation="deploy", path="~/projects/my-app", name="my-app")
+    → Returns a live public URL like https://my-app.vercel.app
+
+  STEP 4 — Share the URL with the user
+    Tell the user the live URL so they can visit it immediately.
+
+### Setup (one-time, user must do this)
+
+  The user needs to add a Vercel or Netlify token to Plutus settings:
+
+  Vercel (recommended):
+    1. Go to https://vercel.com/account/tokens
+    2. Click "Create Token", name it "Plutus"
+    3. In Plutus Settings → Secrets, add key: vercel_token
+
+  Netlify (alternative):
+    1. Go to https://app.netlify.com/user/applications/personal
+    2. Click "New access token", name it "Plutus"
+    3. In Plutus Settings → Secrets, add key: netlify_token
+
+  If no token is configured, web_deploy will return clear instructions
+  for the user to set one up.
+
+### What Gets Auto-Detected
+
+  The tool auto-detects the framework by looking at:
+  - Config files (next.config.js, vite.config.ts, astro.config.mjs, etc.)
+  - Source files (src/App.tsx, src/App.vue, index.html, server.js, etc.)
+  - package.json dependencies
+
+  It also auto-runs `npm install` and `npm run build` before deploying,
+  so you don't need to do those manually.
+
+### Tips
+
+  - For static HTML sites, just write the HTML/CSS/JS and deploy directly —
+    no build step needed.
+  - For React/Vue/Vite projects, the tool builds automatically before deploying.
+  - The project name becomes part of the URL: my-app → my-app.vercel.app
+  - Every deployment is saved to history — use web_deploy(operation="list")
+    to see all past URLs.
+  - You can redeploy the same project multiple times — it updates the same URL.
+
 ═══════════════════════════════════════════════════════════════
  PERSISTENT MEMORY & PLANNING (reference — see MANDATORY FIRST STEPS above)
 ═══════════════════════════════════════════════════════════════
