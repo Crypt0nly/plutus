@@ -104,13 +104,12 @@ class WebHostingConnector(BaseConnector):
         return {"success": False, "message": "Hosting connectors don't support messaging"}
 
     def status(self) -> dict[str, Any]:
-        configured = self.is_configured
-        return {
-            "name": self.name,
-            "configured": configured,
-            "connected": configured,
-            "listening": False,
-        }
+        """Return full status including display_name, description, icon, features, config_schema."""
+        base = super().status()
+        base["features"] = self.features
+        base["docs_url"] = self.docs_url
+        base["auth_type"] = "token"
+        return base
 
 
 class VercelConnector(WebHostingConnector):

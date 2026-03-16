@@ -509,8 +509,8 @@ function ConfigureModal({
   // Initialize form data
   useEffect(() => {
     const initial: Record<string, string> = {};
-    connector.config_schema.forEach((field) => {
-      initial[field.name] = connector.config[field.name] || "";
+    (connector.config_schema ?? []).forEach((field) => {
+      initial[field.name] = (connector.config ?? {})[field.name] || "";
     });
     setFormData(initial);
   }, [connector]);
@@ -839,8 +839,8 @@ function ConfigureModal({
               {isGoogle ? "OAuth Setup" : isAI ? "API Key" : isHosting ? "Deploy Token" : "Configuration"}
             </h4>
             <div className="space-y-3">
-              {connector.config_schema.map((field) => {
-                const hasSaved = connector.config[`_has_${field.name}`] === true;
+              {(connector.config_schema ?? []).map((field) => {
+                const hasSaved = (connector.config ?? {})[`_has_${field.name}`] === true;
                 const currentVal = formData[field.name] || "";
                 const effectivePlaceholder =
                   hasSaved && !currentVal
@@ -958,6 +958,50 @@ function ConfigureModal({
             </div>
           )}
 
+          {/* Hosting: Test Token + docs link */}
+          {isHosting && (
+            <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(99,102,241,0.04)", border: "1px solid rgba(99,102,241,0.12)" }}>
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                  connector.configured ? "bg-indigo-500/15 text-indigo-400" : "bg-gray-800 text-gray-500"
+                }`}>
+                  <Rocket className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-gray-200">Token Verification</h4>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {connector.configured
+                      ? "Token saved — click to verify it's still valid"
+                      : "Save your token above, then verify it works"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleTest}
+                disabled={testing || (!formData.token?.trim() && !connector.configured)}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 ${
+                  connector.configured
+                    ? "bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/20"
+                    : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                }`}
+              >
+                {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                {connector.configured ? "Re-verify Token" : "Verify Token"}
+              </button>
+              {connector.docs_url && (
+                <a
+                  href={connector.docs_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 text-[11px] text-indigo-400/60 hover:text-indigo-400 transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Get your {connector.display_name} token
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Docs link for AI providers */}
           {isAI && connector.docs_url && (
             <a
@@ -990,7 +1034,7 @@ function ConfigureModal({
           )}
 
           {/* Send Test Message (messaging connectors only) */}
-          {!isAI && connector.configured && connector.name !== "whatsapp" && (
+          {!isAI && !isHosting && connector.configured && connector.name !== "whatsapp" && (
             <div>
               <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
                 Send Test Message
