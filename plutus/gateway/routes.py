@@ -2282,9 +2282,11 @@ def create_router() -> APIRouter:
                 }
         else:
             # ── Pip install: just upgrade from PyPI ──
+            # --no-cache-dir ensures pip fetches the latest index from PyPI
+            # rather than serving a locally cached (old) wheel.
             pip_cmd = [
                 sys.executable, "-m", "pip", "install",
-                "--upgrade", "plutus-ai",
+                "--upgrade", "--no-cache-dir", "plutus-ai",
             ]
             code, out, err = await run(pip_cmd, timeout=180)
             clean_err = _clean_pip_stderr(err)
@@ -2317,7 +2319,7 @@ def create_router() -> APIRouter:
 
                 pip_cmd = [
                     sys.executable, "-m", "pip", "install",
-                    "--upgrade", "plutus-ai",
+                    "--upgrade", "--no-cache-dir", "plutus-ai",
                 ]
                 code, out, err = await run(pip_cmd, timeout=180)
                 clean_err = _clean_pip_stderr(err)
@@ -2353,22 +2355,49 @@ def create_router() -> APIRouter:
         except Exception:
             pass
 
-        # If pip "succeeded" but the version didn't change, no wheel was
-        # available for this platform.  Report the failure instead of
-        # doing a pointless restart.
+        # If pip "succeeded" but the version didn't change, check whether
+        # PyPI actually has a newer version.  If it does but the version
+        # didn't change, it means pip couldn't find a compatible wheel for
+        # this platform/Python combination.  If PyPI has no newer version
+        # either, the user is simply already up to date.
         if new_version == __version__:
-            return {
-                "success": False,
-                "error": (
-                    f"No update available for this platform. "
-                    f"Version {__version__} is still the latest "
-                    f"compatible wheel."
-                ),
-                "previous_version": __version__,
-                "new_version": new_version,
-                "steps": steps,
-                "restart_required": False,
-            }
+            # Ask PyPI for the latest published version
+            latest_pypi: str | None = None
+            try:
+                import urllib.request, json as _json
+                with urllib.request.urlopen(
+                    "https://pypi.org/pypi/plutus-ai/json", timeout=8
+                ) as _resp:
+                    _data = _json.loads(_resp.read())
+                    latest_pypi = _data["info"]["version"]
+            except Exception:
+                pass
+
+            if latest_pypi and latest_pypi != __version__:
+                # A newer version exists on PyPI but pip couldn't install it
+                # — most likely a missing wheel for this platform/Python.
+                return {
+                    "success": False,
+                    "error": (
+                        f"Update to v{latest_pypi} is available on PyPI but could not be "
+                        f"installed automatically. "
+                        f"Please run: pip install --upgrade plutus-ai"
+                    ),
+                    "previous_version": __version__,
+                    "new_version": latest_pypi,
+                    "steps": steps,
+                    "restart_required": False,
+                }
+            else:
+                # Already on the latest version
+                return {
+                    "success": False,
+                    "error": f"Already on the latest version ({__version__}).",
+                    "previous_version": __version__,
+                    "new_version": new_version,
+                    "steps": steps,
+                    "restart_required": False,
+                }
 
         # Schedule a server restart so the new code is loaded
         async def _restart_server() -> None:
