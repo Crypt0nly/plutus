@@ -6,13 +6,13 @@ interface Props {
 
 const decisionConfig: Record<
   string,
-  { icon: React.ElementType; color: string; bg: string; label: string }
+  { icon: React.ElementType; iconColor: string; bg: string; border: string; label: string }
 > = {
-  allowed: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Allowed" },
-  denied: { icon: XCircle, color: "text-red-400", bg: "bg-red-500/10", label: "Denied" },
-  pending_approval: { icon: Clock, color: "text-amber-400", bg: "bg-amber-500/10", label: "Pending" },
-  approved: { icon: CheckCircle2, color: "text-blue-400", bg: "bg-blue-500/10", label: "Approved" },
-  rejected: { icon: Shield, color: "text-red-400", bg: "bg-red-500/10", label: "Rejected" },
+  allowed: { icon: CheckCircle2, iconColor: "#34d399", bg: "rgba(16, 185, 129, 0.08)", border: "rgba(16, 185, 129, 0.12)", label: "Allowed" },
+  denied: { icon: XCircle, iconColor: "#f87171", bg: "rgba(239, 68, 68, 0.08)", border: "rgba(239, 68, 68, 0.12)", label: "Denied" },
+  pending_approval: { icon: Clock, iconColor: "#fbbf24", bg: "rgba(245, 158, 11, 0.08)", border: "rgba(245, 158, 11, 0.12)", label: "Pending" },
+  approved: { icon: CheckCircle2, iconColor: "#60a5fa", bg: "rgba(59, 130, 246, 0.08)", border: "rgba(59, 130, 246, 0.12)", label: "Approved" },
+  rejected: { icon: Shield, iconColor: "#f87171", bg: "rgba(239, 68, 68, 0.08)", border: "rgba(239, 68, 68, 0.12)", label: "Rejected" },
 };
 
 function timeAgo(timestamp: number): string {
@@ -24,14 +24,22 @@ function timeAgo(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString();
 }
 
+const cardStyle = {
+  background: "rgba(15, 18, 30, 0.8)",
+  border: "1px solid rgba(255, 255, 255, 0.06)",
+};
+
 export function ActivityFeed({ entries: rawEntries }: Props) {
   const entries = Array.isArray(rawEntries) ? rawEntries : [];
+
   if (entries.length === 0) {
     return (
-      <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
+      <div className="rounded-2xl p-5" style={cardStyle}>
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-9 h-9 rounded-lg bg-gray-500/10 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-gray-400" />
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: "rgba(107, 114, 128, 0.08)", border: "1px solid rgba(107, 114, 128, 0.12)" }}
+          >
+            <Zap className="w-4.5 h-4.5 text-gray-400" />
           </div>
           <div>
             <h3 className="text-sm font-semibold text-gray-200">Recent Activity</h3>
@@ -39,68 +47,75 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
           </div>
         </div>
         <div className="flex flex-col items-center justify-center py-10">
-          <div className="w-12 h-12 rounded-full bg-gray-800/50 flex items-center justify-center mb-3">
-            <Zap className="w-6 h-6 text-gray-600" />
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+          >
+            <Zap className="w-5 h-5 text-gray-700" />
           </div>
           <p className="text-sm text-gray-500">No activity yet</p>
-          <p className="text-xs text-gray-600 mt-1">Start a conversation to see actions here</p>
+          <p className="text-xs text-gray-700 mt-1">Start a conversation to see actions here</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-surface rounded-xl border border-gray-800/60 p-5">
+    <div className="rounded-2xl p-5" style={cardStyle}>
       <div className="flex items-center gap-3 mb-5">
-        <div className="w-9 h-9 rounded-lg bg-gray-500/10 flex items-center justify-center">
-          <Zap className="w-5 h-5 text-gray-400" />
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+          style={{ background: "rgba(107, 114, 128, 0.08)", border: "1px solid rgba(107, 114, 128, 0.12)" }}
+        >
+          <Zap className="w-4.5 h-4.5 text-gray-400" />
         </div>
         <div className="flex-1">
           <h3 className="text-sm font-semibold text-gray-200">Recent Activity</h3>
           <p className="text-xs text-gray-500">Last {Math.min(entries.length, 10)} tool calls</p>
         </div>
-        <span className="text-xs text-gray-600 bg-gray-800/50 px-2.5 py-1 rounded-full">
+        <span className="text-[11px] text-gray-500 px-2.5 py-1 rounded-full"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+        >
           {entries.length} total
         </span>
       </div>
       <div className="space-y-1">
         {entries.slice(0, 10).map((entry, i) => {
-          const config =
-            decisionConfig[entry.decision] || decisionConfig.allowed;
+          const config = decisionConfig[entry.decision] || decisionConfig.allowed;
           const Icon = config.icon;
 
           return (
             <div
               key={entry.id || i}
-              className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-800/30 transition-colors group"
+              className="flex items-center gap-3 py-2.5 px-3 rounded-xl transition-all duration-150 group cursor-default"
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.03)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.background = "";
+              }}
             >
-              <div
-                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${config.bg}`}
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: config.bg, border: `1px solid ${config.border}` }}
               >
-                <Icon className={`w-3.5 h-3.5 ${config.color}`} />
+                <Icon className="w-3.5 h-3.5" style={{ color: config.iconColor }} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-300">
-                    {entry.tool_name}
-                  </span>
+                  <span className="text-sm font-medium text-gray-300">{entry.tool_name}</span>
                   {entry.operation && (
-                    <span className="text-xs text-gray-500 font-mono">
-                      .{entry.operation}
-                    </span>
+                    <span className="text-xs text-gray-600 font-mono">.{entry.operation}</span>
                   )}
                 </div>
                 {entry.reason && (
-                  <p className="text-xs text-gray-500 truncate mt-0.5">{entry.reason}</p>
+                  <p className="text-xs text-gray-600 truncate mt-0.5">{entry.reason}</p>
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${config.bg} ${config.color}`}>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-medium"
+                  style={{ background: config.bg, color: config.iconColor, border: `1px solid ${config.border}` }}
+                >
                   {config.label}
                 </span>
-                <span className="text-[10px] text-gray-600">
-                  {timeAgo(entry.timestamp)}
-                </span>
+                <span className="text-[10px] text-gray-700">{timeAgo(entry.timestamp)}</span>
               </div>
             </div>
           );

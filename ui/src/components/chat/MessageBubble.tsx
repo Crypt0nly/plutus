@@ -37,8 +37,6 @@ interface Props {
   send: (data: Record<string, unknown>) => void;
 }
 
-// ── Tool icon mapping ───────────────────────────────────────
-
 const toolIconMap: Record<string, React.ElementType> = {
   code_editor: FileEdit,
   code_analysis: GitBranch,
@@ -51,18 +49,18 @@ const toolIconMap: Record<string, React.ElementType> = {
   connector: Send,
 };
 
-const toolColorMap: Record<string, string> = {
-  code_editor: "text-emerald-400 bg-emerald-500/8 border-emerald-500/15",
-  code_analysis: "text-blue-400 bg-blue-500/8 border-blue-500/15",
-  subprocess: "text-violet-400 bg-violet-500/8 border-violet-500/15",
-  tool_creator: "text-pink-400 bg-pink-500/8 border-pink-500/15",
-  shell: "text-amber-400 bg-amber-500/8 border-amber-500/15",
-  filesystem: "text-cyan-400 bg-cyan-500/8 border-cyan-500/15",
-  pc: "text-blue-400 bg-blue-500/8 border-blue-500/15",
-  connector: "text-violet-400 bg-violet-500/8 border-violet-500/15",
+const toolColorMap: Record<string, { icon: string; bg: string; border: string }> = {
+  code_editor: { icon: "#34d399", bg: "rgba(16, 185, 129, 0.06)", border: "rgba(16, 185, 129, 0.12)" },
+  code_analysis: { icon: "#60a5fa", bg: "rgba(59, 130, 246, 0.06)", border: "rgba(59, 130, 246, 0.12)" },
+  subprocess: { icon: "#a78bfa", bg: "rgba(139, 92, 246, 0.06)", border: "rgba(139, 92, 246, 0.12)" },
+  tool_creator: { icon: "#f472b6", bg: "rgba(236, 72, 153, 0.06)", border: "rgba(236, 72, 153, 0.12)" },
+  shell: { icon: "#fbbf24", bg: "rgba(245, 158, 11, 0.06)", border: "rgba(245, 158, 11, 0.12)" },
+  filesystem: { icon: "#22d3ee", bg: "rgba(6, 182, 212, 0.06)", border: "rgba(6, 182, 212, 0.12)" },
+  pc: { icon: "#60a5fa", bg: "rgba(59, 130, 246, 0.06)", border: "rgba(59, 130, 246, 0.12)" },
+  connector: { icon: "#a78bfa", bg: "rgba(139, 92, 246, 0.06)", border: "rgba(139, 92, 246, 0.12)" },
 };
 
-// ── Friendly operation labels ───────────────────────────────
+const defaultToolColor = { icon: "#9ca3af", bg: "rgba(107, 114, 128, 0.06)", border: "rgba(107, 114, 128, 0.12)" };
 
 const operationLabels: Record<string, string> = {
   read: "Reading file", write: "Writing file", edit: "Editing file",
@@ -95,20 +93,10 @@ const operationLabels: Record<string, string> = {
   update_skill: "Updating skill", delete_skill: "Deleting skill",
 };
 
-// ── Tool Call Card ──────────────────────────────────────────
-
-function ToolCallCard({
-  name,
-  args,
-}: {
-  name: string;
-  args: Record<string, unknown>;
-  id: string;
-}) {
+function ToolCallCard({ name, args }: { name: string; args: Record<string, unknown>; id: string }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = toolIconMap[name] || Terminal;
-  const colors = toolColorMap[name] || "text-gray-400 bg-gray-500/8 border-gray-500/15";
-  const [iconColor, bgColor, borderColor] = colors.split(" ");
+  const colors = toolColorMap[name] || defaultToolColor;
 
   const operation = args.operation as string | undefined;
   const action = args.action as string | undefined;
@@ -146,31 +134,49 @@ function ToolCallCard({
   }
 
   return (
-    <div className={`border rounded-xl overflow-hidden transition-all ${borderColor}`}>
+    <div className="rounded-xl overflow-hidden transition-all"
+      style={{ border: `1px solid ${colors.border}` }}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
-        className={`w-full flex items-center gap-3 px-3.5 py-2.5 ${bgColor} hover:brightness-110 transition-all`}
+        className="w-full flex items-center gap-3 px-3.5 py-2.5 transition-all"
+        style={{ background: colors.bg }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.15)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.filter = "";
+        }}
       >
-        <Icon className={`w-4 h-4 ${iconColor} flex-shrink-0`} />
+        <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: colors.icon }} />
         <div className="flex-1 text-left min-w-0">
-          <span className={`text-xs font-medium ${iconColor}`}>{friendlyLabel}</span>
+          <span className="text-xs font-medium capitalize" style={{ color: colors.icon }}>{friendlyLabel}</span>
           {preview && (
-            <span className="text-[11px] text-gray-500 ml-2 font-mono truncate">{preview}</span>
+            <span className="text-[11px] text-gray-600 ml-2 font-mono truncate">{preview}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <Clock className="w-3 h-3 text-gray-600 animate-pulse" />
-          {expanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-500" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-500" />}
+          <Clock className="w-3 h-3 text-gray-700 animate-pulse" />
+          {expanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-gray-600" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+          )}
         </div>
       </button>
       {expanded && (
-        <div className="px-3.5 py-3 bg-gray-950/60 border-t border-gray-800/50 animate-fade-in">
-          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Parameters</p>
+        <div className="px-3.5 py-3 animate-fade-in"
+          style={{
+            background: "rgba(8, 10, 20, 0.6)",
+            borderTop: `1px solid ${colors.border}`
+          }}
+        >
+          <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2">Parameters</p>
           <div className="space-y-1.5">
             {Object.entries(args).map(([key, value]) => (
               <div key={key} className="flex items-start gap-2">
-                <span className="text-[11px] text-gray-500 font-mono w-20 flex-shrink-0">{key}</span>
-                <span className="text-[11px] text-gray-300 font-mono break-all">
+                <span className="text-[11px] text-gray-600 font-mono w-20 flex-shrink-0">{key}</span>
+                <span className="text-[11px] text-gray-400 font-mono break-all">
                   {typeof value === "string"
                     ? value.length > 200 ? value.slice(0, 200) + "..." : value
                     : JSON.stringify(value, null, 2).slice(0, 200)}
@@ -184,15 +190,18 @@ function ToolCallCard({
   );
 }
 
-// ── Screenshot Display ─────────────────────────────────────
-
 function ScreenshotDisplay({ base64 }: { base64: string }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="bg-gray-950 border border-blue-500/15 rounded-xl overflow-hidden">
+    <div className="rounded-xl overflow-hidden"
+      style={{ background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(59, 130, 246, 0.15)" }}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-3.5 py-2 bg-blue-500/8 hover:bg-blue-500/12 transition-colors"
+        className="w-full flex items-center justify-between px-3.5 py-2 transition-colors"
+        style={{ background: "rgba(59, 130, 246, 0.06)" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.2)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = ""; }}
       >
         <div className="flex items-center gap-2">
           <Camera className="w-3.5 h-3.5 text-blue-400" />
@@ -207,18 +216,21 @@ function ScreenshotDisplay({ base64 }: { base64: string }) {
   );
 }
 
-// ── Attachment Displays ─────────────────────────────────────
-
 function AttachmentImageDisplay({ base64, fileName, caption }: { base64: string; fileName: string; caption: string }) {
   const [expanded, setExpanded] = useState(false);
   const ext = fileName.split(".").pop()?.toLowerCase() || "png";
   const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "gif" ? "image/gif" : ext === "webp" ? "image/webp" : "image/png";
 
   return (
-    <div className="bg-gray-950 border border-violet-500/15 rounded-xl overflow-hidden">
+    <div className="rounded-xl overflow-hidden"
+      style={{ background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(139, 92, 246, 0.15)" }}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-3.5 py-2 bg-violet-500/8 hover:bg-violet-500/12 transition-colors"
+        className="w-full flex items-center justify-between px-3.5 py-2 transition-colors"
+        style={{ background: "rgba(139, 92, 246, 0.06)" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.2)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = ""; }}
       >
         <div className="flex items-center gap-2">
           <Camera className="w-3.5 h-3.5 text-violet-400" />
@@ -238,24 +250,33 @@ function AttachmentFileDisplay({ fileName, sizeKB, filePath, caption }: { fileNa
   const downloadUrl = `/api/files?path=${encodeURIComponent(filePath)}`;
 
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden">
+    <div className="rounded-xl overflow-hidden"
+      style={{ background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(255,255,255,0.07)" }}
+    >
       <div className="flex items-center gap-3 px-4 py-3">
-        <div className="w-10 h-10 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center flex-shrink-0">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+        >
           <FileDown className="w-5 h-5 text-gray-400" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-200 truncate">{fileName}</p>
           <p className="text-xs text-gray-500">{sizeLabel}{caption ? ` — ${caption}` : ""}</p>
         </div>
-        <a href={downloadUrl} download={fileName} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium transition-colors border border-gray-700/50">
+        <a
+          href={downloadUrl}
+          download={fileName}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 transition-colors"
+          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.08)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.05)"; }}
+        >
           <FileDown className="w-3.5 h-3.5" /> Download
         </a>
       </div>
     </div>
   );
 }
-
-// ── Accessibility Tree Snapshot Display ──────────────────────
 
 function SnapshotDisplay({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -301,8 +322,12 @@ function SnapshotDisplay({ content }: { content: string }) {
   };
 
   return (
-    <div className="bg-gray-950 border border-blue-500/15 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-3.5 py-2 bg-blue-500/8 border-b border-blue-500/10">
+    <div className="rounded-xl overflow-hidden"
+      style={{ background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(59, 130, 246, 0.15)" }}
+    >
+      <div className="flex items-center justify-between px-3.5 py-2"
+        style={{ background: "rgba(59, 130, 246, 0.06)", borderBottom: "1px solid rgba(59, 130, 246, 0.1)" }}
+      >
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-blue-400">Accessibility Tree</span>
           <span className="text-[10px] text-gray-500">{lines.length} elements</span>
@@ -315,15 +340,16 @@ function SnapshotDisplay({ content }: { content: string }) {
         {(expanded ? lines : previewLines).map((line, i) => renderLine(line, i))}
       </div>
       {hasMore && (
-        <button onClick={() => setExpanded(!expanded)} className="w-full px-3.5 py-2 text-[11px] text-blue-400 hover:text-blue-300 bg-blue-500/5 border-t border-blue-500/10 transition-colors">
+        <button onClick={() => setExpanded(!expanded)}
+          className="w-full px-3.5 py-2 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+          style={{ background: "rgba(59, 130, 246, 0.04)", borderTop: "1px solid rgba(59, 130, 246, 0.1)" }}
+        >
           {expanded ? "Show less" : `Show all ${lines.length} elements`}
         </button>
       )}
     </div>
   );
 }
-
-// ── Tool Result Card ────────────────────────────────────────
 
 function ToolResultContent({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -369,10 +395,13 @@ function ToolResultContent({ content }: { content: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const headerStyle = { background: "rgba(15, 18, 30, 0.8)", borderBottom: "1px solid rgba(255,255,255,0.05)" };
+  const containerStyle = { background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(255,255,255,0.07)" };
+
   if (isDiff) {
     return (
-      <div className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-3.5 py-2 bg-gray-900/80 border-b border-gray-800/50">
+      <div className="rounded-xl overflow-hidden" style={containerStyle}>
+        <div className="flex items-center justify-between px-3.5 py-2" style={headerStyle}>
           <div className="flex items-center gap-2">
             <Code2 className="w-3.5 h-3.5 text-gray-500" />
             <span className="text-[11px] font-medium text-gray-400">File Changes</span>
@@ -397,7 +426,9 @@ function ToolResultContent({ content }: { content: string }) {
 
   if (isError) {
     return (
-      <div className="bg-red-500/5 border border-red-500/15 rounded-xl px-4 py-3">
+      <div className="rounded-xl px-4 py-3"
+        style={{ background: "rgba(239, 68, 68, 0.05)", border: "1px solid rgba(239, 68, 68, 0.15)" }}
+      >
         <div className="flex items-start gap-2">
           <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
           <pre className="text-xs text-red-300 font-mono whitespace-pre-wrap">{content}</pre>
@@ -413,8 +444,8 @@ function ToolResultContent({ content }: { content: string }) {
       const displayContent = JSON.stringify(parsed, null, 2);
       const showContent = expanded ? displayContent : displayContent.slice(0, 300);
       return (
-        <div className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-3.5 py-2 bg-gray-900/80 border-b border-gray-800/50">
+        <div className="rounded-xl overflow-hidden" style={containerStyle}>
+          <div className="flex items-center justify-between px-3.5 py-2" style={headerStyle}>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               <span className="text-[11px] font-medium text-gray-400">Result</span>
@@ -427,7 +458,10 @@ function ToolResultContent({ content }: { content: string }) {
             {showContent}{!expanded && displayContent.length > 300 && "..."}
           </pre>
           {displayContent.length > 300 && (
-            <button onClick={() => setExpanded(!expanded)} className="w-full px-3.5 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-gray-900/50 border-t border-gray-800/50 transition-colors">
+            <button onClick={() => setExpanded(!expanded)}
+              className="w-full px-3.5 py-2 text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+              style={{ background: "rgba(15, 18, 30, 0.5)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+            >
               {expanded ? "Show less" : "Show more"}
             </button>
           )}
@@ -438,8 +472,8 @@ function ToolResultContent({ content }: { content: string }) {
 
   const showContent = expanded ? content : content.slice(0, 300);
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-3.5 py-2 bg-gray-900/80 border-b border-gray-800/50">
+    <div className="rounded-xl overflow-hidden" style={containerStyle}>
+      <div className="flex items-center justify-between px-3.5 py-2" style={headerStyle}>
         <div className="flex items-center gap-2">
           <Play className="w-3.5 h-3.5 text-gray-500" />
           <span className="text-[11px] font-medium text-gray-400">Output</span>
@@ -452,15 +486,16 @@ function ToolResultContent({ content }: { content: string }) {
         {showContent}{!expanded && isLong && "..."}
       </pre>
       {isLong && (
-        <button onClick={() => setExpanded(!expanded)} className="w-full px-3.5 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-gray-900/50 border-t border-gray-800/50 transition-colors">
+        <button onClick={() => setExpanded(!expanded)}
+          className="w-full px-3.5 py-2 text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+          style={{ background: "rgba(15, 18, 30, 0.5)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+        >
           {expanded ? "Show less" : `Show more (${content.length} chars)`}
         </button>
       )}
     </div>
   );
 }
-
-// ── Main MessageBubble ──────────────────────────────────────
 
 export function MessageBubble({ message, send }: Props) {
   const { role, content, tool_calls } = message;
@@ -470,7 +505,12 @@ export function MessageBubble({ message, send }: Props) {
     return (
       <div className="flex justify-end py-2 animate-slide-up">
         <div className="max-w-xl">
-          <div className="bg-plutus-600 text-white px-4 py-3 rounded-2xl rounded-br-lg text-sm leading-relaxed">
+          <div className="px-4 py-3 rounded-2xl rounded-br-lg text-sm leading-relaxed text-white"
+            style={{
+              background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+              boxShadow: "0 4px 16px rgba(99, 102, 241, 0.25)"
+            }}
+          >
             {content}
           </div>
         </div>
@@ -495,14 +535,21 @@ export function MessageBubble({ message, send }: Props) {
       return (
         <div className="py-2 animate-slide-up">
           <div className="flex items-start gap-3">
-            <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+              style={{
+                background: "rgba(245, 158, 11, 0.1)",
+                border: "1px solid rgba(245, 158, 11, 0.2)"
+              }}
+            >
               <Cpu className="w-3.5 h-3.5 text-amber-400" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-xs font-semibold text-amber-300">{workerName}</span>
                 {workerModel && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-400/70 font-mono">{workerModel}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md font-mono"
+                    style={{ background: "rgba(245, 158, 11, 0.1)", color: "rgba(251, 191, 36, 0.7)" }}
+                  >{workerModel}</span>
                 )}
               </div>
               <div className="text-sm leading-relaxed text-gray-200">
@@ -516,10 +563,15 @@ export function MessageBubble({ message, send }: Props) {
 
     // Standard assistant
     return (
-      <div className="py-2 animate-slide-up">
+      <div className="py-2 animate-slide-up message-container">
         <div className="flex items-start gap-3">
-          <div className="w-7 h-7 rounded-lg bg-plutus-600/10 border border-plutus-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <Bot className="w-3.5 h-3.5 text-plutus-400" />
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+            style={{
+              background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(79, 70, 229, 0.08))",
+              border: "1px solid rgba(99, 102, 241, 0.15)"
+            }}
+          >
+            <Bot className="w-3.5 h-3.5" style={{ color: "#818cf8" }} />
           </div>
           <div className="flex-1 min-w-0">
             {content && (
@@ -543,7 +595,7 @@ export function MessageBubble({ message, send }: Props) {
   // ── Tool result ──
   if (role === "tool") {
     return (
-      <div className="py-1 pl-10 animate-fade-in">
+      <div className="py-1 pl-11 animate-fade-in">
         <ToolResultContent content={content || ""} />
       </div>
     );
@@ -559,9 +611,17 @@ export function MessageBubble({ message, send }: Props) {
       const isComputerUse = content.includes("Computer Use mode");
       return (
         <div className="flex items-center justify-center py-2 animate-fade-in">
-          <div className={`px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5 ${
-            isComputerUse ? "bg-blue-500/8 text-blue-400 border border-blue-500/15" : "bg-emerald-500/8 text-emerald-400 border border-emerald-500/15"
-          }`}>
+          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5"
+            style={isComputerUse ? {
+              background: "rgba(59, 130, 246, 0.08)",
+              color: "#60a5fa",
+              border: "1px solid rgba(59, 130, 246, 0.15)"
+            } : {
+              background: "rgba(16, 185, 129, 0.08)",
+              color: "#34d399",
+              border: "1px solid rgba(16, 185, 129, 0.15)"
+            }}
+          >
             {isComputerUse ? <Monitor className="w-3 h-3" /> : <Terminal className="w-3 h-3" />}
             {content}
           </div>
@@ -576,10 +636,12 @@ export function MessageBubble({ message, send }: Props) {
       const wModel = colonIdx >= 0 ? rest.slice(colonIdx + 1) : "";
       return (
         <div className="flex items-center justify-center py-2 animate-fade-in">
-          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-2 bg-amber-500/8 text-amber-400/80 border border-amber-500/12">
+          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-2"
+            style={{ background: "rgba(245, 158, 11, 0.07)", color: "rgba(251, 191, 36, 0.8)", border: "1px solid rgba(245, 158, 11, 0.12)" }}
+          >
             <Cpu className="w-3 h-3" />
             <span>Worker <strong>{wName}</strong> dispatched</span>
-            <span className="text-[10px] font-mono text-amber-400/50">{wModel}</span>
+            <span className="text-[10px] font-mono" style={{ color: "rgba(251, 191, 36, 0.5)" }}>{wModel}</span>
           </div>
         </div>
       );
@@ -588,7 +650,9 @@ export function MessageBubble({ message, send }: Props) {
     if (typeof content === "string" && content.startsWith("[HEARTBEAT]")) {
       return (
         <div className="flex items-center justify-center py-2 animate-fade-in">
-          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5 bg-rose-500/8 text-rose-400/80 border border-rose-500/12">
+          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5"
+            style={{ background: "rgba(239, 68, 68, 0.07)", color: "rgba(252, 165, 165, 0.8)", border: "1px solid rgba(239, 68, 68, 0.12)" }}
+          >
             <Heart className="w-3 h-3" /><span>Heartbeat</span>
           </div>
         </div>
@@ -599,7 +663,9 @@ export function MessageBubble({ message, send }: Props) {
       const notifText = content.replace("[SYSTEM NOTIFICATION]\n", "").replace("[SYSTEM NOTIFICATION]", "").trim();
       return (
         <div className="flex items-center justify-center py-2 animate-fade-in">
-          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5 bg-blue-500/8 text-blue-400/80 border border-blue-500/12 max-w-lg truncate">
+          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5 max-w-lg truncate"
+            style={{ background: "rgba(59, 130, 246, 0.07)", color: "rgba(147, 197, 253, 0.8)", border: "1px solid rgba(59, 130, 246, 0.12)" }}
+          >
             <Info className="w-3 h-3 shrink-0" /><span className="truncate">{notifText || "System notification"}</span>
           </div>
         </div>
@@ -610,7 +676,9 @@ export function MessageBubble({ message, send }: Props) {
       const sysText = content.replace("[SYSTEM]", "").trim();
       return (
         <div className="flex items-center justify-center py-2 animate-fade-in">
-          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5 bg-gray-500/8 text-gray-400 border border-gray-500/12 max-w-lg">
+          <div className="px-3 py-1.5 rounded-full text-[11px] font-medium flex items-center gap-1.5 max-w-lg"
+            style={{ background: "rgba(107, 114, 128, 0.07)", color: "rgba(156, 163, 175, 0.8)", border: "1px solid rgba(107, 114, 128, 0.12)" }}
+          >
             <Info className="w-3 h-3 shrink-0" /><span className="truncate">{sysText}</span>
           </div>
         </div>
@@ -620,7 +688,7 @@ export function MessageBubble({ message, send }: Props) {
     if (content?.startsWith("Step ")) {
       return (
         <div className="flex items-center justify-center py-1 animate-fade-in">
-          <span className="text-[10px] text-gray-600 font-mono">{content}</span>
+          <span className="text-[10px] text-gray-700 font-mono">{content}</span>
         </div>
       );
     }
