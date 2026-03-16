@@ -16,6 +16,7 @@ from plutus.connectors.google import (
     GoogleDriveConnector,
 )
 from plutus.connectors.telegram import TelegramConnector
+from plutus.connectors.web_hosting import NetlifyConnector, VercelConnector
 from plutus.connectors.whatsapp import WhatsAppConnector
 
 
@@ -43,6 +44,10 @@ def create_connector_manager() -> ConnectorManager:
     mgr.register(GoogleCalendarConnector())
     mgr.register(GoogleDriveConnector())
 
+    # Web Hosting
+    mgr.register(VercelConnector())
+    mgr.register(NetlifyConnector())
+
     return mgr
 
 
@@ -61,5 +66,7 @@ __all__ = [
     "GmailConnector",
     "GoogleCalendarConnector",
     "GoogleDriveConnector",
+    "VercelConnector",
+    "NetlifyConnector",
     "create_connector_manager",
 ]

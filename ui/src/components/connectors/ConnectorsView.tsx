@@ -35,6 +35,8 @@ import {
   Link,
   ChevronDown,
   ChevronUp,
+  Rocket,
+  Upload,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -74,6 +76,9 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Server: Server,
   Calendar: Calendar,
   HardDrive: HardDrive,
+  Globe: Globe,
+  Rocket: Rocket,
+  Upload: Upload,
 };
 
 /* ─── AI Provider Card ─── */
@@ -154,6 +159,125 @@ function AIProviderCard({
           ) : (
             <>
               Add Key
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Web Hosting Card ─── */
+function HostingConnectorCard({
+  connector,
+  onConfigure,
+}: {
+  connector: ConnectorData;
+  onConfigure: (c: ConnectorData) => void;
+}) {
+  const Icon = ICON_MAP[connector.icon] || Rocket;
+  const isVercel = connector.name === "vercel";
+  // Vercel: black/white brand feel → use indigo accent
+  // Netlify: teal brand → use teal/emerald accent
+  const accentRgb = isVercel ? "99, 102, 241" : "20, 184, 166";
+  const accentText = isVercel ? "text-indigo-400" : "text-teal-400";
+  const accentBg = isVercel ? "rgba(99,102,241,0.12)" : "rgba(20,184,166,0.12)";
+  const accentBorder = isVercel ? "rgba(99,102,241,0.25)" : "rgba(20,184,166,0.25)";
+  const btnBg = isVercel ? "rgba(99,102,241,0.85)" : "rgba(20,184,166,0.85)";
+  const btnShadow = isVercel ? "0 4px 14px rgba(99,102,241,0.25)" : "0 4px 14px rgba(20,184,166,0.25)";
+  const pillText = isVercel ? "text-indigo-400" : "text-teal-400";
+  const pillBg = isVercel ? "rgba(99,102,241,0.1)" : "rgba(20,184,166,0.1)";
+  const pillBorder = isVercel ? "rgba(99,102,241,0.2)" : "rgba(20,184,166,0.2)";
+
+  return (
+    <div
+      className="group relative rounded-2xl transition-all duration-200"
+      style={
+        connector.configured
+          ? { background: `rgba(${accentRgb}, 0.04)`, border: `1px solid rgba(${accentRgb}, 0.2)` }
+          : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }
+      }
+    >
+      <div className="p-5 flex flex-col h-full">
+        {/* Header row */}
+        <div className="flex items-start justify-between mb-3">
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+            style={
+              connector.configured
+                ? { background: accentBg, color: isVercel ? "#818cf8" : "#2dd4bf" }
+                : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
+            }
+          >
+            <Icon className="w-5 h-5" />
+          </div>
+
+          {connector.configured ? (
+            <span
+              className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full ${pillText}`}
+              style={{ background: pillBg, border: `1px solid ${pillBorder}` }}
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              Ready
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <Power className="w-3 h-3" />
+              No token
+            </span>
+          )}
+        </div>
+
+        {/* Name + Description */}
+        <h3 className="text-[15px] font-semibold text-gray-100 mb-1">
+          {connector.display_name}
+        </h3>
+        <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-3">
+          {connector.description}
+        </p>
+
+        {/* Feature tags */}
+        {connector.features && connector.features.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {connector.features.slice(0, 4).map((feat) => (
+              <span
+                key={feat}
+                className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/20"
+              >
+                {feat}
+              </span>
+            ))}
+            {connector.features.length > 4 && (
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-gray-800/60 text-gray-500 ring-1 ring-gray-700/20">
+                +{connector.features.length - 4} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Action button */}
+        <button
+          onClick={() => onConfigure(connector)}
+          className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+            connector.configured
+              ? "text-gray-300 hover:text-gray-100"
+              : "text-white active:scale-[0.98]"
+          }`}
+          style={
+            connector.configured
+              ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }
+              : { background: btnBg, boxShadow: btnShadow }
+          }
+        >
+          {connector.configured ? (
+            <>
+              <Settings2 className="w-4 h-4" />
+              Manage Token
+            </>
+          ) : (
+            <>
+              Connect
               <ArrowRight className="w-4 h-4" />
             </>
           )}
@@ -379,6 +503,7 @@ function ConfigureModal({
   const Icon = ICON_MAP[connector.icon] || Plug;
   const isAI = connector.category === "ai";
   const isGoogle = connector.auth_type === "oauth";
+  const isHosting = connector.category === "hosting";
   const supportsTwoWay = connector.name === "telegram" || connector.name === "discord";
 
   // Initialize form data
@@ -522,11 +647,13 @@ function ConfigureModal({
   };
 
   // Color scheme based on category
-  const accentColor = isGoogle ? "sky" : isAI ? "violet" : "plutus";
+  const accentColor = isGoogle ? "sky" : isAI ? "violet" : isHosting ? "indigo" : "plutus";
   const saveButtonClass = isGoogle
     ? "bg-sky-600 hover:bg-sky-500 shadow-md shadow-sky-600/15"
     : isAI
     ? "bg-violet-600 hover:bg-violet-500 shadow-md shadow-violet-600/15"
+    : isHosting
+    ? "bg-indigo-600 hover:bg-indigo-500 shadow-md shadow-indigo-600/15"
     : "bg-plutus-600 hover:bg-plutus-500 shadow-md shadow-plutus-600/15";
 
   const handleAuthorize = async () => {
@@ -568,6 +695,10 @@ function ConfigureModal({
                 ? connector.configured
                   ? "bg-violet-500/15 text-violet-400"
                   : "bg-violet-500/10 text-violet-400"
+                : isHosting
+                ? connector.configured
+                  ? "bg-indigo-500/15 text-indigo-400"
+                  : "bg-indigo-500/10 text-indigo-400"
                 : listening
                 ? "bg-blue-500/15 text-blue-400"
                 : connector.configured
@@ -590,6 +721,11 @@ function ConfigureModal({
               {isGoogle && (
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20 uppercase tracking-wider">
                   OAuth
+                </span>
+              )}
+              {isHosting && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20 uppercase tracking-wider">
+                  Hosting
                 </span>
               )}
             </div>
@@ -700,7 +836,7 @@ function ConfigureModal({
           {/* Configuration Fields */}
           <div>
             <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              {isGoogle ? "OAuth Setup" : isAI ? "API Key" : "Configuration"}
+              {isGoogle ? "OAuth Setup" : isAI ? "API Key" : isHosting ? "Deploy Token" : "Configuration"}
             </h4>
             <div className="space-y-3">
               {connector.config_schema.map((field) => {
@@ -732,10 +868,12 @@ function ConfigureModal({
                           : "text"
                       }
                       className={`w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none transition-all ${
-                        isGoogle
+                          isGoogle
                           ? "focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20"
                           : isAI
                           ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+                          : isHosting
+                          ? "focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
                           : "focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
                       }`}
                       placeholder={effectivePlaceholder}
@@ -1062,9 +1200,10 @@ export default function ConnectorsView() {
   // Split by category
   const aiConnectors = connectors.filter((c) => c.category === "ai");
   const googleConnectors = connectors.filter((c) => c.category === "google");
+  const hostingConnectors = connectors.filter((c) => c.category === "hosting");
   const customConnectors = connectors.filter((c) => (c as any).is_custom);
   const messagingConnectors = connectors.filter(
-    (c) => c.category !== "ai" && c.category !== "google" && !(c as any).is_custom
+    (c) => c.category !== "ai" && c.category !== "google" && c.category !== "hosting" && !(c as any).is_custom
   );
 
   const aiConfigured = aiConnectors.filter((c) => c.configured);
@@ -1072,6 +1211,9 @@ export default function ConnectorsView() {
 
   const googleConfigured = googleConnectors.filter((c) => c.configured);
   const googleAvailable = googleConnectors.filter((c) => !c.configured);
+
+  const hostingConfigured = hostingConnectors.filter((c) => c.configured);
+  const hostingAvailable = hostingConnectors.filter((c) => !c.configured);
 
   const msgConfigured = messagingConnectors.filter((c) => c.configured);
   const msgAvailable = messagingConnectors.filter((c) => !c.configured);
@@ -1170,7 +1312,50 @@ export default function ConnectorsView() {
         )}
 
         {/* Divider */}
-        {(aiConnectors.length > 0 || googleConnectors.length > 0) && messagingConnectors.length > 0 && (
+        {(aiConnectors.length > 0 || googleConnectors.length > 0) && hostingConnectors.length > 0 && (
+          <div className="h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)" }} />
+        )}
+
+        {/* ═══════════════════════════════════════════════ */}
+        {/* WEB HOSTING SECTION                             */}
+        {/* ═══════════════════════════════════════════════ */}
+        {hostingConnectors.length > 0 && (
+          <div>
+            {/* Section header */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.12)" }}>
+                <Rocket className="w-4 h-4 text-indigo-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-200">
+                  Web Hosting
+                </h3>
+                <p className="text-[11px] text-gray-500">
+                  Deploy and host websites publicly — React, Next.js, Vue, static HTML &amp; more
+                </p>
+              </div>
+              {hostingConfigured.length > 0 && (
+                <span className="ml-auto text-[10px] font-semibold px-2.5 py-1 rounded-full text-indigo-400" style={{ background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.15)" }}>
+                  {hostingConfigured.length} connected
+                </span>
+              )}
+            </div>
+
+            {/* Hosting cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[...hostingConfigured, ...hostingAvailable].map((c) => (
+                <HostingConnectorCard
+                  key={c.name}
+                  connector={c}
+                  onConfigure={setConfiguring}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Divider */}
+        {(aiConnectors.length > 0 || googleConnectors.length > 0 || hostingConnectors.length > 0) && messagingConnectors.length > 0 && (
           <div className="h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)" }} />
         )}
 
