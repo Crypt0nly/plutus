@@ -4,33 +4,91 @@
 
 @layer base {
   /* ── Theme color variables ─────────────────────────────────
-   * Redesigned for a sleek, modern dark-first UI.
-   * Light mode uses soft neutrals; dark mode uses deep navy/slate tones.
+   * Tailwind's gray-* scale is remapped to CSS variables so every
+   * bg-gray-*, text-gray-*, border-gray-* class responds to the theme.
+   *
+   * Convention (both themes):
+   *   gray-50  = lightest text / faintest tint
+   *   gray-950 = page background (darkest surface)
+   *
+   * Light mode: gray-50 is near-black text, gray-950 is near-white bg.
+   * Dark mode:  gray-50 is near-white text, gray-950 is near-black bg.
    */
-  :root {
-    /* Light mode — warm neutral palette */
-    --gray-50: 3 7 18;
-    --gray-100: 17 24 39;
-    --gray-200: 31 41 55;
-    --gray-300: 55 65 81;
-    --gray-400: 75 85 99;
-    --gray-500: 107 114 128;
-    --gray-600: 156 163 175;
-    --gray-700: 213 218 225;
-    --gray-800: 233 236 241;
-    --gray-900: 255 255 255;
-    --gray-950: 247 248 250;
 
-    --surface: 255 255 255;
-    --surface-alt: 247 248 252;
-    --surface-deep: 240 241 247;
+  :root {
+    /* Light mode — clean white/slate palette */
+    --gray-50:  15 23 42;        /* near-black — primary text */
+    --gray-100: 30 41 59;        /* dark text */
+    --gray-200: 51 65 85;        /* secondary text */
+    --gray-300: 71 85 105;       /* muted text */
+    --gray-400: 100 116 139;     /* placeholder / disabled */
+    --gray-500: 148 163 184;     /* subtle text */
+    --gray-600: 203 213 225;     /* dividers / subtle borders */
+    --gray-700: 226 232 240;     /* light borders */
+    --gray-800: 241 245 249;     /* card backgrounds */
+    --gray-900: 248 250 252;     /* elevated surfaces */
+    --gray-950: 255 255 255;     /* page background */
+
+    --surface:      248 250 252;
+    --surface-alt:  241 245 249;
+    --surface-deep: 226 232 240;
 
     --plutus-rgb: 99 102 241;
+
+    /* Light-mode sidebar */
+    --sidebar-bg-from: 248 250 252;
+    --sidebar-bg-to:   241 245 249;
+    --sidebar-border:  rgba(0,0,0,0.07);
+    --sidebar-glow:    rgba(99,102,241,0.06);
+    --sidebar-divider: rgba(0,0,0,0.06);
+    --sidebar-hover:   rgba(0,0,0,0.04);
+    --sidebar-active-bg-from: rgba(99,102,241,0.10);
+    --sidebar-active-bg-to:   rgba(79,70,229,0.06);
+    --sidebar-active-border:  rgba(99,102,241,0.18);
+    --sidebar-active-text:    #4338ca;
+    --sidebar-inactive-text:  #64748b;
+    --sidebar-inactive-hover: #1e293b;
+    --sidebar-section-text:   #94a3b8;
+
+    /* Light-mode chat welcome */
+    --welcome-text:    #0f172a;
+    --welcome-subtext: #475569;
+    --welcome-hint:    #94a3b8;
+    --prompt-bg:       rgba(0,0,0,0.02);
+    --prompt-border:   rgba(0,0,0,0.06);
+    --prompt-hover-bg: rgba(99,102,241,0.05);
+    --prompt-hover-border: rgba(99,102,241,0.12);
+    --prompt-text:     #475569;
+    --prompt-hover-text: #1e293b;
+
+    /* Light-mode markdown */
+    --md-text: #1e293b;
+    --md-code-bg: #f1f5f9;
+    --md-code-border: #e2e8f0;
+    --md-code-text: #334155;
+    --md-blockquote-border: #c7d2fe;
+    --md-blockquote-bg: #eef2ff;
+    --md-blockquote-text: #4338ca;
+    --md-hr: #e2e8f0;
+    --md-link: #4f46e5;
+    --md-heading: #0f172a;
+
+    /* Light-mode number input */
+    --num-input-bg: rgba(241,245,249,0.9);
+    --num-input-border: rgba(203,213,225,0.8);
+    --num-input-text: #1e293b;
+    --num-input-btn-hover: rgba(203,213,225,0.5);
+    --num-input-btn-text: #64748b;
+    --num-input-btn-hover-text: #1e293b;
+
+    /* Light-mode toggle off state */
+    --toggle-off-bg: rgba(203,213,225,0.9);
+    --toggle-off-border: rgba(148,163,184,0.5);
   }
 
   .dark {
     /* Dark mode — deep navy/slate inspired */
-    --gray-50: 249 250 251;
+    --gray-50:  249 250 251;
     --gray-100: 243 244 246;
     --gray-200: 229 231 235;
     --gray-300: 209 213 219;
@@ -42,15 +100,65 @@
     --gray-900: 15 18 30;
     --gray-950: 8 10 20;
 
-    --surface: 15 18 30;
-    --surface-alt: 11 13 24;
+    --surface:      15 18 30;
+    --surface-alt:  11 13 24;
     --surface-deep: 8 10 20;
 
     --plutus-rgb: 99 102 241;
+
+    /* Dark-mode sidebar */
+    --sidebar-bg-from: 10 12 22;
+    --sidebar-bg-to:   8 10 20;
+    --sidebar-border:  rgba(255,255,255,0.05);
+    --sidebar-glow:    rgba(99,102,241,0.08);
+    --sidebar-divider: rgba(255,255,255,0.06);
+    --sidebar-hover:   rgba(255,255,255,0.03);
+    --sidebar-active-bg-from: rgba(99,102,241,0.15);
+    --sidebar-active-bg-to:   rgba(79,70,229,0.08);
+    --sidebar-active-border:  rgba(99,102,241,0.15);
+    --sidebar-active-text:    #fff;
+    --sidebar-inactive-text:  #6b7280;
+    --sidebar-inactive-hover: #d1d5db;
+    --sidebar-section-text:   #4b5563;
+
+    /* Dark-mode chat welcome */
+    --welcome-text:    #f3f4f6;
+    --welcome-subtext: #9ca3af;
+    --welcome-hint:    #4b5563;
+    --prompt-bg:       rgba(255,255,255,0.02);
+    --prompt-border:   rgba(255,255,255,0.05);
+    --prompt-hover-bg: rgba(99,102,241,0.06);
+    --prompt-hover-border: rgba(99,102,241,0.15);
+    --prompt-text:     #6b7280;
+    --prompt-hover-text: #e5e7eb;
+
+    /* Dark-mode markdown */
+    --md-text: #d1d5db;
+    --md-code-bg: rgba(15,18,30,0.8);
+    --md-code-border: rgba(55,65,81,0.6);
+    --md-code-text: #a5b4fc;
+    --md-blockquote-border: rgba(99,102,241,0.4);
+    --md-blockquote-bg: rgba(99,102,241,0.05);
+    --md-blockquote-text: #a5b4fc;
+    --md-hr: rgba(55,65,81,0.5);
+    --md-link: #818cf8;
+    --md-heading: #f9fafb;
+
+    /* Dark-mode number input */
+    --num-input-bg: rgba(15,18,30,0.8);
+    --num-input-border: rgba(55,65,81,0.6);
+    --num-input-text: #e5e7eb;
+    --num-input-btn-hover: rgba(55,65,81,0.5);
+    --num-input-btn-text: #6b7280;
+    --num-input-btn-hover-text: #e5e7eb;
+
+    /* Dark-mode toggle off state */
+    --toggle-off-bg: rgba(55,65,81,0.8);
+    --toggle-off-border: rgba(75,85,99,0.5);
   }
 
   * {
-    @apply border-gray-800;
+    @apply border-gray-700;
   }
 
   body {
@@ -91,28 +199,28 @@
   }
 
   .btn-danger {
-    @apply bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-xl
+    @apply bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 px-4 py-2 rounded-xl
            font-medium transition-all duration-200 active:scale-[0.97] border border-red-500/20;
   }
 
   .btn-success {
-    @apply bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 px-4 py-2 rounded-xl
+    @apply bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-4 py-2 rounded-xl
            font-medium transition-all duration-200 active:scale-[0.97] border border-emerald-500/20;
   }
 
   .card {
-    @apply bg-surface border border-gray-800/50 rounded-2xl p-5 shadow-xl shadow-black/10;
+    @apply bg-surface border border-gray-700/50 rounded-2xl p-5 shadow-xl shadow-black/5 dark:shadow-black/20;
   }
 
   .input {
     @apply bg-gray-900/80 border border-gray-700/50 rounded-xl px-4 py-2.5 text-gray-100
-           placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40
+           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40
            focus:border-indigo-500/60 transition-all duration-200 w-full;
   }
 
   /* Glass card effect */
   .glass-card {
-    @apply bg-gray-900/40 backdrop-blur-xl border border-white/5 rounded-2xl;
+    @apply bg-gray-800/40 dark:bg-gray-900/40 backdrop-blur-xl border border-gray-700/20 dark:border-white/5 rounded-2xl;
   }
 
   /* Gradient border effect */
@@ -122,6 +230,53 @@
     border: 1px solid transparent;
     background-clip: padding-box;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Sidebar — theme-aware via CSS variables
+   ═══════════════════════════════════════════════════════════ */
+
+.sidebar-root {
+  background: linear-gradient(180deg,
+    rgb(var(--sidebar-bg-from)) 0%,
+    rgb(var(--sidebar-bg-to)) 100%
+  );
+  border-right: 1px solid var(--sidebar-border);
+}
+
+.sidebar-glow-top {
+  background: radial-gradient(ellipse at 50% 0%,
+    var(--sidebar-glow) 0%, transparent 70%
+  );
+}
+
+.sidebar-divider {
+  background: linear-gradient(90deg,
+    transparent, var(--sidebar-divider), transparent
+  );
+}
+
+.sidebar-nav-item {
+  color: var(--sidebar-inactive-text);
+  transition: all 0.15s ease;
+}
+
+.sidebar-nav-item:hover {
+  color: var(--sidebar-inactive-hover);
+  background: var(--sidebar-hover);
+}
+
+.sidebar-nav-item.active {
+  color: var(--sidebar-active-text);
+  background: linear-gradient(135deg,
+    var(--sidebar-active-bg-from),
+    var(--sidebar-active-bg-to)
+  );
+  box-shadow: inset 0 0 0 1px var(--sidebar-active-border);
+}
+
+.sidebar-section-label {
+  color: var(--sidebar-section-text);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -143,8 +298,8 @@ input[type="range"].plutus-slider {
   background: linear-gradient(to right,
     #6366f1 0%,
     #818cf8 var(--slider-fill, 50%),
-    rgba(55, 65, 81, 0.5) var(--slider-fill, 50%),
-    rgba(55, 65, 81, 0.5) 100%
+    rgba(var(--gray-700) / 0.5) var(--slider-fill, 50%),
+    rgba(var(--gray-700) / 0.5) 100%
   );
 }
 
@@ -156,14 +311,14 @@ input[type="range"].plutus-slider::-webkit-slider-thumb {
   border-radius: 50%;
   background: #fff;
   border: 2px solid #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), 0 2px 8px rgba(0, 0, 0, 0.2);
   cursor: grab;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 input[type="range"].plutus-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.25), 0 3px 12px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.25), 0 3px 12px rgba(0, 0, 0, 0.25);
 }
 
 input[type="range"].plutus-slider::-webkit-slider-thumb:active {
@@ -177,7 +332,7 @@ input[type="range"].plutus-slider::-moz-range-thumb {
   border-radius: 50%;
   background: #fff;
   border: 2px solid #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2), 0 2px 8px rgba(0, 0, 0, 0.2);
   cursor: grab;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -185,7 +340,7 @@ input[type="range"].plutus-slider::-moz-range-thumb {
 input[type="range"].plutus-slider::-moz-range-track {
   height: 4px;
   border-radius: 9999px;
-  background: rgba(55, 65, 81, 0.5);
+  background: rgb(var(--gray-700) / 0.5);
 }
 
 input[type="range"].plutus-slider::-moz-range-progress {
@@ -198,19 +353,19 @@ input[type="range"].plutus-slider-emerald {
   background: linear-gradient(to right,
     #10b981 0%,
     #34d399 var(--slider-fill, 50%),
-    rgba(55, 65, 81, 0.5) var(--slider-fill, 50%),
-    rgba(55, 65, 81, 0.5) 100%
+    rgba(var(--gray-700) / 0.5) var(--slider-fill, 50%),
+    rgba(var(--gray-700) / 0.5) 100%
   );
 }
 
 input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
   border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2), 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2), 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 
 /* ═══════════════════════════════════════════════════════════
-   Custom Toggle Switch — Refined
+   Custom Toggle Switch — theme-aware
    ═══════════════════════════════════════════════════════════ */
 
 .toggle-switch {
@@ -226,8 +381,8 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
 }
 
 .toggle-switch[data-state="off"] {
-  background: rgba(55, 65, 81, 0.8);
-  border: 1px solid rgba(75, 85, 99, 0.5);
+  background: var(--toggle-off-bg);
+  border: 1px solid var(--toggle-off-border);
 }
 
 .toggle-switch[data-state="on"] {
@@ -237,7 +392,7 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
 }
 
 .toggle-switch:hover[data-state="off"] {
-  background: rgba(75, 85, 99, 0.8);
+  background: rgb(var(--gray-600) / 0.6);
 }
 
 .toggle-switch:hover[data-state="on"] {
@@ -256,7 +411,7 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
   height: 16px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), 0 0 1px rgba(0, 0, 0, 0.1);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -339,7 +494,7 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
 
 
 /* ═══════════════════════════════════════════════════════════
-   Number Input with Stepper
+   Number Input with Stepper — theme-aware
    ═══════════════════════════════════════════════════════════ */
 
 .number-input-group {
@@ -347,8 +502,8 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
   align-items: center;
   border-radius: 0.75rem;
   overflow: hidden;
-  border: 1px solid rgba(55, 65, 81, 0.6);
-  background: rgba(15, 18, 30, 0.8);
+  border: 1px solid var(--num-input-border);
+  background: var(--num-input-bg);
   transition: all 0.2s ease;
 }
 
@@ -362,7 +517,7 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
   border: none;
   outline: none;
   text-align: center;
-  color: rgb(229, 231, 235);
+  color: var(--num-input-text);
   padding: 0.5rem 0;
   margin: 0;
 }
@@ -373,18 +528,18 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
   justify-content: center;
   width: 32px;
   height: 100%;
-  color: rgba(107, 114, 128, 1);
+  color: var(--num-input-btn-text);
   transition: all 0.15s ease;
   flex-shrink: 0;
 }
 
 .number-input-group button:hover {
-  background: rgba(55, 65, 81, 0.5);
-  color: rgba(229, 231, 235, 1);
+  background: var(--num-input-btn-hover);
+  color: var(--num-input-btn-hover-text);
 }
 
 .number-input-group button:active {
-  background: rgba(55, 65, 81, 0.8);
+  background: rgb(var(--gray-700) / 0.8);
 }
 
 
@@ -560,9 +715,12 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
   border-radius: inherit;
 }
 
-/* Markdown content improvements */
+/* ═══════════════════════════════════════════════════════════
+   Markdown content — theme-aware
+   ═══════════════════════════════════════════════════════════ */
+
 .markdown-content {
-  color: rgb(209, 213, 219);
+  color: var(--md-text);
   line-height: 1.7;
 }
 
@@ -572,4 +730,97 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
 
 .markdown-content p:last-child {
   margin-bottom: 0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  color: var(--md-heading);
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-content a {
+  color: var(--md-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-content code:not(pre code) {
+  background: var(--md-code-bg);
+  border: 1px solid var(--md-code-border);
+  color: var(--md-code-text);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-size: 0.875em;
+}
+
+.markdown-content pre {
+  background: var(--md-code-bg);
+  border: 1px solid var(--md-code-border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.markdown-content pre code {
+  color: var(--md-code-text);
+  font-size: 0.875em;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--md-blockquote-border);
+  background: var(--md-blockquote-bg);
+  color: var(--md-blockquote-text);
+  padding: 0.5rem 1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  margin: 0.75rem 0;
+}
+
+.markdown-content hr {
+  border: none;
+  border-top: 1px solid var(--md-hr);
+  margin: 1rem 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-content li {
+  margin-bottom: 0.25rem;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Chat welcome screen — theme-aware
+   ═══════════════════════════════════════════════════════════ */
+
+.welcome-heading {
+  color: var(--welcome-text);
+}
+
+.welcome-subtext {
+  color: var(--welcome-subtext);
+}
+
+.welcome-hint {
+  color: var(--welcome-hint);
+}
+
+.prompt-chip {
+  background: var(--prompt-bg);
+  border: 1px solid var(--prompt-border);
+  color: var(--prompt-text);
+  transition: all 0.15s ease;
+}
+
+.prompt-chip:hover {
+  background: var(--prompt-hover-bg);
+  border-color: var(--prompt-hover-border);
+  color: var(--prompt-hover-text);
 }

@@ -30,22 +30,20 @@ export function Header() {
 
   return (
     <header
-      className="h-14 flex items-center justify-between px-6 flex-shrink-0"
+      className="h-14 flex items-center justify-between px-6 flex-shrink-0 bg-gray-950/80 backdrop-blur-xl border-b border-gray-700/30"
       style={{
-        background: "rgba(8, 10, 20, 0.8)",
         backdropFilter: "blur(12px)",
-        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
         WebkitBackdropFilter: "blur(12px)",
       }}
     >
       {/* Left: View title */}
       <div className="flex items-center gap-3">
         <div>
-          <h2 className="text-[13px] font-semibold text-gray-100 leading-none tracking-tight">
+          <h2 className="text-[13px] font-semibold text-gray-100 leading-none tracking-tight dark:text-gray-100">
             {viewInfo.title}
           </h2>
           {viewInfo.subtitle && (
-            <p className="text-[11px] text-gray-600 mt-0.5 leading-none">{viewInfo.subtitle}</p>
+            <p className="text-[11px] text-gray-400 mt-0.5 leading-none">{viewInfo.subtitle}</p>
           )}
         </div>
       </div>
@@ -100,7 +98,7 @@ export function Header() {
         {/* Tier badge */}
         <div
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${tierStyle.text}`}
-          style={{ background: tierStyle.bg, border: "1px solid rgba(255,255,255,0.06)" }}
+          style={{ background: tierStyle.bg, border: "1px solid rgba(128,128,128,0.15)" }}
         >
           <div className={`w-1.5 h-1.5 rounded-full ${tierStyle.dot}`} />
           <span className="capitalize">{currentTier}</span>

@@ -97,7 +97,7 @@ export function DashboardView() {
               onClick={fetchAll}
               disabled={refreshing}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-400 hover:text-gray-200 transition-all"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+              style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}
             >
               <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
               Refresh
@@ -222,7 +222,7 @@ export function DashboardView() {
                   </span>
                 ) : (
                   <span className="text-[10px] text-gray-500 px-2 py-0.5 rounded-full"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                    style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
                   >Off</span>
                 )}
               </div>
@@ -284,7 +284,7 @@ export function DashboardView() {
                 <p className="text-xs text-gray-500">Distribution of tool calls</p>
               </div>
               <span className="text-[11px] text-gray-500 px-2.5 py-1 rounded-full"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
               >
                 {Object.keys(auditSummary.by_tool).length} tools used
               </span>

@@ -48,7 +48,7 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
         </div>
         <div className="flex flex-col items-center justify-center py-10">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgb(var(--gray-700) / 0.3)" }}
           >
             <Zap className="w-5 h-5 text-gray-700" />
           </div>
@@ -72,7 +72,7 @@ export function ActivityFeed({ entries: rawEntries }: Props) {
           <p className="text-xs text-gray-500">Last {Math.min(entries.length, 10)} tool calls</p>
         </div>
         <span className="text-[11px] text-gray-500 px-2.5 py-1 rounded-full"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+          style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
         >
           {entries.length} total
         </span>

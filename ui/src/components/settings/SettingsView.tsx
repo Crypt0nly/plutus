@@ -226,7 +226,7 @@ export function SettingsView() {
         />
 
         {/* Agent Behavior */}
-        <div className="rounded-2xl p-5" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+        <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
           <div className="flex items-center gap-3 mb-5">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.12)" }}>
               <Bot className="w-4 h-4 text-purple-400" />
@@ -268,7 +268,7 @@ export function SettingsView() {
             </div>
 
             {/* Scheduler toggle — custom toggle */}
-            <div className="flex items-center justify-between py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+            <div className="flex items-center justify-between py-3" style={{ borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}>
               <div>
                 <p className="text-sm text-gray-300">Scheduler</p>
                 <p className="text-xs text-gray-500 mt-0.5">Allow Plutus to create and run cron jobs</p>
@@ -280,7 +280,7 @@ export function SettingsView() {
             </div>
 
             {/* Keep Alive toggle — custom toggle */}
-            <div className="flex items-center justify-between py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+            <div className="flex items-center justify-between py-3" style={{ borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.12)" }}>
                   <BatteryCharging className="w-5 h-5 text-emerald-400" />
@@ -316,7 +316,7 @@ export function SettingsView() {
         {/* Network & Storage */}
         <div className="grid grid-cols-2 gap-4">
           {/* Gateway */}
-          <div className="rounded-2xl p-5" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+          <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(59, 130, 246, 0.08)", border: "1px solid rgba(59, 130, 246, 0.12)" }}>
                 <Server className="w-4 h-4 text-blue-400" />
@@ -347,7 +347,7 @@ export function SettingsView() {
           </div>
 
           {/* Memory */}
-          <div className="rounded-2xl p-5" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+          <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.12)" }}>
                 <Database className="w-4 h-4 text-amber-400" />
@@ -444,7 +444,7 @@ function SystemPromptEditor({
   };
 
   return (
-    <div className="rounded-2xl p-5" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+    <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(244, 63, 94, 0.08)", border: "1px solid rgba(244, 63, 94, 0.12)" }}>
@@ -517,7 +517,7 @@ function AppearanceSection() {
   };
 
   return (
-    <div className="rounded-2xl p-5" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+    <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
       <div className="flex items-center gap-3 mb-5">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(99, 102, 241, 0.08)", border: "1px solid rgba(99, 102, 241, 0.12)" }}>
           <Sun className="w-4 h-4 text-plutus-400" />
@@ -537,12 +537,12 @@ function AppearanceSection() {
               key={opt.value}
               onClick={() => handleChange(opt.value)}
               className="selector-card relative flex flex-col items-center gap-2.5 p-4 rounded-xl transition-all duration-200"
-              style={active ? { background: "rgba(99, 102, 241, 0.1)", border: "1px solid rgba(99, 102, 241, 0.3)", boxShadow: "0 0 16px rgba(99, 102, 241, 0.1)" } : { background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
+              style={active ? { background: "rgba(99, 102, 241, 0.1)", border: "1px solid rgba(99, 102, 241, 0.3)", boxShadow: "0 0 16px rgba(99, 102, 241, 0.1)" } : { background: "rgb(var(--gray-800) / 0.5)", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
               data-active={active}
             >
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200"
-                style={active ? { background: "rgba(99, 102, 241, 0.12)" } : { background: "rgba(255,255,255,0.04)" }}
+                style={active ? { background: "rgba(99, 102, 241, 0.12)" } : { background: "rgb(var(--gray-800) / 0.6)" }}
               >
                 <Icon className={`w-5 h-5 transition-all duration-200 ${
                   active ? "text-plutus-400 scale-110" : "text-gray-600"
@@ -632,7 +632,7 @@ function VersionBanner() {
   // Loading state
   if (checking && !info) {
     return (
-      <div className="rounded-2xl p-4" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+      <div className="rounded-2xl p-4" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
         <div className="flex items-center gap-3">
           <div className="w-4 h-4 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin" />
           <span className="text-sm text-gray-500">Checking version...</span>
@@ -648,14 +648,14 @@ function VersionBanner() {
   return (
     <div
       className="rounded-2xl p-4 transition-all duration-200"
-    style={hasUpdate ? { background: "rgba(99, 102, 241, 0.06)", border: "1px solid rgba(99, 102, 241, 0.2)" } : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}
+    style={hasUpdate ? { background: "rgba(99, 102, 241, 0.06)", border: "1px solid rgba(99, 102, 241, 0.2)" } : { background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
     >
       {/* Version row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200"
-          style={hasUpdate ? { background: "rgba(99, 102, 241, 0.12)", border: "1px solid rgba(99, 102, 241, 0.15)" } : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+          style={hasUpdate ? { background: "rgba(99, 102, 241, 0.12)", border: "1px solid rgba(99, 102, 241, 0.15)" } : { background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}
           >
             {hasUpdate ? (
               <ArrowUpCircle className="w-5 h-5 text-plutus-400" />
@@ -761,7 +761,7 @@ function VersionBanner() {
 
       {/* Release notes expandable */}
       {showNotes && info.release_notes && (
-        <div className="mt-3 pt-3 animate-fade-in" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <div className="mt-3 pt-3 animate-fade-in" style={{ borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}>
           <pre className="text-xs text-gray-400 whitespace-pre-wrap font-mono leading-relaxed max-h-60 overflow-y-auto">
             {info.release_notes}
           </pre>

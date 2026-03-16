@@ -94,7 +94,7 @@ function AIProviderCard({
   return (
     <div
       className="group relative rounded-2xl transition-all duration-200"
-      style={connector.configured ? { background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.2)" } : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}
+      style={connector.configured ? { background: "rgba(168, 85, 247, 0.04)", border: "1px solid rgba(168, 85, 247, 0.2)" } : { background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
     >
       <div className="p-5 flex flex-col h-full">
         {/* Header row */}
@@ -112,7 +112,7 @@ function AIProviderCard({
               Active
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <Power className="w-3 h-3" />
               No key
             </span>
@@ -196,7 +196,7 @@ function HostingConnectorCard({
       style={
         connector.configured
           ? { background: `rgba(${accentRgb}, 0.04)`, border: `1px solid rgba(${accentRgb}, 0.2)` }
-          : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }
+          : { background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }
       }
     >
       <div className="p-5 flex flex-col h-full">
@@ -222,7 +222,7 @@ function HostingConnectorCard({
               Ready
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <Power className="w-3 h-3" />
               No token
             </span>
@@ -306,7 +306,7 @@ function ConnectorCard({
         ? isListening
           ? { background: "rgba(59, 130, 246, 0.04)", border: "1px solid rgba(59, 130, 246, 0.2)" }
           : { background: "rgba(16, 185, 129, 0.04)", border: "1px solid rgba(16, 185, 129, 0.2)" }
-        : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }
+        : { background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }
       }
     >
       <div className="p-5 flex flex-col h-full">
@@ -336,7 +336,7 @@ function ConnectorCard({
               Connected
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <Power className="w-3 h-3" />
               Not configured
             </span>
@@ -391,7 +391,7 @@ function GoogleConnectorCard({
   return (
     <div
       className="group relative rounded-2xl transition-all duration-200"
-      style={connector.configured ? { background: "rgba(14, 165, 233, 0.04)", border: "1px solid rgba(14, 165, 233, 0.2)" } : { background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}
+      style={connector.configured ? { background: "rgba(14, 165, 233, 0.04)", border: "1px solid rgba(14, 165, 233, 0.2)" } : { background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
     >
       <div className="p-5 flex flex-col h-full">
         {/* Header row */}
@@ -409,7 +409,7 @@ function GoogleConnectorCard({
               Authorized
             </span>
           ) : (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <Power className="w-3 h-3" />
               Not connected
             </span>
@@ -431,7 +431,7 @@ function GoogleConnectorCard({
               <span
                 key={feat}
               className="text-[10px] font-medium px-2 py-0.5 rounded-md text-gray-500"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+              style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}
               >
                 {feat}
               </span>
@@ -810,7 +810,7 @@ function ConfigureModal({
               )}
 
               {/* Auto-start */}
-              <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+              <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}>
                 <div>
                   <p className="text-xs font-medium text-gray-300">
                     Start on launch
@@ -1501,7 +1501,7 @@ export default function ConnectorsView() {
           <button
             onClick={() => setShowAddCustom(!showAddCustom)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-gray-300 hover:text-gray-100"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+            style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}
           >
             {showAddCustom ? (
               <>
@@ -1517,7 +1517,7 @@ export default function ConnectorsView() {
           </button>
 
           {showAddCustom && (
-            <div className="mt-4 rounded-2xl p-6 space-y-4" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+            <div className="mt-4 rounded-2xl p-6 space-y-4" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Connector ID */}
                 <div>
@@ -1685,7 +1685,7 @@ export default function ConnectorsView() {
         </div>
 
         {/* How it works */}
-        <div className="rounded-2xl p-5" style={{ background: "rgba(15, 18, 30, 0.8)", border: "1px solid rgba(255, 255, 255, 0.06)" }}>
+        <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
           <h4 className="text-sm font-semibold text-gray-300 mb-4">How It Works</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
@@ -1694,7 +1694,7 @@ export default function ConnectorsView() {
               { step: "3", text: 'Test each connection to verify it works — hit "Test Connection"' },
               { step: "4", text: 'Ask Plutus to "generate an image" or "send me a Telegram message"' },
             ].map((item) => (
-              <div key={item.step} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+              <div key={item.step} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "rgb(var(--gray-800) / 0.4)", border: "1px solid rgb(var(--gray-700) / 0.3)" }}>
                 <span className="w-6 h-6 rounded-lg text-plutus-400 text-xs font-bold flex items-center justify-center flex-shrink-0" style={{ background: "rgba(99, 102, 241, 0.1)", border: "1px solid rgba(99, 102, 241, 0.15)" }}>
                   {item.step}
                 </span>

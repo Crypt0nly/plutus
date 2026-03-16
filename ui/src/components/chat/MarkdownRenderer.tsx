@@ -27,24 +27,30 @@ function CodeBlock({
   };
 
   return (
-    <div className="my-3 bg-gray-950 rounded-xl overflow-hidden border border-gray-800/80">
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900/80 border-b border-gray-800/50">
-        <span className="text-[11px] text-gray-500 font-mono">
+    <div className="my-3 rounded-xl overflow-hidden border border-gray-700/50"
+      style={{ background: "var(--md-code-bg)" }}
+    >
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700/40"
+        style={{ background: "rgba(var(--gray-800) / 0.6)" }}
+      >
+        <span className="text-[11px] text-gray-400 font-mono">
           {lang || "code"}
         </span>
         <button
           onClick={handleCopy}
-          className="text-gray-500 hover:text-gray-300 transition-colors"
+          className="text-gray-400 hover:text-gray-200 transition-colors"
           title="Copy code"
         >
           {copied ? (
-            <Check className="w-3.5 h-3.5 text-emerald-400" />
+            <Check className="w-3.5 h-3.5 text-emerald-500" />
           ) : (
             <Copy className="w-3.5 h-3.5" />
           )}
         </button>
       </div>
-      <pre className="px-4 py-3 text-[13px] font-mono text-gray-300 overflow-x-auto leading-relaxed">
+      <pre className="px-4 py-3 text-[13px] font-mono overflow-x-auto leading-relaxed"
+        style={{ color: "var(--md-code-text)" }}
+      >
         <code>{code}</code>
       </pre>
     </div>
@@ -53,30 +59,34 @@ function CodeBlock({
 
 const components: Components = {
   h1: ({ children }) => (
-    <h1 className="text-xl font-semibold text-gray-100 mt-5 mb-2 pb-1.5 border-b border-gray-800/50">
+    <h1 className="text-xl font-semibold mt-5 mb-2 pb-1.5 border-b border-gray-700/40"
+      style={{ color: "var(--md-heading)" }}
+    >
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 className="text-lg font-semibold text-gray-100 mt-4 mb-2 pb-1 border-b border-gray-800/40">
+    <h2 className="text-lg font-semibold mt-4 mb-2 pb-1 border-b border-gray-700/30"
+      style={{ color: "var(--md-heading)" }}
+    >
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="text-base font-semibold text-gray-100 mt-3 mb-1">
+    <h3 className="text-base font-semibold mt-3 mb-1"
+      style={{ color: "var(--md-heading)" }}
+    >
       {children}
     </h3>
   ),
   h4: ({ children }) => (
-    <h4 className="text-sm font-semibold text-gray-200 mt-2.5 mb-1">
-      {children}
-    </h4>
+    <h4 className="text-sm font-semibold mt-2.5 mb-1 text-gray-200">{children}</h4>
   ),
   h5: ({ children }) => (
-    <h5 className="text-sm font-medium text-gray-200 mt-2 mb-1">{children}</h5>
+    <h5 className="text-sm font-medium mt-2 mb-1 text-gray-200">{children}</h5>
   ),
   h6: ({ children }) => (
-    <h6 className="text-xs font-medium text-gray-300 mt-2 mb-1 uppercase tracking-wide">
+    <h6 className="text-xs font-medium mt-2 mb-1 uppercase tracking-wide text-gray-300">
       {children}
     </h6>
   ),
@@ -95,7 +105,8 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-plutus-400 hover:text-plutus-300 underline underline-offset-2 decoration-plutus-400/30 hover:decoration-plutus-300/50 transition-colors"
+      className="underline underline-offset-2 transition-colors hover:opacity-80"
+      style={{ color: "var(--md-link)" }}
     >
       {children}
     </a>
@@ -121,7 +132,14 @@ const components: Components = {
     }
 
     return (
-      <code className="px-1.5 py-0.5 bg-gray-800/80 border border-gray-700/40 rounded-md text-plutus-300 text-[13px] font-mono">
+      <code
+        className="px-1.5 py-0.5 rounded-md text-[13px] font-mono"
+        style={{
+          background: "var(--md-code-bg)",
+          border: "1px solid var(--md-code-border)",
+          color: "var(--md-code-text)",
+        }}
+      >
         {children}
       </code>
     );
@@ -130,39 +148,49 @@ const components: Components = {
   pre: ({ children }) => <>{children}</>,
 
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-plutus-500/30 pl-4 my-3 text-gray-400 italic">
+    <blockquote
+      className="pl-4 my-3 italic rounded-r-lg"
+      style={{
+        borderLeft: "3px solid var(--md-blockquote-border)",
+        background: "var(--md-blockquote-bg)",
+        color: "var(--md-blockquote-text)",
+        padding: "0.5rem 1rem",
+      }}
+    >
       {children}
     </blockquote>
   ),
 
-  hr: () => <hr className="my-4 border-gray-800/50" />,
+  hr: () => (
+    <hr className="my-4" style={{ borderColor: "var(--md-hr)" }} />
+  ),
 
   table: ({ children }) => (
-    <div className="my-3 overflow-x-auto rounded-xl border border-gray-800">
+    <div className="my-3 overflow-x-auto rounded-xl border border-gray-700/50">
       <table className="w-full text-xs">{children}</table>
     </div>
   ),
   thead: ({ children }) => (
-    <thead className="bg-gray-900/60">{children}</thead>
+    <thead className="bg-gray-800/60">{children}</thead>
   ),
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => (
-    <tr className="border-b border-gray-800/50 last:border-0">{children}</tr>
+    <tr className="border-b border-gray-700/40 last:border-0">{children}</tr>
   ),
   th: ({ children }) => (
-    <th className="px-3 py-2 text-left font-semibold text-gray-300">
+    <th className="px-3 py-2 text-left font-semibold text-gray-200">
       {children}
     </th>
   ),
   td: ({ children }) => (
-    <td className="px-3 py-2 text-gray-400">{children}</td>
+    <td className="px-3 py-2 text-gray-300">{children}</td>
   ),
 
   img: ({ src, alt }) => (
     <img
       src={src}
       alt={alt || ""}
-      className="max-w-full rounded-xl my-3 border border-gray-800"
+      className="max-w-full rounded-xl my-3 border border-gray-700/50"
     />
   ),
 
@@ -177,7 +205,7 @@ const components: Components = {
   ),
 
   del: ({ children }) => (
-    <del className="text-gray-500 line-through">{children}</del>
+    <del className="text-gray-400 line-through">{children}</del>
   ),
 };
 

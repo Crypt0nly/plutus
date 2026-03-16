@@ -167,7 +167,7 @@ function ToolCallCard({ name, args }: { name: string; args: Record<string, unkno
       {expanded && (
         <div className="px-3.5 py-3 animate-fade-in"
           style={{
-            background: "rgba(8, 10, 20, 0.6)",
+            background: "rgb(var(--surface-deep) / 0.8)",
             borderTop: `1px solid ${colors.border}`
           }}
         >
@@ -223,7 +223,7 @@ function AttachmentImageDisplay({ base64, fileName, caption }: { base64: string;
 
   return (
     <div className="rounded-xl overflow-hidden"
-      style={{ background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(139, 92, 246, 0.15)" }}
+      style={{ background: "rgb(var(--surface-deep) / 0.8)", border: "1px solid rgba(139, 92, 246, 0.15)" }}
     >
       <button
         onClick={() => setExpanded(!expanded)}
@@ -251,11 +251,11 @@ function AttachmentFileDisplay({ fileName, sizeKB, filePath, caption }: { fileNa
 
   return (
     <div className="rounded-xl overflow-hidden"
-      style={{ background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(255,255,255,0.07)" }}
+      style={{ background: "rgb(var(--surface-deep) / 0.8)", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
     >
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+          style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
         >
           <FileDown className="w-5 h-5 text-gray-400" />
         </div>
@@ -266,10 +266,8 @@ function AttachmentFileDisplay({ fileName, sizeKB, filePath, caption }: { fileNa
         <a
           href={downloadUrl}
           download={fileName}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 transition-colors"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.08)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.05)"; }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-200 transition-colors hover:bg-gray-700/50"
+          style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
         >
           <FileDown className="w-3.5 h-3.5" /> Download
         </a>
@@ -323,7 +321,7 @@ function SnapshotDisplay({ content }: { content: string }) {
 
   return (
     <div className="rounded-xl overflow-hidden"
-      style={{ background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(59, 130, 246, 0.15)" }}
+      style={{ background: "rgb(var(--surface-deep) / 0.8)", border: "1px solid rgba(59, 130, 246, 0.15)" }}
     >
       <div className="flex items-center justify-between px-3.5 py-2"
         style={{ background: "rgba(59, 130, 246, 0.06)", borderBottom: "1px solid rgba(59, 130, 246, 0.1)" }}
@@ -395,8 +393,8 @@ function ToolResultContent({ content }: { content: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const headerStyle = { background: "rgba(15, 18, 30, 0.8)", borderBottom: "1px solid rgba(255,255,255,0.05)" };
-  const containerStyle = { background: "rgba(8, 10, 20, 0.8)", border: "1px solid rgba(255,255,255,0.07)" };
+  const headerStyle = { background: "rgb(var(--surface-alt) / 0.8)", borderBottom: "1px solid rgb(var(--gray-700) / 0.3)" };
+  const containerStyle = { background: "rgb(var(--surface-deep) / 0.8)", border: "1px solid rgb(var(--gray-700) / 0.4)" };
 
   if (isDiff) {
     return (
@@ -459,8 +457,8 @@ function ToolResultContent({ content }: { content: string }) {
           </pre>
           {displayContent.length > 300 && (
             <button onClick={() => setExpanded(!expanded)}
-              className="w-full px-3.5 py-2 text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
-              style={{ background: "rgba(15, 18, 30, 0.5)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+              className="w-full px-3.5 py-2 text-[11px] text-gray-400 hover:text-gray-200 transition-colors"
+              style={{ background: "rgb(var(--surface-alt) / 0.5)", borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}
             >
               {expanded ? "Show less" : "Show more"}
             </button>
@@ -487,8 +485,8 @@ function ToolResultContent({ content }: { content: string }) {
       </pre>
       {isLong && (
         <button onClick={() => setExpanded(!expanded)}
-          className="w-full px-3.5 py-2 text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
-          style={{ background: "rgba(15, 18, 30, 0.5)", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+          className="w-full px-3.5 py-2 text-[11px] text-gray-400 hover:text-gray-200 transition-colors"
+          style={{ background: "rgb(var(--surface-alt) / 0.5)", borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}
         >
           {expanded ? "Show less" : `Show more (${content.length} chars)`}
         </button>

@@ -97,13 +97,13 @@ function SetupPrompt() {
       >
         <KeyRound className="w-7 h-7 text-amber-400" />
       </div>
-      <h3 className="text-xl font-semibold text-gray-100 mb-2 tracking-tight">
+      <h3 className="welcome-heading text-xl font-semibold mb-2 tracking-tight">
         API Key Required
       </h3>
-      <p className="text-gray-400 max-w-sm text-sm leading-relaxed mb-2">
+      <p className="welcome-subtext max-w-sm text-sm leading-relaxed mb-2">
         Configure your API key in Settings to get started.
       </p>
-      <p className="text-gray-600 max-w-sm text-xs leading-relaxed mb-8">
+      <p className="welcome-hint max-w-sm text-xs leading-relaxed mb-8">
         Your key is stored locally and never leaves your machine.
       </p>
       <button
@@ -182,10 +182,10 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
         <div className="absolute inset-0 rounded-2xl animate-glow-pulse" />
       </div>
 
-      <h2 className="text-2xl font-semibold text-gray-100 mb-2 tracking-tight">
+      <h2 className="welcome-heading text-2xl font-semibold mb-2 tracking-tight">
         What can I help you with?
       </h2>
-      <p className="text-gray-500 max-w-md text-sm leading-relaxed mb-10">
+      <p className="welcome-subtext max-w-md text-sm leading-relaxed mb-10">
         Describe what you need in plain English. I can browse the web,
         control apps, manage files, and automate tasks.
       </p>
@@ -209,8 +209,8 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
                 <Icon className="w-4.5 h-4.5" style={{ color: cap.color }} />
               </div>
               <div>
-                <span className="text-xs font-semibold text-gray-200 block">{cap.label}</span>
-                <span className="text-[11px] text-gray-500 leading-snug mt-0.5 block">{cap.description}</span>
+                <span className="text-xs font-semibold text-gray-100 block">{cap.label}</span>
+                <span className="text-[11px] text-gray-400 leading-snug mt-0.5 block">{cap.description}</span>
               </div>
             </div>
           );
@@ -223,22 +223,10 @@ function EmptyState({ onSend }: { onSend: (text: string) => void }) {
           <button
             key={suggestion}
             onClick={() => onSend(suggestion)}
-            className="group text-left px-4 py-3 rounded-xl text-sm text-gray-400 hover:text-gray-200 transition-all duration-150 flex items-center gap-3"
-            style={{
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.05)"
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(99, 102, 241, 0.06)";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(99, 102, 241, 0.15)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.02)";
-              (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.05)";
-            }}
+            className="prompt-chip group text-left px-4 py-3 rounded-xl text-sm transition-all duration-150 flex items-center gap-3"
           >
             <span className="flex-1 leading-relaxed">{suggestion}</span>
-            <ArrowRight className="w-3.5 h-3.5 text-gray-700 group-hover:text-plutus-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100" />
+            <ArrowRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-plutus-400 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100" />
           </button>
         ))}
       </div>

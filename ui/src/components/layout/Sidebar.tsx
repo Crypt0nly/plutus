@@ -77,18 +77,9 @@ export function Sidebar({ send }: SidebarProps) {
   };
 
   return (
-    <aside className="w-64 flex flex-col h-full relative overflow-hidden"
-      style={{
-        background: "linear-gradient(180deg, rgb(10, 12, 22) 0%, rgb(8, 10, 20) 100%)",
-        borderRight: "1px solid rgba(255,255,255,0.05)"
-      }}
-    >
+    <aside className="sidebar-root w-64 flex flex-col h-full relative overflow-hidden">
       {/* Subtle ambient glow at top */}
-      <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.08) 0%, transparent 70%)"
-        }}
-      />
+      <div className="sidebar-glow-top absolute top-0 left-0 right-0 h-32 pointer-events-none" />
 
       {/* Header: Logo + Status */}
       <div className="relative px-4 pt-5 pb-4">
@@ -110,15 +101,15 @@ export function Sidebar({ send }: SidebarProps) {
           </div>
 
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-[15px] leading-none text-white tracking-tight">
+            <h1 className="font-semibold text-[15px] leading-none text-gray-100 tracking-tight">
               Plutus
             </h1>
             <div className="flex items-center gap-1.5 mt-1.5">
-              <span className={`text-[10px] font-medium ${connected ? "text-emerald-400" : "text-red-400"}`}>
+              <span className={`text-[10px] font-medium ${connected ? "text-emerald-500 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
                 {connected ? "Online" : "Offline"}
               </span>
-              <span className="text-gray-700 text-[10px]">·</span>
-              <span className="text-[10px] text-gray-500 capitalize">{currentTier}</span>
+              <span className="text-gray-600 text-[10px]">·</span>
+              <span className="text-[10px] text-gray-400 capitalize">{currentTier}</span>
             </div>
           </div>
         </div>
@@ -146,7 +137,7 @@ export function Sidebar({ send }: SidebarProps) {
       </div>
 
       {/* Divider */}
-      <div className="mx-3 mb-3 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent)" }} />
+      <div className="sidebar-divider mx-3 mb-3 h-px" />
 
       {/* Navigation */}
       <nav className="relative flex-1 px-2 pb-4 space-y-0.5 overflow-y-auto sidebar-scroll min-h-0">
@@ -160,7 +151,7 @@ export function Sidebar({ send }: SidebarProps) {
               {section.collapsible ? (
                 <button
                   onClick={() => toggleSection(section.label)}
-                  className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-gray-600 uppercase tracking-widest hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.02]"
+                  className="sidebar-section-label w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest hover:text-gray-400 transition-colors rounded-lg"
                 >
                   <ChevronDown
                     className={`w-3 h-3 transition-transform duration-200 ${isCollapsed ? "-rotate-90" : ""}`}
@@ -171,7 +162,7 @@ export function Sidebar({ send }: SidebarProps) {
                   )}
                 </button>
               ) : (
-                <p className="px-3 py-2 text-[10px] font-semibold text-gray-600 uppercase tracking-widest">
+                <p className="sidebar-section-label px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">
                   {section.label}
                 </p>
               )}
@@ -186,30 +177,14 @@ export function Sidebar({ send }: SidebarProps) {
                       <div key={item.id} className="relative">
                         <button
                           onClick={() => setView(item.id)}
-                          className={`w-full relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                            active
-                              ? "text-white"
-                              : "text-gray-500 hover:text-gray-300"
+                          className={`sidebar-nav-item w-full relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
+                            active ? "active" : ""
                           }`}
-                          style={active ? {
-                            background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(79, 70, 229, 0.08))",
-                            boxShadow: "inset 0 0 0 1px rgba(99, 102, 241, 0.15)"
-                          } : undefined}
-                          onMouseEnter={(e) => {
-                            if (!active) {
-                              (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.03)";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!active) {
-                              (e.currentTarget as HTMLButtonElement).style.background = "";
-                            }
-                          }}
                         >
                           {active && <div className="nav-active-indicator" />}
                           <Icon
                             className={`w-[17px] h-[17px] flex-shrink-0 ${
-                              active ? "text-plutus-400" : "text-gray-600"
+                              active ? "text-plutus-400" : "text-gray-500"
                             }`}
                           />
                           <span className="flex-1 text-left text-[13px]">{item.label}</span>
@@ -236,12 +211,12 @@ export function Sidebar({ send }: SidebarProps) {
       </nav>
 
       {/* Bottom version badge */}
-      <div className="relative px-4 py-3 border-t border-white/[0.04]">
+      <div className="relative px-4 py-3 border-t border-gray-700/30">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-gray-700 font-mono">Plutus AI</span>
+          <span className="text-[10px] text-gray-500 font-mono">Plutus AI</span>
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-500 status-dot-online" : "bg-red-500"}`} />
-            <span className="text-[10px] text-gray-700">{connected ? "Connected" : "Offline"}</span>
+            <span className="text-[10px] text-gray-500">{connected ? "Connected" : "Offline"}</span>
           </div>
         </div>
       </div>
