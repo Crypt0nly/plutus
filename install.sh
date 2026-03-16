@@ -3,7 +3,7 @@
 # Usage: curl -sSL https://useplutus.ai/install.sh | sh
 #
 # What this script does:
-#   1. Ensures Python 3.11+ is available (auto-installs via Homebrew/apt/dnf if needed)
+#   1. Ensures Python 3.14+ is available (auto-installs via Homebrew/apt/dnf if needed)
 #   2. Installs Plutus via pip
 #   3. Creates a launcher shortcut (macOS .app / Linux .desktop)
 #   4. Launches Plutus in the background and opens the browser
@@ -25,7 +25,7 @@ echo ""
 
 OS="$(uname -s)"
 
-# ── Step 1: Ensure Python 3.11+ is available ─────────────
+# ── Step 1: Ensure Python 3.14+ is available ─────────────
 # We auto-install Python if it's missing — the user should never
 # have to do this manually.
 
@@ -48,7 +48,7 @@ check_python() {
 }
 
 # Check common Python binary names first
-for _py_candidate in python3.13 python3.12 python3.11 python3 python; do
+for _py_candidate in python3.14 python3.13 python3.12 python3.11 python3 python; do
     if check_python "$_py_candidate"; then
         break
     fi
@@ -57,9 +57,11 @@ done
 # Also check Homebrew-managed paths on macOS (not always on PATH in non-interactive shells)
 if [ -z "$PYTHON_CMD" ] && [ "$OS" = "Darwin" ]; then
     for _brew_py in \
+        /opt/homebrew/bin/python3.14 \
         /opt/homebrew/bin/python3.13 \
         /opt/homebrew/bin/python3.12 \
         /opt/homebrew/bin/python3.11 \
+        /usr/local/bin/python3.14 \
         /usr/local/bin/python3.13 \
         /usr/local/bin/python3.12 \
         /usr/local/bin/python3.11; do
@@ -70,7 +72,7 @@ if [ -z "$PYTHON_CMD" ] && [ "$OS" = "Darwin" ]; then
 fi
 
 if [ -z "$PYTHON_CMD" ]; then
-    echo "[1/4] Python 3.11+ not found — installing automatically..."
+    echo "[1/4] Python 3.14+ not found — installing automatically..."
     echo ""
 
     if [ "$OS" = "Darwin" ]; then
@@ -99,49 +101,49 @@ if [ -z "$PYTHON_CMD" ]; then
             echo ""
         fi
 
-        echo "       Installing Python 3.11 via Homebrew..."
-        brew install python@3.11 2>&1 | grep -E '(Installing|Downloading|Pouring|==>|Error|already)' || true
-        brew link --overwrite python@3.11 2>/dev/null || true
+        echo "       Installing Python 3.14 via Homebrew..."
+        brew install python@3.14 2>&1 | grep -E '(Installing|Downloading|Pouring|==>|Error|already)' || true
+        brew link --overwrite python@3.14 2>/dev/null || true
 
         # Re-check after install
         for _brew_py in \
-            "$(brew --prefix python@3.11 2>/dev/null)/bin/python3.11" \
-            /opt/homebrew/bin/python3.11 \
-            /usr/local/bin/python3.11; do
+            "$(brew --prefix python@3.14 2>/dev/null)/bin/python3.14" \
+            /opt/homebrew/bin/python3.14 \
+            /usr/local/bin/python3.14; do
             if check_python "$_brew_py"; then
                 break
             fi
         done
         if [ -z "$PYTHON_CMD" ]; then
-            check_python python3.11 || check_python python3 || true
+            check_python python3.14 || check_python python3 || true
         fi
 
     else
         # ── Linux: detect package manager and install ──
         if command -v apt-get &>/dev/null; then
-            echo "       Installing Python 3.11 via apt..."
+            echo "       Installing Python 3.14 via apt..."
             sudo apt-get update -qq 2>/dev/null || true
-            sudo apt-get install -y python3.11 python3.11-venv python3-pip 2>&1 \
+            sudo apt-get install -y python3.14 python3.14-venv python3-pip 2>&1 \
                 | grep -E '(Installing|Unpacking|Setting up|already)' || true
         elif command -v dnf &>/dev/null; then
-            echo "       Installing Python 3.11 via dnf..."
-            sudo dnf install -y python3.11 2>&1 | grep -E '(Installing|Installed|already)' || true
+            echo "       Installing Python 3.14 via dnf..."
+            sudo dnf install -y python3.14 2>&1 | grep -E '(Installing|Installed|already)' || true
         elif command -v pacman &>/dev/null; then
             echo "       Installing Python via pacman..."
             sudo pacman -Sy --noconfirm python 2>&1 | grep -E '(installing|installed|already)' || true
         elif command -v zypper &>/dev/null; then
-            echo "       Installing Python 3.11 via zypper..."
-            sudo zypper install -y python311 2>&1 | grep -E '(Installing|already)' || true
+            echo "       Installing Python 3.14 via zypper..."
+            sudo zypper install -y python314 2>&1 | grep -E '(Installing|already)' || true
         else
             echo ""
             echo "[ERROR] Could not auto-install Python — no supported package manager found."
-            echo "  Please install Python 3.11+ manually and re-run this installer:"
+            echo "  Please install Python 3.14+ manually and re-run this installer:"
             echo "    https://www.python.org/downloads/"
             exit 1
         fi
 
         # Re-check after install
-        for _py_candidate in python3.11 python3.12 python3.13 python3; do
+        for _py_candidate in python3.14 python3.13 python3.12 python3.11 python3; do
             if check_python "$_py_candidate"; then
                 break
             fi
@@ -150,7 +152,7 @@ if [ -z "$PYTHON_CMD" ]; then
 
     if [ -z "$PYTHON_CMD" ]; then
         echo ""
-        echo "[ERROR] Python installation completed but Python 3.11+ still not found."
+        echo "[ERROR] Python installation completed but Python 3.14+ still not found."
         echo "  Please open a new terminal window and re-run this installer."
         exit 1
     fi
