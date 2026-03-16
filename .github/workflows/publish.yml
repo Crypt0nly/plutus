@@ -106,9 +106,8 @@ jobs:
           - os: macos-latest
             cibw_archs: arm64
             artifact_name: wheels-macos-arm64
-          # macOS x86_64 (Intel — covers all Macs pre-2021 including Monterey/Ventura on Intel)
-          # macos-13 is the last GitHub-hosted Intel runner; macos-14+ are arm64 only.
-          - os: macos-13
+          # macOS x86_64 (Intel — macos-15-large is the current GitHub-hosted Intel x64 runner)
+          - os: macos-15-large
             cibw_archs: x86_64
             artifact_name: wheels-macos-x86_64
           # Windows x86_64
