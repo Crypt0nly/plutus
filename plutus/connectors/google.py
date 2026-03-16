@@ -510,6 +510,121 @@ class GoogleDriveConnector(GoogleConnector):
                 "message": f"Upload failed: {resp.status_code} — {resp.text[:300]}",
             }
 
+    async def read_doc(self, file_id: str, mime_type: str = "") -> dict[str, Any]:
+        """Export a Google Doc, Sheet, or Slides file as plain text.
+
+        Google Workspace files (Docs, Sheets, Slides) cannot be downloaded
+        directly — they must be exported via the Drive export endpoint.
+        Binary Office files (.docx, .pptx, .xlsx) are downloaded and parsed
+        locally using python-docx / python-pptx.
+
+        Args:
+            file_id: The Drive file ID.
+            mime_type: The file's mimeType (optional, auto-detected if empty).
+
+        Returns:
+            {"success": True, "data": {"text": "...", "mime_type": "..."}}
+        """
+        # Auto-detect mime type if not provided
+        if not mime_type:
+            meta = await self.get_file_metadata(file_id)
+            if not meta.get("success"):
+                return meta
+            mime_type = meta["data"].get("mimeType", "")
+
+        GOOGLE_DOC_TYPES = {
+            "application/vnd.google-apps.document": "text/plain",
+            "application/vnd.google-apps.spreadsheet": "text/csv",
+            "application/vnd.google-apps.presentation": "text/plain",
+        }
+
+        OFFICE_TYPES = {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+
+        # ── Google Workspace files: export as plain text ─────────────────────
+        if mime_type in GOOGLE_DOC_TYPES:
+            export_mime = GOOGLE_DOC_TYPES[mime_type]
+            token = await self._get_token()
+            if not token:
+                return {"success": False, "message": "Not authorized"}
+            import httpx
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{DRIVE_API}/files/{file_id}/export",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"mimeType": export_mime},
+                )
+                if resp.status_code >= 400:
+                    return {
+                        "success": False,
+                        "message": f"Export failed: {resp.status_code} — {resp.text[:300]}",
+                    }
+                text = resp.text
+                if len(text) > 50_000:
+                    text = text[:50_000] + "\n... [truncated]"
+                return {
+                    "success": True,
+                    "data": {"text": text, "mime_type": mime_type},
+                }
+
+        # ── Office binary files: download then parse locally ──────────────────
+        if mime_type in OFFICE_TYPES:
+            import tempfile, os
+            token = await self._get_token()
+            if not token:
+                return {"success": False, "message": "Not authorized"}
+            import httpx
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.get(
+                    f"{DRIVE_API}/files/{file_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params={"alt": "media"},
+                )
+                if resp.status_code >= 400:
+                    return {
+                        "success": False,
+                        "message": f"Download failed: {resp.status_code}",
+                    }
+                # Write to a temp file and parse
+                suffix = (
+                    ".docx" if "word" in mime_type
+                    else ".pptx" if "presentation" in mime_type
+                    else ".xlsx"
+                )
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+                    f.write(resp.content)
+                    tmp_path = f.name
+            try:
+                from pathlib import Path as _Path
+                from plutus.tools.filesystem import FilesystemTool
+                fs = FilesystemTool()
+                if suffix == ".docx":
+                    text = fs._read_docx(_Path(tmp_path))
+                elif suffix == ".pptx":
+                    text = fs._read_pptx(_Path(tmp_path))
+                else:
+                    # xlsx: return CSV export instead
+                    return await self.read_doc(file_id,
+                        "application/vnd.google-apps.spreadsheet")
+                return {
+                    "success": True,
+                    "data": {"text": text, "mime_type": mime_type},
+                }
+            finally:
+                os.unlink(tmp_path)
+
+        # ── Plain text / other: try direct download ─────────────────────────
+        result = await self.get_file_content(file_id)
+        if result.get("success"):
+            text = str(result.get("data", ""))
+            if len(text) > 50_000:
+                text = text[:50_000] + "\n... [truncated]"
+            return {"success": True, "data": {"text": text, "mime_type": mime_type}}
+        return result
+
     async def send_message(self, text: str, **kwargs: Any) -> dict[str, Any]:
         """Upload text as a file to Drive (for test messages)."""
         filename = kwargs.get("filename", "plutus_message.txt")

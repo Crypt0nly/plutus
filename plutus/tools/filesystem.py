@@ -26,7 +26,10 @@ class FilesystemTool(Tool):
         return (
             "Interact with the local filesystem. Read, write, search, list, and manage files "
             "and directories. Supports operations: read, write, append, list, search, "
-            "mkdir, delete, move, copy, info."
+            "mkdir, delete, move, copy, info. "
+            "The 'read' operation automatically extracts text from Word documents (.docx) "
+            "and PowerPoint presentations (.pptx) — just pass the file path and the content "
+            "is returned as plain text with slide/heading structure preserved."
         )
 
     @property
@@ -105,12 +108,96 @@ class FilesystemTool(Tool):
         if path.stat().st_size > MAX_FILE_SIZE:
             return f"[ERROR] File too large ({path.stat().st_size} bytes). Max: {MAX_FILE_SIZE}"
 
+        suffix = path.suffix.lower()
+
+        # ── Word documents (.docx) ──────────────────────────────────────────
+        if suffix == ".docx":
+            return self._read_docx(path)
+
+        # ── PowerPoint presentations (.pptx) ───────────────────────────────
+        if suffix == ".pptx":
+            return self._read_pptx(path)
+
+        # ── Default: plain text ────────────────────────────────────────────
         content = path.read_text(errors="replace")
         lines = content.split("\n")
         if len(lines) > MAX_READ_LINES:
             content = "\n".join(lines[:MAX_READ_LINES])
             content += f"\n... [{len(lines) - MAX_READ_LINES} more lines]"
         return content
+
+    def _read_docx(self, path: Path) -> str:
+        """Extract text from a Word .docx file."""
+        try:
+            from docx import Document  # python-docx
+        except ImportError:
+            import subprocess, sys
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "python-docx"],
+                capture_output=True,
+            )
+            from docx import Document
+
+        doc = Document(str(path))
+        sections: list[str] = []
+
+        for para in doc.paragraphs:
+            text = para.text.strip()
+            if not text:
+                continue
+            style = para.style.name if para.style else ""
+            if style.startswith("Heading"):
+                level = style.replace("Heading", "").strip()
+                prefix = "#" * (int(level) if level.isdigit() else 1)
+                sections.append(f"{prefix} {text}")
+            else:
+                sections.append(text)
+
+        # Also extract text from tables
+        for table in doc.tables:
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                sections.append(" | ".join(cells))
+
+        result = "\n".join(sections)
+        lines = result.split("\n")
+        if len(lines) > MAX_READ_LINES:
+            result = "\n".join(lines[:MAX_READ_LINES])
+            result += f"\n... [{len(lines) - MAX_READ_LINES} more lines]"
+        return result or "[Empty document]"
+
+    def _read_pptx(self, path: Path) -> str:
+        """Extract text from a PowerPoint .pptx file."""
+        try:
+            from pptx import Presentation  # python-pptx
+        except ImportError:
+            import subprocess, sys
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "python-pptx"],
+                capture_output=True,
+            )
+            from pptx import Presentation
+
+        prs = Presentation(str(path))
+        slides_text: list[str] = []
+
+        for i, slide in enumerate(prs.slides, 1):
+            slide_lines: list[str] = [f"--- Slide {i} ---"]
+            for shape in slide.shapes:
+                if not shape.has_text_frame:
+                    continue
+                for para in shape.text_frame.paragraphs:
+                    text = para.text.strip()
+                    if text:
+                        slide_lines.append(text)
+            slides_text.append("\n".join(slide_lines))
+
+        result = "\n\n".join(slides_text)
+        lines = result.split("\n")
+        if len(lines) > MAX_READ_LINES:
+            result = "\n".join(lines[:MAX_READ_LINES])
+            result += f"\n... [{len(lines) - MAX_READ_LINES} more lines]"
+        return result or "[Empty presentation]"
 
     async def _write(self, path: Path, kwargs: dict) -> str:
         content = kwargs.get("content")

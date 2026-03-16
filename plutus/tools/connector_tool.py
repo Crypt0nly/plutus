@@ -80,7 +80,10 @@ class ConnectorTool(Tool):
             "service='google_calendar' for managing events (google_action='list_events', "
             "'create_event', 'update_event', 'delete_event'), "
             "service='google_drive' for managing files (google_action='list_files', "
-            "'get_file', 'upload_file', 'get_file_metadata'). "
+            "'get_file', 'upload_file', 'get_file_metadata', 'read_doc'). "
+            "Use google_action='read_doc' with a file_id to read the full text content "
+            "of Google Docs, Google Slides, Google Sheets, Word (.docx), PowerPoint (.pptx), "
+            "or any Drive file. Auto-detects the file type and returns the text. "
             "Use action='manage' with service='discord' to manage the Discord server. "
             "Use action='github' with service='github' to interact with GitHub: "
             "manage repos, issues, pull requests, branches, files, commits, releases, "
@@ -224,7 +227,7 @@ class ConnectorTool(Tool):
                         "list_events", "create_event", "update_event",
                         "delete_event",
                         "list_files", "get_file", "get_file_metadata",
-                        "upload_file",
+                        "upload_file", "read_doc",
                     ],
                     "description": (
                         "Google-specific action. Required when action='google'."
@@ -1120,6 +1123,12 @@ class ConnectorTool(Tool):
                     result = await connector.upload_file(
                         name, content, mime
                     )
+                elif google_action == "read_doc":
+                    fid = kwargs.get("file_id", "")
+                    if not fid:
+                        return "Error: 'file_id' is required for read_doc"
+                    mime = kwargs.get("mime_type", "")
+                    result = await connector.read_doc(fid, mime)
                 else:
                     return (
                         f"Error: Unknown drive action "
