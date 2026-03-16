@@ -824,3 +824,24 @@ input[type="range"].plutus-slider-emerald::-webkit-slider-thumb {
   border-color: var(--prompt-hover-border);
   color: var(--prompt-hover-text);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Dashboard — theme-aware card, badge, and row styles
+   ═══════════════════════════════════════════════════════════ */
+
+/* Card container used throughout the dashboard */
+.dashboard-card {
+  background: rgb(var(--surface-alt));
+  border: 1px solid rgb(var(--gray-700) / 0.4);
+}
+
+/* Small pill/badge used for counts and version labels */
+.dashboard-badge {
+  background: rgb(var(--gray-800) / 0.6);
+  border: 1px solid rgb(var(--gray-700) / 0.4);
+}
+
+/* Activity feed row hover */
+.activity-row:hover {
+  background: rgb(var(--gray-800) / 0.5);
+}
