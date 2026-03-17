@@ -60,12 +60,17 @@ class ConversationManager:
     messages instead of dropping them, ensuring goals are never lost.
     """
 
+    # Connector session auto-trim settings
+    CONNECTOR_TRIM_THRESHOLD = 300  # trim when stored messages exceed this
+    CONNECTOR_TRIM_COUNT = 50       # number of oldest messages to delete
+
     def __init__(
         self,
         memory: MemoryStore,
         context_window: int = 20,
         planner: Any = None,
         summarizer: Any = None,
+        is_connector: bool = False,
     ):
         self._memory = memory
         self._context_window = context_window
@@ -81,6 +86,10 @@ class ConversationManager:
 
         # Transient attachments for the current message (not persisted in DB)
         self.pending_attachments: list[dict[str, str]] = []
+
+        # Whether this conversation belongs to a connector session
+        # (enables auto-trim of old messages)
+        self._is_connector = is_connector
 
     @property
     def conversation_id(self) -> str | None:
@@ -108,9 +117,37 @@ class ConversationManager:
 
     async def add_user_message(self, content: str) -> int:
         assert self._active_conversation_id
-        return await self._memory.add_message(
+        msg_id = await self._memory.add_message(
             self._active_conversation_id, "user", content=content
         )
+        # For connector sessions, keep the stored history bounded
+        if self._is_connector:
+            await self._maybe_trim_connector_history()
+        return msg_id
+
+    async def _maybe_trim_connector_history(self) -> None:
+        """Trim the oldest messages in a connector session conversation.
+
+        Fires after every user message.  When the total stored message count
+        exceeds CONNECTOR_TRIM_THRESHOLD, the oldest CONNECTOR_TRIM_COUNT
+        messages are deleted from the database.  This keeps the SQLite store
+        from growing unbounded while the LLM context is already managed
+        separately by _maybe_summarize.
+        """
+        if not self._active_conversation_id:
+            return
+        total = await self._memory.get_message_count(self._active_conversation_id)
+        if total <= self.CONNECTOR_TRIM_THRESHOLD:
+            return
+        deleted = await self._memory.trim_oldest_messages(
+            self._active_conversation_id, self.CONNECTOR_TRIM_COUNT
+        )
+        if deleted:
+            logger.info(
+                "Connector session auto-trim: deleted %d oldest messages "
+                "(conversation %r, was %d messages)",
+                deleted, self._active_conversation_id, total,
+            )
 
     async def add_assistant_message(
         self,

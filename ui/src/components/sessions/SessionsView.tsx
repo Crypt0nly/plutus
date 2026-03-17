@@ -6,7 +6,7 @@
  * card at the bottom lets the user navigate to the Connectors settings page.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, Loader2, Wifi, WifiOff, Plus } from "lucide-react";
+import { MessageSquare, Loader2, Wifi, WifiOff, Plus, Trash2 } from "lucide-react";
 import { useAppStore, DEFAULT_SESSION_ID } from "../../stores/appStore";
 import { MessageBubble } from "../chat/MessageBubble";
 import { ChatInput, type Attachment } from "../chat/ChatInput";
@@ -139,6 +139,23 @@ export default function SessionsView({ send }: Props) {
   const handleStop = () => {
     if (!selectedSession) return;
     send({ type: "stop_task", session_id: selectedSession.id });
+  };
+
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClearChat = () => {
+    if (!selectedSession) return;
+    if (!confirmClear) {
+      // First click: show confirmation
+      setConfirmClear(true);
+      setTimeout(() => setConfirmClear(false), 3000);
+      return;
+    }
+    // Second click within 3 s: send clear request
+    setConfirmClear(false);
+    send({ type: "clear_session_history", session_id: selectedSession.id });
+    // Optimistically clear the local message list
+    useAppStore.getState().clearMessages(selectedSession.id);
   };
 
   return (
@@ -285,12 +302,26 @@ export default function SessionsView({ send }: Props) {
                     >
                       {selectedSession.icon || "🔌"}
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-100">{meta.label}</p>
-                      <p className="text-[11px] text-gray-500">
+    
+                 <p className="text-[11px] text-gray-500">
                         Dedicated connector session · messages are isolated from main chat
                       </p>
                     </div>
+                    {/* Clear Chat button */}
+                    <button
+                      onClick={handleClearChat}
+                      title={confirmClear ? "Click again to confirm" : "Clear chat history"}
+                      className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all duration-200 flex-shrink-0 ${
+                        confirmClear
+                          ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                          : "bg-gray-800/60 text-gray-500 hover:text-gray-300 hover:bg-gray-700/60 border border-transparent"
+                      }`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {confirmClear ? "Confirm clear?" : "Clear chat"}
+                    </button>
                   </>
                 );
               })()}

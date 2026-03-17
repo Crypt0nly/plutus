@@ -334,6 +334,54 @@ class MemoryStore:
         row = await cursor.fetchone()
         return row[0] if row else 0
 
+    async def trim_oldest_messages(self, conversation_id: str, n: int) -> int:
+        """Delete the oldest *n* messages from a conversation.
+
+        Returns the number of rows actually deleted.  Used by connector
+        sessions to keep the stored history from growing unbounded.
+        """
+        assert self._db
+        cursor = await self._db.execute(
+            "SELECT id FROM messages WHERE conversation_id = ? "
+            "ORDER BY created_at ASC LIMIT ?",
+            (conversation_id, n),
+        )
+        rows = await cursor.fetchall()
+        if not rows:
+            return 0
+        ids = [r[0] for r in rows]
+        placeholders = ",".join("?" for _ in ids)
+        await self._db.execute(
+            f"DELETE FROM messages WHERE id IN ({placeholders})", ids
+        )
+        await self._db.commit()
+        return len(ids)
+
+    async def clear_conversation_messages(self, conversation_id: str) -> int:
+        """Delete ALL messages and the summary for a conversation.
+
+        The conversation row itself is kept so the agent can continue
+        writing to the same conversation_id.  Returns the number of
+        messages deleted.  Used by the 'Clear Chat' button in the
+        Sessions panel (connector sessions only).
+        """
+        assert self._db
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        row = await cursor.fetchone()
+        count = row[0] if row else 0
+        await self._db.execute(
+            "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
+        )
+        await self._db.execute(
+            "DELETE FROM conversation_summaries WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        await self._db.commit()
+        return count
+
     # -- Facts (persistent memory) --
 
     async def store_fact(self, category: str, content: str, source: str | None = None) -> int:

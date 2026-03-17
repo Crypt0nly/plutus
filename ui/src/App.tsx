@@ -269,6 +269,11 @@ export default function App() {
           }
           break;
 
+        case "session_history_cleared":
+          // Backend confirmed the clear — ensure the frontend message list is empty
+          clearMessages(sid);
+          break;
+
         case "heartbeat":
           addMessage({
             role: "system",
