@@ -3,30 +3,80 @@ import type { Message, Tier, ApprovalRequest } from "../lib/types";
 import type { ThemeMode } from "../hooks/useTheme";
 import { getStoredTheme } from "../hooks/useTheme";
 
-export type View = "chat" | "dashboard" | "guardrails" | "settings" | "tools" | "workers" | "tool-creator" | "skills" | "memory" | "connectors" | "onboarding";
+export type View =
+  | "chat"
+  | "dashboard"
+  | "guardrails"
+  | "settings"
+  | "tools"
+  | "workers"
+  | "tool-creator"
+  | "skills"
+  | "memory"
+  | "connectors"
+  | "onboarding";
 
 interface ChatMessage extends Message {
-  // Extended with UI-specific fields
   isStreaming?: boolean;
   toolResults?: Map<string, string>;
 }
+
+// ── Session types ─────────────────────────────────────────────────────────────
+
+export interface SessionInfo {
+  id: string;
+  display_name: string;
+  icon: string;
+  is_connector: boolean;
+  connector_name?: string | null;
+  conversation_id?: string | null;
+  is_processing: boolean;
+  created_at: string;
+  last_active: string;
+}
+
+interface SessionState {
+  messages: ChatMessage[];
+  isProcessing: boolean;
+  conversationId: string | null;
+}
+
+export const DEFAULT_SESSION_ID = "session_main";
+
+function emptySessionState(): SessionState {
+  return { messages: [], isProcessing: false, conversationId: null };
+}
+
+// ── Store interface ───────────────────────────────────────────────────────────
 
 interface AppState {
   // Navigation
   view: View;
   setView: (v: View) => void;
 
-  // Chat
-  messages: ChatMessage[];
-  addMessage: (msg: ChatMessage) => void;
-  appendToLastAssistant: (content: string) => void;
-  clearMessages: () => void;
-  isProcessing: boolean;
-  setProcessing: (v: boolean) => void;
+  // ── Multi-session ──────────────────────────────────────────────────────────
+  sessions: SessionInfo[];
+  setSessions: (sessions: SessionInfo[]) => void;
+  addSession: (session: SessionInfo) => void;
+  removeSession: (sessionId: string) => void;
+  updateSession: (sessionId: string, patch: Partial<SessionInfo>) => void;
 
-  // Conversations
+  activeSessionId: string;
+  setActiveSessionId: (id: string) => void;
+
+  sessionStates: Record<string, SessionState>;
+  getSessionState: (sessionId: string) => SessionState;
+
+  // ── Chat (operates on the active session) ─────────────────────────────────
+  messages: ChatMessage[];
+  addMessage: (msg: ChatMessage, sessionId?: string) => void;
+  appendToLastAssistant: (content: string, sessionId?: string) => void;
+  clearMessages: (sessionId?: string) => void;
+  isProcessing: boolean;
+  setProcessing: (v: boolean, sessionId?: string) => void;
+
   conversationId: string | null;
-  setConversationId: (id: string | null) => void;
+  setConversationId: (id: string | null, sessionId?: string) => void;
 
   // Guardrails
   currentTier: Tier;
@@ -44,7 +94,7 @@ interface AppState {
   setConnected: (v: boolean) => void;
 
   // Onboarding
-  onboardingCompleted: boolean | null; // null = not yet loaded
+  onboardingCompleted: boolean | null;
   setOnboardingCompleted: (v: boolean) => void;
 
   // Conversation history panel
@@ -70,30 +120,149 @@ interface AppState {
   setUpdateInfo: (info: AppState["updateInfo"]) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+// ── Store implementation ──────────────────────────────────────────────────────
+
+export const useAppStore = create<AppState>((set, get) => ({
   // Navigation
   view: "chat",
   setView: (view) => set({ view }),
 
-  // Chat
-  messages: [],
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
-  appendToLastAssistant: (content) =>
+  // ── Multi-session ──────────────────────────────────────────────────────────
+  sessions: [
+    {
+      id: DEFAULT_SESSION_ID,
+      display_name: "Main",
+      icon: "🏠",
+      is_connector: false,
+      is_processing: false,
+      created_at: new Date().toISOString(),
+      last_active: new Date().toISOString(),
+    },
+  ],
+  setSessions: (sessions) => set({ sessions }),
+  addSession: (session) =>
+    set((s) => ({
+      sessions: s.sessions.some((x) => x.id === session.id)
+        ? s.sessions
+        : [...s.sessions, session],
+    })),
+  removeSession: (sessionId) =>
+    set((s) => ({
+      sessions: s.sessions.filter((x) => x.id !== sessionId),
+    })),
+  updateSession: (sessionId, patch) =>
+    set((s) => ({
+      sessions: s.sessions.map((x) =>
+        x.id === sessionId ? { ...x, ...patch } : x
+      ),
+    })),
+
+  activeSessionId: DEFAULT_SESSION_ID,
+  setActiveSessionId: (id) => {
+    const state = get();
+    if (!state.sessionStates[id]) {
+      set((s) => ({
+        activeSessionId: id,
+        sessionStates: {
+          ...s.sessionStates,
+          [id]: emptySessionState(),
+        },
+      }));
+    } else {
+      set({ activeSessionId: id });
+    }
+  },
+
+  sessionStates: {
+    [DEFAULT_SESSION_ID]: emptySessionState(),
+  },
+  getSessionState: (sessionId) => {
+    return get().sessionStates[sessionId] ?? emptySessionState();
+  },
+
+  // ── Chat (derived from active session) ────────────────────────────────────
+  get messages() {
+    const { activeSessionId, sessionStates } = get();
+    return (sessionStates[activeSessionId] ?? emptySessionState()).messages;
+  },
+  addMessage: (msg, sessionId) => {
+    const sid = sessionId ?? get().activeSessionId;
     set((s) => {
-      const msgs = [...s.messages];
+      const prev = s.sessionStates[sid] ?? emptySessionState();
+      return {
+        sessionStates: {
+          ...s.sessionStates,
+          [sid]: { ...prev, messages: [...prev.messages, msg] },
+        },
+      };
+    });
+  },
+  appendToLastAssistant: (content, sessionId) => {
+    const sid = sessionId ?? get().activeSessionId;
+    set((s) => {
+      const prev = s.sessionStates[sid] ?? emptySessionState();
+      const msgs = [...prev.messages];
       const last = msgs[msgs.length - 1];
       if (last && last.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, content: (last.content || "") + content };
+        msgs[msgs.length - 1] = {
+          ...last,
+          content: (last.content || "") + content,
+        };
       }
-      return { messages: msgs };
-    }),
-  clearMessages: () => set({ messages: [] }),
-  isProcessing: false,
-  setProcessing: (isProcessing) => set({ isProcessing }),
+      return {
+        sessionStates: {
+          ...s.sessionStates,
+          [sid]: { ...prev, messages: msgs },
+        },
+      };
+    });
+  },
+  clearMessages: (sessionId) => {
+    const sid = sessionId ?? get().activeSessionId;
+    set((s) => {
+      const prev = s.sessionStates[sid] ?? emptySessionState();
+      return {
+        sessionStates: {
+          ...s.sessionStates,
+          [sid]: { ...prev, messages: [] },
+        },
+      };
+    });
+  },
 
-  // Conversations
-  conversationId: null,
-  setConversationId: (conversationId) => set({ conversationId }),
+  get isProcessing() {
+    const { activeSessionId, sessionStates } = get();
+    return (sessionStates[activeSessionId] ?? emptySessionState()).isProcessing;
+  },
+  setProcessing: (v, sessionId) => {
+    const sid = sessionId ?? get().activeSessionId;
+    set((s) => {
+      const prev = s.sessionStates[sid] ?? emptySessionState();
+      return {
+        sessionStates: {
+          ...s.sessionStates,
+          [sid]: { ...prev, isProcessing: v },
+        },
+      };
+    });
+  },
+
+  get conversationId() {
+    const { activeSessionId, sessionStates } = get();
+    return (sessionStates[activeSessionId] ?? emptySessionState()).conversationId;
+  },
+  setConversationId: (id, sessionId) => {
+    const sid = sessionId ?? get().activeSessionId;
+    set((s) => {
+      const prev = s.sessionStates[sid] ?? emptySessionState();
+      return {
+        sessionStates: {
+          ...s.sessionStates,
+          [sid]: { ...prev, conversationId: id },
+        },
+      };
+    });
+  },
 
   // Guardrails
   currentTier: "assistant",
@@ -107,7 +276,7 @@ export const useAppStore = create<AppState>((set) => ({
     })),
 
   // API Key status
-  keyConfigured: true, // assume true until proven otherwise
+  keyConfigured: true,
   setKeyConfigured: (keyConfigured) => set({ keyConfigured }),
 
   // Connection
@@ -121,7 +290,8 @@ export const useAppStore = create<AppState>((set) => ({
   // Conversation history panel
   historyPanelOpen: false,
   setHistoryPanelOpen: (historyPanelOpen) => set({ historyPanelOpen }),
-  toggleHistoryPanel: () => set((s) => ({ historyPanelOpen: !s.historyPanelOpen })),
+  toggleHistoryPanel: () =>
+    set((s) => ({ historyPanelOpen: !s.historyPanelOpen })),
 
   // Theme
   theme: getStoredTheme(),

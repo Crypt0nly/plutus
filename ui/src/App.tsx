@@ -58,19 +58,29 @@ export default function App() {
     setOnboardingCompleted,
     setUpdateInfo,
     theme,
+    // Multi-session
+    setSessions,
+    addSession,
+    removeSession,
+    setActiveSessionId,
   } = useAppStore();
 
   useTheme(theme);
 
   const handleWSMessage = useCallback(
     (msg: any) => {
+      // All messages from the backend carry an optional session_id.
+      // We route chat events to the correct session; global events (connection,
+      // updates, workers) are handled without a session context.
+      const sid: string | undefined = msg.session_id;
+
       switch (msg.type) {
         case "thinking":
-          setProcessing(true);
+          setProcessing(true, sid);
           break;
 
         case "text":
-          addMessage({ role: "assistant", content: msg.content });
+          addMessage({ role: "assistant", content: msg.content }, sid);
           break;
 
         case "tool_call": {
@@ -98,7 +108,7 @@ export default function App() {
               role: "assistant",
               content: actionLabels[action] || action,
               tool_calls: [{ id: msg.id || "", name: toolName, arguments: args }],
-            });
+            }, sid);
           } else {
             // Standard tool calls — show friendly operation label
             const operation = args.operation || args.action || "";
@@ -110,7 +120,7 @@ export default function App() {
               role: "assistant",
               content: `Using tool: **${friendlyName}**`,
               tool_calls: [{ id: msg.id || "", name: toolName, arguments: args }],
-            });
+            }, sid);
           }
           break;
         }
@@ -121,19 +131,19 @@ export default function App() {
               role: "tool",
               content: `__SCREENSHOT__:${msg.image_base64}`,
               tool_call_id: msg.id,
-            });
+            }, sid);
           } else if (msg.error) {
             addMessage({
               role: "tool",
               content: `[ERROR] ${msg.result || "Unknown error"}`,
               tool_call_id: msg.id,
-            });
+            }, sid);
           } else {
             addMessage({
               role: "tool",
               content: msg.result || "Done",
               tool_call_id: msg.id,
-            });
+            }, sid);
           }
           break;
         }
@@ -143,7 +153,7 @@ export default function App() {
             role: "system",
             content: `Approval needed for **${msg.tool}**: ${msg.reason}`,
             approval_id: msg.approval_id,
-          });
+          }, sid);
           break;
 
         case "mode":
@@ -154,64 +164,109 @@ export default function App() {
           addMessage({
             role: "system",
             content: `Step ${msg.number}/${msg.max}`,
-          });
+          }, sid);
           break;
 
         case "error":
-          addMessage({ role: "system", content: `Error: ${msg.message}` });
-          setProcessing(false);
+          addMessage({ role: "system", content: `Error: ${msg.message}` }, sid);
+          setProcessing(false, sid);
           break;
 
         case "done":
-          setProcessing(false);
+          setProcessing(false, sid);
           break;
 
         case "cancelled":
         case "task_stopped":
-          addMessage({ role: "system", content: `${msg.message || "Task stopped"}` });
-          setProcessing(false);
+          addMessage({ role: "system", content: `${msg.message || "Task stopped"}` }, sid);
+          setProcessing(false, sid);
           break;
 
         case "conversation_started":
-          setConversationId(msg.conversation_id);
+          setConversationId(msg.conversation_id, sid);
           break;
 
         case "conversation_resumed":
-          setConversationId(msg.conversation_id);
-          clearMessages();
+          setConversationId(msg.conversation_id, sid);
+          clearMessages(sid);
           msg.messages.forEach((m: any) => {
             // Remap internal/system messages that were stored as "user" role
             if (m.role === "user" && typeof m.content === "string") {
               if (m.content.startsWith("[HEARTBEAT]")) {
-                addMessage({ ...m, role: "system" });
+                addMessage({ ...m, role: "system" }, sid);
                 return;
               }
               if (m.content.startsWith("[SYSTEM NOTIFICATION]")) {
-                addMessage({ ...m, role: "system" });
+                addMessage({ ...m, role: "system" }, sid);
                 return;
               }
               if (m.content.startsWith("[SYSTEM]")) {
-                addMessage({ ...m, role: "system" });
+                addMessage({ ...m, role: "system" }, sid);
                 return;
               }
             }
-            addMessage(m);
+            addMessage(m, sid);
           });
+          break;
+
+        // ── Session management events ──────────────────────────────────
+        case "sessions_list":
+          if (Array.isArray(msg.sessions)) {
+            setSessions(
+              msg.sessions.map((s: any) => ({
+                id: s.session_id || s.id,
+                display_name: s.display_name,
+                icon: s.icon,
+                is_connector: s.is_connector,
+                connector_name: s.connector_name,
+                conversation_id: s.conversation_id,
+                is_processing: s.is_processing ?? false,
+                created_at: s.created_at,
+                last_active: s.last_active,
+              }))
+            );
+          }
+          break;
+
+        case "session_created": {
+          const s = msg.session;
+          if (s) {
+            addSession({
+              id: s.session_id || s.id,
+              display_name: s.display_name,
+              icon: s.icon,
+              is_connector: s.is_connector,
+              connector_name: s.connector_name,
+              conversation_id: s.conversation_id,
+              is_processing: false,
+              created_at: s.created_at,
+              last_active: s.last_active,
+            });
+            // Auto-switch to the new session
+            setActiveSessionId(s.session_id || s.id);
+          }
+          break;
+        }
+
+        case "session_closed":
+          if (msg.session_id) {
+            removeSession(msg.session_id);
+          }
           break;
 
         case "heartbeat":
           addMessage({
             role: "system",
             content: `Heartbeat #${msg.beat}/${msg.max}`,
-          });
-          setProcessing(true);
+          }, sid);
+          setProcessing(true, sid);
           break;
 
         case "heartbeat_paused":
           addMessage({
             role: "system",
             content: `Heartbeat paused: ${msg.reason} (after ${msg.count} beats)`,
-          });
+          }, sid);
           break;
 
         case "attachment": {
@@ -221,14 +276,14 @@ export default function App() {
             addMessage({
               role: "tool",
               content: `__ATTACHMENT_IMAGE__:${msg.file_name}:${msg.image_base64}${caption}`,
-            });
+            }, sid);
           } else {
             const sizeKB = Math.round((msg.file_size || 0) / 1024);
             const caption = msg.caption ? ` — ${msg.caption}` : "";
             addMessage({
               role: "tool",
               content: `__ATTACHMENT_FILE__:${msg.file_name}:${sizeKB}:${msg.file_path}${caption}`,
-            });
+            }, sid);
           }
           break;
         }
@@ -245,7 +300,7 @@ export default function App() {
           addMessage({
             role: "assistant",
             content: `__WORKER_RESULT__:${workerName}:${workerModel}:${workerResult}`,
-          });
+          }, sid);
           break;
         }
 
@@ -255,7 +310,7 @@ export default function App() {
           addMessage({
             role: "system",
             content: `__WORKER_STARTED__:${w.name || w.task_id}:${w.model || "auto"}`,
-          });
+          }, sid);
           break;
         }
 
@@ -265,7 +320,7 @@ export default function App() {
           break;
       }
     },
-    [addMessage, setProcessing, setConversationId, clearMessages]
+    [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId]
   );
 
   const { send, connected } = useWebSocket(handleWSMessage);
