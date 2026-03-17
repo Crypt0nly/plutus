@@ -65,6 +65,38 @@ class PlanManager:
             """
         )
         await self._memory._db.commit()
+        # On every startup (including after updates/restarts), reset any plan
+        # steps that were left 'in_progress'.  This prevents the heartbeat
+        # from blindly continuing OS-level tasks (opening apps, running
+        # commands) that were interrupted mid-execution by a server restart.
+        # Steps are marked 'interrupted' so the user can explicitly ask
+        # Plutus to continue rather than having it resume autonomously.
+        cursor = await self._memory._db.execute(
+            "SELECT id, steps FROM plans WHERE status = 'active'"
+        )
+        rows = await cursor.fetchall()
+        for plan_id, steps_json in rows:
+            try:
+                steps = json.loads(steps_json)
+                changed = False
+                for step in steps:
+                    if step.get("status") == StepStatus.IN_PROGRESS.value:
+                        step["status"] = "interrupted"
+                        prev = step.get("result") or ""
+                        step["result"] = (
+                            (prev + " " if prev else "") +
+                            "[interrupted by server restart — ask Plutus to continue]"
+                        ).strip()
+                        changed = True
+                if changed:
+                    await self._memory._db.execute(
+                        "UPDATE plans SET steps = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(steps), time.time(), plan_id),
+                    )
+            except Exception:
+                pass  # best-effort; never block startup
+        await self._memory._db.commit()
+        logger.debug("Planner initialized; reset %d in-progress plan steps", len(rows))
 
     # -- CRUD ----------------------------------------------------------------
 
