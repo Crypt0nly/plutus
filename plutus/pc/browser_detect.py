@@ -5,6 +5,15 @@ Edge, Vivaldi, Opera, Arc, Chromium, Canary) and returns a ranked list so the
 user can pick which one Plutus should connect to via CDP.
 
 Ported from OpenClaw's chrome.executables.ts with Python-idiomatic adjustments.
+
+SAFETY NOTE (Windows):
+  This module must NEVER launch arbitrary executables to probe them.  The old
+  ``_is_chromium_exe`` helper ran unknown .exe files with ``--version``, which
+  caused MS Teams, PowerPoint, PowerShell and other apps to open whenever the
+  Settings tab was displayed.  All Windows version-reading now uses the Win32
+  ``GetFileVersionInfo`` API via ctypes (no subprocess), and unknown executables
+  are identified exclusively by filesystem markers (chrome.dll, *.pak files),
+  never by executing them.
 """
 
 from __future__ import annotations
@@ -125,18 +134,94 @@ def _get_version_unix(exe_path: str) -> str:
 
 
 def _get_version_windows(exe_path: str) -> str:
+    """Read the file version from a Windows PE executable using ctypes.
+
+    This uses the Win32 GetFileVersionInfo API directly — no subprocess, no
+    PowerShell, no external process is launched.
+    """
     try:
-        import winreg  # type: ignore[import]
-        _ = winreg  # suppress unused warning
-    except ImportError:
+        import ctypes
+        import ctypes.wintypes  # type: ignore[import]
+
+        ver_dll = ctypes.windll.version  # type: ignore[attr-defined]
+
+        # GetFileVersionInfoSizeW returns the required buffer size (0 on failure)
+        size = ver_dll.GetFileVersionInfoSizeW(exe_path, None)
+        if not size:
+            return ""
+
+        buf = ctypes.create_string_buffer(size)
+        if not ver_dll.GetFileVersionInfoW(exe_path, 0, size, buf):
+            return ""
+
+        # VerQueryValueW with path "\\" returns a pointer to VS_FIXEDFILEINFO
+        p_info = ctypes.c_void_p()
+        n_info = ctypes.c_uint(0)
+        if not ver_dll.VerQueryValueW(buf, "\\", ctypes.byref(p_info), ctypes.byref(n_info)):
+            return ""
+
+        class _FIXEDFILEINFO(ctypes.Structure):
+            _fields_ = [
+                ("dwSignature",        ctypes.c_uint32),
+                ("dwStrucVersion",     ctypes.c_uint32),
+                ("dwFileVersionMS",    ctypes.c_uint32),
+                ("dwFileVersionLS",    ctypes.c_uint32),
+                ("dwProductVersionMS", ctypes.c_uint32),
+                ("dwProductVersionLS", ctypes.c_uint32),
+            ]
+
+        info = ctypes.cast(p_info, ctypes.POINTER(_FIXEDFILEINFO)).contents
+        ms = info.dwFileVersionMS
+        ls = info.dwFileVersionLS
+        return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+    except Exception:
+        return ""
+
+
+def _get_exe_display_name_windows(exe_path: str) -> str:
+    """Read the FileDescription from a Windows PE using ctypes.
+
+    Falls back to a prettified stem name.  No subprocess is launched.
+    """
+    try:
+        import ctypes
+        import ctypes.wintypes  # type: ignore[import]
+
+        ver_dll = ctypes.windll.version  # type: ignore[attr-defined]
+
+        size = ver_dll.GetFileVersionInfoSizeW(exe_path, None)
+        if not size:
+            raise ValueError("no version info")
+
+        buf = ctypes.create_string_buffer(size)
+        if not ver_dll.GetFileVersionInfoW(exe_path, 0, size, buf):
+            raise ValueError("GetFileVersionInfoW failed")
+
+        # Query the string table for FileDescription.
+        # We need to find the language/codepage first via \VarFileInfo\Translation
+        p_trans = ctypes.c_void_p()
+        n_trans = ctypes.c_uint(0)
+        if ver_dll.VerQueryValueW(buf, r"\VarFileInfo\Translation",
+                                   ctypes.byref(p_trans), ctypes.byref(n_trans)):
+            # First translation entry: LOWORD=language, HIWORD=codepage
+            lang_cp = ctypes.cast(p_trans, ctypes.POINTER(ctypes.c_uint32)).contents.value
+            lang = lang_cp & 0xFFFF
+            cp   = (lang_cp >> 16) & 0xFFFF
+            sub_block = f"\\StringFileInfo\\{lang:04X}{cp:04X}\\FileDescription"
+        else:
+            # Fallback: English US + Unicode
+            sub_block = r"\StringFileInfo\040904B0\FileDescription"
+
+        p_desc = ctypes.c_void_p()
+        n_desc = ctypes.c_uint(0)
+        if ver_dll.VerQueryValueW(buf, sub_block, ctypes.byref(p_desc), ctypes.byref(n_desc)):
+            desc = ctypes.wstring_at(p_desc.value)  # type: ignore[arg-type]
+            if desc and desc.strip():
+                return desc.strip()
+    except Exception:
         pass
-    # Use PowerShell to read file version
-    out = _exec_text(
-        ["powershell", "-Command",
-         f"(Get-Item '{exe_path}').VersionInfo.FileVersion"],
-        timeout=4.0,
-    )
-    return out or ""
+
+    return Path(exe_path).stem.replace("-", " ").replace("_", " ").title()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -266,10 +351,14 @@ def _scan_mac() -> list[BrowserInfo]:
 # Windows detection
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Registry App Paths keys for known Chromium browsers only
 _WIN_REGISTRY_PATHS = [
     r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
     r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
     r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\brave.exe",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\vivaldi.exe",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\opera.exe",
+    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chromium.exe",
 ]
 
 _WIN_KNOWN_PATHS: list[tuple[str, str]] = [
@@ -293,6 +382,30 @@ _WIN_LOCAL_APPDATA_PATHS: list[tuple[str, str]] = [
     (r"Vivaldi\Application\vivaldi.exe",                                      "vivaldi"),
 ]
 
+# Allowlist of exe stems that are definitively known Chromium browsers.
+# The registry scan will ONLY add executables whose stem appears in this set
+# (or whose _infer_kind() returns a non-"chrome" kind, meaning the name itself
+# is a known browser name).  Unknown stems are skipped — we never execute them.
+_WIN_KNOWN_BROWSER_STEMS: frozenset[str] = frozenset({
+    "chrome", "chrome_proxy",
+    "msedge", "microsoftedge",
+    "brave", "brave-browser",
+    "vivaldi",
+    "opera", "opera_gx_stable", "launcher",
+    "chromium", "chromium-browser",
+    "canary",
+    "comet",          # Perplexity's Chromium fork
+    "arc",
+    "yandex",
+    "coccoc",         # Vietnamese Chromium fork
+    "whale",          # Naver Whale
+    "naver",
+    "cent",           # CentBrowser
+    "slimjet",
+    "iridium",
+    "ungoogled",
+})
+
 
 def _read_registry_value(key_path: str) -> Optional[str]:
     try:
@@ -309,34 +422,28 @@ def _read_registry_value(key_path: str) -> Optional[str]:
     return None
 
 
-def _is_chromium_exe(exe_path: str) -> bool:
-    """Heuristic: run the exe with --version and check if it looks like a Chromium build."""
+def _is_chromium_dir(app_dir: Path) -> bool:
+    """Return True if *app_dir* contains the filesystem markers of a Chromium build.
+
+    This is a pure filesystem check — no executable is launched.
+    Chromium builds always ship with chrome.dll and at least one .pak file.
+    """
+    chromium_markers = {
+        "chrome.dll",
+        "chrome_100_percent.pak",
+        "chrome_200_percent.pak",
+        "resources.pak",
+        "icudtl.dat",
+    }
     try:
-        out = _exec_text([exe_path, "--version"], timeout=3.0)
-        if not out:
-            return False
-        low = out.lower()
-        # Chromium-based browsers typically output something like:
-        # "Google Chrome 120.0.6099.130", "Brave Browser 1.61.109", "Comet 120.0.0.1"
-        # We accept anything that has a version-like number in the output.
-        import re
-        return bool(re.search(r'\d+\.\d+\.\d+', out))
+        files_here = {f.name.lower() for f in app_dir.iterdir() if f.is_file()}
+        return bool(chromium_markers.intersection(files_here))
     except Exception:
         return False
 
 
-def _get_exe_display_name_windows(exe_path: str) -> str:
-    """Read the FileDescription from the exe's version info via PowerShell."""
-    out = _exec_text(
-        ["powershell", "-Command",
-         f"(Get-Item '{exe_path}').VersionInfo.FileDescription"],
-        timeout=4.0,
-    )
-    return out.strip() if out and out.strip() else Path(exe_path).stem.replace("-", " ").replace("_", " ").title()
-
-
 def _scan_windows_registry_app_paths() -> list[tuple[str, str]]:
-    """Scan ALL entries under App Paths in the registry, not just the hardcoded ones."""
+    """Scan App Paths registry entries, returning only known-browser exe names."""
     found: list[tuple[str, str]] = []
     try:
         import winreg  # type: ignore[import]
@@ -350,6 +457,11 @@ def _scan_windows_registry_app_paths() -> list[tuple[str, str]]:
                             sub_name = winreg.EnumKey(root, i)
                             i += 1
                             if not sub_name.lower().endswith(".exe"):
+                                continue
+                            # Only process exe names that are known browser stems
+                            stem = Path(sub_name).stem.lower()
+                            if stem not in _WIN_KNOWN_BROWSER_STEMS and _infer_kind(stem) == "chrome":
+                                # Unknown name that doesn't match any known browser pattern → skip
                                 continue
                             try:
                                 with winreg.OpenKey(root, sub_name) as sub:
@@ -420,27 +532,16 @@ def _scan_windows() -> list[BrowserInfo]:
         if exe:
             _add(exe.strip('"'))
 
-    # 3. Scan ALL App Paths registry entries — catches any browser registered there
+    # 3. Scan App Paths registry entries — filtered to known browser stems only
+    #    (no unknown executables are ever launched)
     for exe, sub_name in _scan_windows_registry_app_paths():
         if not exe:
             continue
         exe = exe.strip('"')
-        # Quick filter: skip obviously non-browser exes
-        stem = Path(exe).stem.lower()
-        skip_stems = {"iexplore", "firefox", "thunderbird", "outlook", "winword",
-                      "excel", "powerpnt", "notepad", "explorer", "mspaint"}
-        if stem in skip_stems:
-            continue
         if _exists(exe):
-            # Only add if it looks like a Chromium build
             kind = _infer_kind(exe)
-            if kind != "chrome":  # known non-chrome kind → add directly
-                _add(exe)
-            else:
-                # Unknown exe name → verify it's actually Chromium-based
-                if _is_chromium_exe(exe):
-                    name = _get_exe_display_name_windows(exe)
-                    _add(exe, kind="custom", name=name)
+            n = _display_name(kind, Path(exe).stem)
+            _add(exe, kind, n)
 
     # 4. Well-known Program Files paths
     for path, kind in _WIN_KNOWN_PATHS:
@@ -452,20 +553,15 @@ def _scan_windows() -> list[BrowserInfo]:
         for rel, kind in _WIN_LOCAL_APPDATA_PATHS:
             _add(os.path.join(local_appdata, rel), kind)
 
-    # 6. Broad filesystem scan: look for *.exe files in common install dirs
-    #    that contain "browser", "chrome", or match known patterns.
-    #    This catches completely custom browsers like Comet.
+    # 6. Filesystem scan: look for Chromium builds in common install dirs.
+    #    Identification is done ONLY by filesystem markers (chrome.dll, *.pak),
+    #    never by executing the binary.
     scan_roots = [
         os.environ.get("PROGRAMFILES", r"C:\Program Files"),
         os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
         local_appdata,
         os.path.join(os.environ.get("APPDATA", ""), "..", "Local"),
     ]
-    chromium_markers = {
-        # Files that exist in every Chromium build's application directory
-        "chrome.dll", "chrome_100_percent.pak", "chrome_200_percent.pak",
-        "resources.pak", "icudtl.dat",
-    }
     for root_dir in scan_roots:
         if not root_dir:
             continue
@@ -481,26 +577,25 @@ def _scan_windows() -> list[BrowserInfo]:
                 for app_dir in [vendor_dir / "Application", vendor_dir]:
                     if not app_dir.is_dir():
                         continue
-                    # Check if this looks like a Chromium app dir
-                    files_here = {f.name.lower() for f in app_dir.iterdir() if f.is_file()}
-                    if not chromium_markers.intersection(files_here):
+                    # Check if this looks like a Chromium app dir via filesystem markers
+                    if not _is_chromium_dir(app_dir):
                         continue
-                    # Find the main exe
+                    # Find the main exe — only add it, never execute it
                     for f in app_dir.iterdir():
                         if f.suffix.lower() != ".exe":
                             continue
                         stem = f.stem.lower()
                         # Skip helper/installer exes
-                        if any(x in stem for x in ("setup", "install", "update", "helper", "crash", "uninstall")):
+                        if any(x in stem for x in ("setup", "install", "update", "helper",
+                                                     "crash", "uninstall", "elevation",
+                                                     "notification", "recovery")):
                             continue
                         exe = str(f)
                         if exe.lower() not in seen:
                             kind = _infer_kind(exe)
-                            if kind == "chrome":  # unknown → use display name from exe
-                                name = _get_exe_display_name_windows(exe)
-                                _add(exe, kind="custom", name=name)
-                            else:
-                                _add(exe, kind)
+                            # Use ctypes-based display name (no subprocess)
+                            name = _get_exe_display_name_windows(exe)
+                            _add(exe, kind if kind != "chrome" else "custom", name)
         except Exception:
             continue
 
