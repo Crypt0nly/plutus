@@ -98,6 +98,12 @@ interface AppState {
   onboardingCompleted: boolean | null;
   setOnboardingCompleted: (v: boolean) => void;
 
+  // Lazy session creation — set when user clicks "New Chat" but before
+  // any message is sent. ChatView reads this flag and creates the session
+  // on the first send, then clears the flag.
+  pendingNewSession: boolean;
+  setPendingNewSession: (v: boolean) => void;
+
   // Conversation history panel
   historyPanelOpen: boolean;
   setHistoryPanelOpen: (v: boolean) => void;
@@ -287,6 +293,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Onboarding
   onboardingCompleted: null,
   setOnboardingCompleted: (onboardingCompleted) => set({ onboardingCompleted }),
+
+  // Lazy session creation
+  pendingNewSession: false,
+  setPendingNewSession: (pendingNewSession) => set({ pendingNewSession }),
 
   // Conversation history panel
   historyPanelOpen: false,

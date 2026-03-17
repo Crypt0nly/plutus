@@ -2,13 +2,15 @@
  * SessionsView — shows all active connector sessions (Telegram, WhatsApp, etc.)
  * in a two-pane layout: a list on the left and the chat history on the right.
  *
- * User sessions (non-connector) are excluded — those live in the normal Chat view.
+ * Only connectors that are configured/enabled are shown. An "Add Connector"
+ * card at the bottom lets the user navigate to the Connectors settings page.
  */
-import { useEffect, useRef, useState } from "react";
-import { MessageSquare, Loader2, Wifi, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MessageSquare, Loader2, Wifi, WifiOff, Plus } from "lucide-react";
 import { useAppStore, DEFAULT_SESSION_ID } from "../../stores/appStore";
 import { MessageBubble } from "../chat/MessageBubble";
 import { ChatInput, type Attachment } from "../chat/ChatInput";
+import { api } from "../../lib/api";
 
 interface Props {
   send: (data: Record<string, unknown>) => void;
@@ -44,30 +46,55 @@ const CONNECTOR_META: Record<string, { label: string; color: string; bg: string;
 
 function getConnectorKey(session: { id: string; connector_name?: string | null }): string {
   if (session.connector_name) return session.connector_name.toLowerCase();
-  // Fall back to parsing the session id (e.g. "session_telegram")
   const parts = session.id.split("_");
   return parts[parts.length - 1].toLowerCase();
 }
 
 export default function SessionsView({ send }: Props) {
-  const {
-    sessions,
-    sessionStates,
-  } = useAppStore();
+  const { sessions, sessionStates, setView } = useAppStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Only show connector sessions — use local state so we never change
-  // activeSessionId (which belongs to the main chat view).
+  // Set of connector names that are configured (have credentials saved).
+  const [configuredConnectors, setConfiguredConnectors] = useState<Set<string>>(new Set());
+  const [loadingConnectors, setLoadingConnectors] = useState(true);
+
+  const fetchConfigured = useCallback(async () => {
+    try {
+      const data = await api.getConnectors();
+      const connectors: any[] = data.connectors ?? [];
+      // A connector is "active" if it has been configured by the user.
+      const active = new Set(
+        connectors
+          .filter((c) => c.configured === true)
+          .map((c) => (c.name as string).toLowerCase())
+      );
+      setConfiguredConnectors(active);
+    } catch {
+      // If the API is unavailable, fall back to showing all connector sessions.
+      setConfiguredConnectors(new Set(Object.keys(CONNECTOR_META)));
+    } finally {
+      setLoadingConnectors(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchConfigured();
+  }, [fetchConfigured]);
+
+  // Only show connector sessions whose connector is configured.
   const connectorSessions = sessions.filter(
-    (s) => s.is_connector && s.id !== DEFAULT_SESSION_ID
+    (s) =>
+      s.is_connector &&
+      s.id !== DEFAULT_SESSION_ID &&
+      (loadingConnectors || configuredConnectors.has(getConnectorKey(s)))
   );
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     connectorSessions[0]?.id ?? null
   );
 
-  // When connector sessions list changes, ensure selectedSessionId is valid
+  // Keep selection valid when the list changes.
   useEffect(() => {
     if (connectorSessions.length === 0) {
       setSelectedSessionId(null);
@@ -76,11 +103,11 @@ export default function SessionsView({ send }: Props) {
     if (!selectedSessionId || !connectorSessions.find((s) => s.id === selectedSessionId)) {
       setSelectedSessionId(connectorSessions[0].id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectorSessions.map((s) => s.id).join(",")]);
 
   const selectedSession = connectorSessions.find((s) => s.id === selectedSessionId) ?? null;
 
-  // Scroll to bottom when messages change
   const messages = selectedSession
     ? (sessionStates[selectedSession.id]?.messages ?? [])
     : [];
@@ -97,19 +124,14 @@ export default function SessionsView({ send }: Props) {
 
   const handleSend = (content: string, attachments?: Attachment[]) => {
     if (!selectedSession) return;
-    useAppStore.getState().addMessage(
-      { role: "user", content },
-      selectedSession.id
-    );
+    useAppStore.getState().addMessage({ role: "user", content }, selectedSession.id);
     const payload: Record<string, unknown> = {
       type: "chat",
       content,
       session_id: selectedSession.id,
     };
     if (attachments?.length) {
-      payload.attachments = attachments.map(({ name, type, data }) => ({
-        name, type, data,
-      }));
+      payload.attachments = attachments.map(({ name, type, data }) => ({ name, type, data }));
     }
     send(payload);
   };
@@ -131,13 +153,17 @@ export default function SessionsView({ send }: Props) {
             Active Sessions
           </h2>
         </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
-          {connectorSessions.length === 0 ? (
+
+        <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
+          {loadingConnectors ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+            </div>
+          ) : connectorSessions.length === 0 ? (
             <div className="px-3 py-6 text-center">
               <WifiOff className="w-5 h-5 text-gray-700 mx-auto mb-2" />
               <p className="text-[11px] text-gray-600 leading-relaxed">
-                No connector sessions active. Enable connectors in the{" "}
-                <span className="text-plutus-400">Connectors</span> tab.
+                No connectors configured yet.
               </p>
             </div>
           ) : (
@@ -158,9 +184,7 @@ export default function SessionsView({ send }: Props) {
                   key={session.id}
                   onClick={() => setSelectedSessionId(session.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 ${
-                    isSelected
-                      ? "bg-gray-800/80"
-                      : "hover:bg-gray-800/40"
+                    isSelected ? "bg-gray-800/80" : "hover:bg-gray-800/40"
                   }`}
                   style={
                     isSelected
@@ -168,7 +192,6 @@ export default function SessionsView({ send }: Props) {
                       : { border: "1px solid transparent" }
                   }
                 >
-                  {/* Icon */}
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-base"
                     style={{ background: meta.bg, border: `1px solid ${meta.border}` }}
@@ -183,7 +206,6 @@ export default function SessionsView({ send }: Props) {
                       >
                         {meta.label}
                       </span>
-                      {/* Online dot */}
                       <span
                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                         style={{ background: "#34d399" }}
@@ -192,10 +214,7 @@ export default function SessionsView({ send }: Props) {
                     </div>
                     <div className="flex items-center gap-1 mt-0.5">
                       {processing ? (
-                        <Loader2
-                          className="w-3 h-3 animate-spin"
-                          style={{ color: meta.color }}
-                        />
+                        <Loader2 className="w-3 h-3 animate-spin" style={{ color: meta.color }} />
                       ) : (
                         <Wifi className="w-3 h-3 text-gray-600" />
                       )}
@@ -208,6 +227,36 @@ export default function SessionsView({ send }: Props) {
               );
             })
           )}
+        </div>
+
+        {/* ── Add Connector card ─────────────────────────────────────────── */}
+        <div className="px-2 pb-4 pt-1 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={() => setView("connectors")}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 hover:bg-gray-800/40 group"
+            style={{
+              border: "1px dashed rgba(99,102,241,0.25)",
+              background: "rgba(99,102,241,0.03)",
+            }}
+          >
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
+              style={{
+                background: "rgba(99,102,241,0.08)",
+                border: "1px solid rgba(99,102,241,0.2)",
+              }}
+            >
+              <Plus className="w-4 h-4 text-indigo-400 group-hover:text-indigo-300" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-[13px] font-medium text-gray-400 group-hover:text-gray-200 transition-colors block">
+                Add Connector
+              </span>
+              <span className="text-[11px] text-gray-600 group-hover:text-gray-500 transition-colors block mt-0.5">
+                Telegram, WhatsApp, Discord…
+              </span>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -237,9 +286,7 @@ export default function SessionsView({ send }: Props) {
                       {selectedSession.icon || "🔌"}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-gray-100">
-                        {meta.label}
-                      </p>
+                      <p className="text-sm font-semibold text-gray-100">{meta.label}</p>
                       <p className="text-[11px] text-gray-500">
                         Dedicated connector session · messages are isolated from main chat
                       </p>
@@ -257,8 +304,8 @@ export default function SessionsView({ send }: Props) {
                     <MessageSquare className="w-8 h-8 text-gray-700 mb-3" />
                     <p className="text-sm text-gray-500 font-medium">No messages yet</p>
                     <p className="text-[12px] text-gray-600 mt-1 max-w-xs leading-relaxed">
-                      Messages from this connector will appear here. You can also
-                      send a message directly from this panel.
+                      Messages from this connector will appear here. You can also send a
+                      message directly from this panel.
                     </p>
                   </div>
                 ) : (
@@ -289,17 +336,36 @@ export default function SessionsView({ send }: Props) {
             </div>
 
             {/* Input */}
-            <ChatInput
-              onSend={handleSend}
-              onStop={handleStop}
-              disabled={isProcessing}
-            />
+            <ChatInput onSend={handleSend} onStop={handleStop} disabled={isProcessing} />
           </>
         ) : (
+          /* Empty state when no connector is configured yet */
           <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <WifiOff className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">No connector sessions available</p>
+            <div className="text-center max-w-xs">
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                style={{
+                  background: "rgba(99,102,241,0.08)",
+                  border: "1px solid rgba(99,102,241,0.15)",
+                }}
+              >
+                <Plus className="w-6 h-6 text-indigo-400" />
+              </div>
+              <p className="text-sm font-semibold text-gray-300 mb-1">No connectors yet</p>
+              <p className="text-[12px] text-gray-500 leading-relaxed mb-5">
+                Connect Telegram, WhatsApp, Discord, or a custom connector to chat with
+                Plutus from anywhere.
+              </p>
+              <button
+                onClick={() => setView("connectors")}
+                className="px-5 py-2 rounded-xl text-sm font-medium text-white transition-all duration-200 active:scale-[0.97]"
+                style={{
+                  background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                  boxShadow: "0 4px 16px rgba(99, 102, 241, 0.3)",
+                }}
+              >
+                Set up a Connector
+              </button>
             </div>
           </div>
         )}

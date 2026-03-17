@@ -57,7 +57,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ send }: SidebarProps) {
-  const { view, setView, connected, currentTier } = useAppStore();
+  const { view, setView, connected, currentTier, setPendingNewSession } = useAppStore();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const toggleSection = (label: string) => {
@@ -70,12 +70,11 @@ export function Sidebar({ send }: SidebarProps) {
   };
 
   const handleNewChat = () => {
+    // Mark that the next message should open a new session.
+    // The actual backend session is created lazily when the user sends
+    // their first message — this avoids creating empty sessions.
+    setPendingNewSession(true);
     setView("chat");
-    if (send) {
-      // Create a new independent session — the backend will respond with
-      // a "session_created" message and the UI will switch to it automatically.
-      send({ type: "new_session", display_name: "New Chat", icon: "💬" });
-    }
   };
 
   return (
