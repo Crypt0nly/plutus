@@ -92,3 +92,48 @@ class WhatsAppConnector(BaseConnector):
             "skill": "whatsapp_send_message",
             "params": {"contact": contact, "message": text},
         }
+
+    async def send_file(
+        self,
+        file_path: str,
+        caption: str = "",
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Send a file via WhatsApp Web using browser automation.
+
+        Uses the WhatsApp Web file attachment flow:
+        1. Navigate to the contact's chat
+        2. Click the paperclip / attachment icon
+        3. Upload the file via the hidden file input
+        4. Optionally add a caption
+        5. Click Send
+
+        Args:
+            file_path: Absolute path to the file to send.
+            caption: Optional caption to include with the file.
+            contact: Contact name or phone number (falls back to default_contact).
+        """
+        import os
+        contact = kwargs.get("contact", self._config.get("default_contact", ""))
+        if not contact:
+            return {"success": False, "message": "Contact name is required for WhatsApp file sending"}
+
+        if not os.path.isfile(file_path):
+            return {"success": False, "message": f"File not found: {file_path}"}
+
+        file_name = os.path.basename(file_path)
+
+        # Delegate to the agent via action_required — the agent will use browser
+        # automation to open WhatsApp Web, navigate to the contact, attach the file
+        # and send it.
+        return {
+            "success": True,
+            "message": f"WhatsApp file send queued for {contact}: {file_name}",
+            "action_required": True,
+            "skill": "whatsapp_send_file",
+            "params": {
+                "contact": contact,
+                "file_path": file_path,
+                "caption": caption,
+            },
+        }

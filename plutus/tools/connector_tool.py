@@ -68,8 +68,10 @@ class ConnectorTool(Tool):
             "Google Drive, GitHub, and custom API services. "
             "Use action='list' to see available connectors. "
             "Use action='send' with service='telegram' to send a Telegram message. "
-            "Use action='send_file' with service='telegram' or service='discord' "
+            "Use action='send_file' with service='telegram', 'discord', 'whatsapp', or 'email' "
             "and file_path to send a screenshot or file. "
+            "For whatsapp, also pass contact='Name'. "
+            "For email, also pass to='recipient@example.com' and optionally subject='...' . "
             "Use action='send' with service='email' to send an email "
             "(requires 'to' and 'subject' params). "
             "Use action='send' with service='google_gmail' to send a Gmail email "
@@ -860,10 +862,23 @@ class ConnectorTool(Tool):
             result = await connector.send_file(
                 file_path, caption=caption, channel_id=channel_id
             )
+        elif service == "whatsapp":
+            contact = kwargs.get("contact", "")
+            result = await connector.send_file(
+                file_path, caption=caption, contact=contact
+            )
+        elif service == "email":
+            to = kwargs.get("to", "")
+            subject = kwargs.get("subject", "")
+            if not to:
+                return "Error: 'to' (recipient email address) is required when sending a file via email"
+            result = await connector.send_file(
+                file_path, caption=caption, to=to, subject=subject
+            )
         else:
             return (
                 f"Error: send_file is not yet supported for {service}. "
-                "Currently only Telegram and Discord support file sending."
+                "Supported services: telegram, discord, whatsapp, email."
             )
 
         if not result.get("success"):
