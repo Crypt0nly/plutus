@@ -82,8 +82,14 @@ async def _heartbeat_on_beat(prompt: str) -> None:
             return
     try:
         async with _agent_lock:
-            async for event in agent.process_message(prompt):
-                await ws_manager.broadcast(event.to_dict())
+            # Set the heartbeat flag so _execute_tool hard-blocks destructive ops
+            agent._is_heartbeat = True
+            try:
+                async for event in agent.process_message(prompt):
+                    await ws_manager.broadcast(event.to_dict())
+            finally:
+                # Always clear the flag, even if an exception occurs
+                agent._is_heartbeat = False
     except Exception as e:
         logger.exception("Heartbeat agent processing failed")
         await ws_manager.broadcast({

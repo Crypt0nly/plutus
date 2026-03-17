@@ -28,7 +28,16 @@ DEFAULT_HEARTBEAT_PROMPT = (
     "[HEARTBEAT] This is an automatic check-in. Review your current plan "
     "(if any) and continue working on the next pending step. If there is "
     "nothing to do, respond briefly that you're standing by. Do NOT ask the "
-    "user for input — just continue autonomously or confirm you're idle."
+    "user for input — just continue autonomously or confirm you're idle.\n\n"
+    "IMPORTANT RESTRICTIONS FOR THIS HEARTBEAT:\n"
+    "- Do NOT open, launch, or close any applications or programs.\n"
+    "- Do NOT use pc(operation=\"open_app\"), pc(operation=\"run_command\"), "
+    "pc(operation=\"close_app\"), or any OS-level commands that affect running processes.\n"
+    "- Do NOT use the Computer Use (screenshot) agent.\n"
+    "- Only perform safe, non-destructive actions: web browsing, reading files, "
+    "writing files, API calls, memory operations, and planning.\n"
+    "- If the next plan step requires opening an app or controlling the desktop, "
+    "SKIP it and note that it requires user presence."
 )
 
 

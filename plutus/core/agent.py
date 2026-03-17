@@ -1578,6 +1578,18 @@ class AgentRuntime:
 
         return json.dumps({"screenshot_url": screenshot_url})
 
+    # ── Heartbeat safety gate ───────────────────────────────────────────────
+    # PC operations that are BLOCKED during autonomous heartbeat runs.
+    # The LLM is also told not to use these in the heartbeat prompt, but
+    # this is a hard enforcement layer that cannot be bypassed.
+    _HEARTBEAT_BLOCKED_OPS: frozenset[str] = frozenset({
+        "open_app", "close_app", "run_command", "kill_process",
+        "open_file", "open_folder", "open_url",
+        "desktop_click", "desktop_click_ref", "desktop_type",
+        "desktop_type_ref", "desktop_key", "desktop_scroll",
+        "desktop_snapshot", "screenshot", "mouse_click", "mouse_scroll",
+    })
+
     async def _execute_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         """Execute a tool via the registry."""
         if not self._tool_registry:
@@ -1586,6 +1598,20 @@ class AgentRuntime:
         tool = self._tool_registry.get(tool_name)
         if not tool:
             return f"[ERROR] Unknown tool: {tool_name}"
+
+        # Hard-block destructive OS/desktop operations during heartbeat runs.
+        # _is_heartbeat is set by server.py's _heartbeat_on_beat callback.
+        if getattr(self, '_is_heartbeat', False) and tool_name == "pc":
+            op = arguments.get("operation", "")
+            if op in self._HEARTBEAT_BLOCKED_OPS:
+                logger.warning(
+                    "Heartbeat tried to call blocked operation '%s' — blocked.", op
+                )
+                return (
+                    f"[BLOCKED] Operation '{op}' requires a human to be present. "
+                    "This step cannot run during an autonomous heartbeat. "
+                    "Update the plan step to 'waiting_for_user' and stop."
+                )
 
         return await tool.execute(**arguments)
 
