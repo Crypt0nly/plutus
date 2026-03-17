@@ -157,6 +157,11 @@ class PCControlTool(Tool):
             "  iframe_snapshot(frame_selector?, frame_index?) → snapshot inside an iframe\n\n"
             "Other browser ops: new_tab, close_tab, switch_tab, list_tabs,\n"
             "  fill_form, evaluate_js, wait_for_text, wait_for_navigation\n"
+            "  sync_tabs() → re-sync tab map with what's actually open in the browser\n"
+            "    Use when connecting to user's real browser or after browser restart.\n"
+            "  reset_browser_session(close_stale=true, keep_tab_id?) → full session reset:\n"
+            "    closes blank tabs, re-syncs tab map, resets ref numbers, returns fresh snapshot.\n"
+            "    Use when confused about which tab is active, or after stale session errors.\n"
             "  browser_screenshot() → ⚠️ ONLY call this if the USER explicitly asked for a screenshot.\n"
             "    DO NOT call browser_screenshot to read a page — use snapshot() instead.\n"
             "    browser_screenshot does NOT help you see the page; snapshot() does.\n\n"
@@ -201,6 +206,7 @@ class PCControlTool(Tool):
                         "fill_form", "select_option", "browser_hover", "browser_scroll",
                         "browser_screenshot",
                         "new_tab", "close_tab", "switch_tab", "list_tabs",
+                        "sync_tabs", "reset_browser_session",
                         "evaluate_js", "wait_for_text", "wait_for_navigation",
                         # Desktop UIA operations — snapshot + ref-based (for native apps)
                         "desktop_snapshot", "desktop_click_ref", "desktop_type_ref",
@@ -689,6 +695,14 @@ class PCControlTool(Tool):
         elif op == "list_tabs":
             return await self._browser.list_tabs()
 
+        elif op == "sync_tabs":
+            return await self._browser.sync_tabs()
+
+        elif op == "reset_browser_session":
+            close_stale = kwargs.get("close_stale", True)
+            keep_tab_id = kwargs.get("keep_tab_id")
+            return await self._browser.reset_browser_session(close_stale=close_stale, keep_tab_id=keep_tab_id)
+
         elif op == "evaluate_js":
             code = kwargs.get("js_code") or kwargs.get("text", "")
             if not code:
@@ -1049,6 +1063,7 @@ class PCControlTool(Tool):
                                        "fill_form", "select_option", "browser_hover",
                                        "browser_scroll", "browser_screenshot",
                                        "new_tab", "close_tab", "switch_tab", "list_tabs",
+                        "sync_tabs", "reset_browser_session",
                                        "evaluate_js", "wait_for_text", "wait_for_navigation"],
                     "desktop_uia": ["desktop_snapshot", "desktop_click_ref", "desktop_type_ref",
                                     "desktop_select_ref", "desktop_toggle_ref",

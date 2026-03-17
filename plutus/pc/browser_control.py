@@ -962,6 +962,149 @@ class BrowserControl:
 
         return {"success": True, "tabs": tabs, "count": len(tabs)}
 
+    async def sync_tabs(self) -> dict:
+        """
+        Re-sync the internal tab map with what is actually open in the browser.
+
+        When Plutus connects to the user's real browser via CDP, tabs that were
+        opened before the connection (or by the user manually) may not be in
+        self._pages. This method discovers all real pages and updates the map,
+        pruning stale entries and adding new ones.
+        """
+        if not await self._ensure_browser():
+            return {"success": False, "error": "Browser not available"}
+
+        try:
+            real_pages = self._context.pages if self._context else []
+            new_pages: dict[str, Any] = {}
+            tabs = []
+
+            for i, page in enumerate(real_pages):
+                # Try to find an existing tab_id for this page object
+                existing_id = None
+                for tid, p in self._pages.items():
+                    if p == page:
+                        existing_id = tid
+                        break
+                tab_id = existing_id or f"tab_{i}"
+                new_pages[tab_id] = page
+
+                try:
+                    url = page.url
+                    title = await page.title()
+                    is_stale = url in ("about:blank", "chrome://newtab/", "")
+                except Exception:
+                    url = "unknown"
+                    title = "(crashed or unresponsive)"
+                    is_stale = True
+
+                tabs.append({
+                    "tab_id": tab_id,
+                    "url": url,
+                    "title": title,
+                    "active": tab_id == self._active_tab,
+                    "stale": is_stale,
+                })
+
+            self._pages = new_pages
+
+            # If the current active tab is gone, switch to the last real tab
+            if self._active_tab not in self._pages:
+                non_stale = [t for t in tabs if not t["stale"]]
+                if non_stale:
+                    self._active_tab = non_stale[-1]["tab_id"]
+                elif self._pages:
+                    self._active_tab = list(self._pages.keys())[-1]
+                else:
+                    self._active_tab = None
+
+            return {
+                "success": True,
+                "tabs": tabs,
+                "count": len(tabs),
+                "active_tab": self._active_tab,
+                "hint": "Use switch_tab(tab_id) to focus the correct tab before interacting.",
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def reset_browser_session(self, close_stale: bool = True, keep_tab_id: Optional[str] = None) -> dict:
+        """
+        Reset the browser session state.
+
+        This is the fix for the 'stale tab / wrong session' problem:
+        - Re-syncs the tab map with what's actually open in the browser
+        - Optionally closes blank/new-tab pages that are just noise
+        - Resets the ref map so old [ref] numbers are no longer valid
+        - Switches focus to the most relevant tab (or keep_tab_id if specified)
+        - Returns a fresh snapshot of the active tab
+
+        Use this when:
+        - The agent is confused about which tab is active
+        - Browser was restarted and the session is stale
+        - After connecting to the user's real browser via CDP
+        - When structured browser tools are returning errors about wrong pages
+        """
+        if not await self._ensure_browser():
+            return {"success": False, "error": "Browser not available"}
+
+        try:
+            # Step 1: Re-sync tab map
+            sync = await self.sync_tabs()
+            if not sync["success"]:
+                return sync
+
+            tabs = sync["tabs"]
+            closed = []
+
+            # Step 2: Optionally close stale (blank) tabs
+            if close_stale:
+                for tab in tabs:
+                    if tab["stale"] and tab["tab_id"] != keep_tab_id:
+                        try:
+                            page = self._pages.get(tab["tab_id"])
+                            if page:
+                                await page.close()
+                                del self._pages[tab["tab_id"]]
+                                closed.append(tab["tab_id"])
+                        except Exception:
+                            pass
+
+            # Step 3: Switch to the requested tab or pick the best one
+            if keep_tab_id and keep_tab_id in self._pages:
+                self._active_tab = keep_tab_id
+            else:
+                # Prefer the last non-stale tab
+                live_tabs = [
+                    t for t in tabs
+                    if t["tab_id"] in self._pages and not t["stale"]
+                ]
+                if live_tabs:
+                    self._active_tab = live_tabs[-1]["tab_id"]
+                elif self._pages:
+                    self._active_tab = list(self._pages.keys())[-1]
+
+            # Step 4: Reset ref map (old refs are invalid after session reset)
+            self._ref_map = {}
+            self._ref_counter = 0
+
+            # Step 5: Take a fresh snapshot of the active tab
+            snap = await self.snapshot() if self._active_tab else {"success": False, "error": "No tabs remaining"}
+
+            active_page = self._get_active_page()
+            return {
+                "success": True,
+                "active_tab": self._active_tab,
+                "url": active_page.url if active_page else None,
+                "title": await active_page.title() if active_page else None,
+                "closed_stale_tabs": closed,
+                "remaining_tabs": len(self._pages),
+                "snapshot": snap.get("snapshot", ""),
+                "hint": "Session reset complete. Use the [ref] numbers above to interact with the page.",
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     # ═══════════════════════════════════════════════════════════════
     # JAVASCRIPT & WAIT
     # ═══════════════════════════════════════════════════════════════
