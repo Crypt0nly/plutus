@@ -13,6 +13,7 @@ import { ToolCreatorView } from "./components/tool-creator/ToolCreatorView";
 import SkillsView from "./components/skills/SkillsView";
 import { MemoryView } from "./components/memory/MemoryView";
 import ConnectorsView from "./components/connectors/ConnectorsView";
+import SessionsView from "./components/sessions/SessionsView";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { UpdateBanner } from "./components/layout/UpdateBanner";
 import { ConnectionBanner } from "./components/layout/ConnectionBanner";
@@ -398,6 +399,7 @@ export default function App() {
 
   const viewComponents: Record<string, React.ReactNode> = {
     chat: <ChatView send={send} />,
+    sessions: <SessionsView send={send} />,
     dashboard: <DashboardView />,
     guardrails: <GuardrailsView />,
     settings: <SettingsView />,
@@ -418,7 +420,7 @@ export default function App() {
         <ConnectionBanner />
         <UpdateBanner />
         <Header />
-        <main className={`flex-1 flex flex-col ${view === "chat" ? "overflow-hidden" : "overflow-y-auto p-6"}`}>
+        <main className={`flex-1 flex flex-col ${(view === "chat" || view === "sessions") ? "overflow-hidden" : "overflow-y-auto p-6"}`}>
           {viewComponents[view] || viewComponents.chat}
         </main>
       </div>

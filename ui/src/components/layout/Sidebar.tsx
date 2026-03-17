@@ -11,6 +11,7 @@ import {
   Brain,
   Plug,
   ChevronDown,
+  Layers,
 } from "lucide-react";
 import { useAppStore, type View } from "../../stores/appStore";
 
@@ -25,6 +26,7 @@ const navSections: NavSection[] = [
     label: "Main",
     items: [
       { id: "chat", label: "Chat", icon: MessageSquare },
+      { id: "sessions", label: "Sessions", icon: Layers },
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },

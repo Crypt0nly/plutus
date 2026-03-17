@@ -14,6 +14,7 @@ export type View =
   | "skills"
   | "memory"
   | "connectors"
+  | "sessions"
   | "onboarding";
 
 interface ChatMessage extends Message {
