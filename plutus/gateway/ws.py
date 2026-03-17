@@ -83,6 +83,10 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Track in-flight chat tasks per session so we can cancel them on stop_task.
+# Maps session_id -> asyncio.Task
+_active_tasks: dict[str, asyncio.Task] = {}
+
 
 def create_ws_router() -> APIRouter:
     router = APIRouter()
@@ -92,16 +96,46 @@ def create_ws_router() -> APIRouter:
         if not await manager.connect(ws):
             return  # connection rejected (limit reached)
 
+        # Background tasks spawned for this connection — cancelled on disconnect
+        background_tasks: set[asyncio.Task] = set()
+
         try:
             while True:
                 data = await ws.receive_text()
                 message = json.loads(data)
-                await _handle_message(ws, message)
+
+                # Chat messages are long-running — spawn as background tasks so
+                # the receive loop stays free and multiple sessions can run in
+                # parallel without blocking each other.
+                if message.get("type") == "chat":
+                    task = asyncio.create_task(
+                        _handle_chat(ws, message),
+                        name=f"chat-{message.get('session_id', _DEFAULT_SESSION_ID)}",
+                    )
+                    sid = message.get("session_id") or _DEFAULT_SESSION_ID
+                    # Cancel any previous task for this session before starting a new one
+                    prev = _active_tasks.get(sid)
+                    if prev and not prev.done():
+                        prev.cancel()
+                    _active_tasks[sid] = task
+                    background_tasks.add(task)
+                    task.add_done_callback(background_tasks.discard)
+                    task.add_done_callback(
+                        lambda t, s=sid: _active_tasks.pop(s, None) if _active_tasks.get(s) is t else None
+                    )
+                else:
+                    await _handle_message(ws, message)
+
         except WebSocketDisconnect:
             manager.disconnect(ws)
+            # Cancel all in-flight tasks for this connection
+            for t in list(background_tasks):
+                t.cancel()
         except Exception as e:
             logger.exception("WebSocket error")
             manager.disconnect(ws)
+            for t in list(background_tasks):
+                t.cancel()
 
     return router
 
@@ -503,6 +537,13 @@ async def _handle_stop_task(ws: WebSocket, message: dict[str, Any]) -> None:
     session = registry.get(session_id)
 
     stopped = False
+
+    # Cancel the asyncio background task for this session if one is running
+    bg_task = _active_tasks.get(session_id)
+    if bg_task and not bg_task.done():
+        bg_task.cancel()
+        stopped = True
+
     if cu_agent and getattr(cu_agent, "is_running", False):
         cu_agent.stop()
         stopped = True
