@@ -5,10 +5,13 @@ Flow:
   2. discord.py client picks it up via on_message
   3. This bridge receives it via the on_message callback
   4. Sends a typing indicator to the channel
-  5. Routes it through the Standard Agent (same as WebSocket chat)
+  5. Routes it through the dedicated Discord session agent
+     (session_id = "session_discord") — completely isolated from the
+     main UI chat so messages never bleed into the user's chat view.
   6. Collects the agent's text response events
   7. Sends the response back to the user via Discord
-  8. Also broadcasts events to WebSocket so the UI stays in sync
+  8. Also broadcasts events to WebSocket tagged with session_id="session_discord"
+     so the Sessions panel in the UI stays in sync.
   9. Screenshots and files generated during processing are sent as attachments
 
 The bridge processes messages sequentially via a queue to prevent
@@ -25,6 +28,10 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("plutus.connectors.discord_bridge")
+
+# The session_id used for all Discord traffic — must match the value in
+# session_registry.CONNECTOR_SESSIONS.
+_DISCORD_SESSION_ID = "session_discord"
 
 
 class DiscordBridge:
@@ -103,14 +110,36 @@ class DiscordBridge:
             return None
 
     def _get_agent(self):
-        """Get the Plutus agent from the server state."""
+        """Get the dedicated Discord session agent from the session registry.
+
+        Falls back to the global main agent if the session registry is not
+        available (e.g. during early startup).
+        """
         try:
-            from plutus.gateway.server import get_state
-            state = get_state()
-            return state.get("agent")
+            from plutus.core.session_registry import get_registry
+            registry = get_registry()
+            session = registry.get(_DISCORD_SESSION_ID)
+            if session:
+                return session.agent, session.lock
         except Exception as e:
-            logger.error(f"Failed to get agent: {e}")
-            return None
+            logger.warning(f"Session registry not available: {e}")
+
+        # Fallback — use the global agent
+        try:
+            from plutus.gateway.server import get_state, _agent_lock
+            state = get_state()
+            return state.get("agent"), _agent_lock
+        except Exception as e:
+            logger.error(f"Failed to get fallback agent: {e}")
+            return None, None
+
+    async def _broadcast(self, payload: dict) -> None:
+        """Broadcast a WebSocket event tagged with the Discord session_id."""
+        try:
+            from plutus.gateway.ws import manager as ws_manager
+            await ws_manager.broadcast_to_session(_DISCORD_SESSION_ID, payload)
+        except Exception as e:
+            logger.debug(f"Could not broadcast to WebSocket: {e}")
 
     async def _on_discord_message(self, text: str, metadata: dict[str, Any]) -> None:
         """Callback when a Discord message arrives — queue it for processing."""
@@ -148,7 +177,7 @@ class DiscordBridge:
 
     async def _handle_message(self, text: str, metadata: dict[str, Any]) -> None:
         """Route a Discord message through the agent and send the response back."""
-        agent = self._get_agent()
+        agent, agent_lock = self._get_agent()
         discord_conn = self._get_discord()
 
         if not agent:
@@ -169,78 +198,75 @@ class DiscordBridge:
         # Send typing indicator immediately
         await discord_conn.send_typing(channel_id=channel_id)
 
-        # Broadcast to WebSocket UI so the user can see Discord messages there too
-        try:
-            from plutus.gateway.ws import manager as ws_manager
-            await ws_manager.broadcast({
-                "type": "discord_message",
-                "content": (
-                    f"💬 **Discord** "
-                    f"({metadata.get('author_display_name', 'User')}): {text}"
-                ),
-                "source": "discord",
-            })
-        except Exception as e:
-            logger.debug(f"Could not broadcast to WebSocket: {e}")
+        # Broadcast the incoming Discord message to the Sessions panel in the UI
+        # (tagged with session_id so it only appears in the Discord session view)
+        await self._broadcast({
+            "type": "text",
+            "content": (
+                f"💬 **{metadata.get('author_display_name', 'User')}**: {text}"
+            ),
+            "role": "user",
+        })
+        await self._broadcast({"type": "thinking"})
 
-        # Process through the agent — collect text responses
+        # Process through the dedicated Discord session agent
         response_parts: list[str] = []
         tool_summaries: list[str] = []
         screenshots_sent = 0
 
         try:
-            logger.info("Sending message to agent for processing...")
-            async for event in agent.process_message(text):
-                # Broadcast to WebSocket so UI stays in sync
-                try:
-                    from plutus.gateway.ws import manager as ws_manager
-                    event_dict = event.to_dict()
-                    await ws_manager.broadcast(event_dict)
-                except Exception:
-                    pass
+            logger.info("Sending message to Discord session agent...")
+            lock_ctx = agent_lock if agent_lock else _NullLock()
+            async with lock_ctx:
+                async for event in agent.process_message(text):
+                    # Broadcast every event to the Sessions panel (with session_id)
+                    await self._broadcast(event.to_dict())
 
-                if event.type == "text" and event.data.get("content"):
-                    content = event.data["content"]
-                    response_parts.append(content)
-                    logger.debug(f"Agent text: {content[:100]}")
+                    if event.type == "text" and event.data.get("content"):
+                        content = event.data["content"]
+                        response_parts.append(content)
+                        logger.debug(f"Agent text: {content[:100]}")
 
-                elif event.type == "tool_call":
-                    tool_name = event.data.get("tool", "")
-                    if tool_name not in ("plan", "memory"):
-                        operation = (
-                            event.data.get("arguments", {}).get("operation", "")
-                        )
-                        summary = (
-                            f"🔧 {tool_name}.{operation}"
-                            if operation
-                            else f"🔧 {tool_name}"
-                        )
-                        tool_summaries.append(summary)
-                        logger.debug(f"Agent tool call: {summary}")
+                    elif event.type == "tool_call":
+                        tool_name = event.data.get("tool", "")
+                        if tool_name not in ("plan", "memory"):
+                            operation = (
+                                event.data.get("arguments", {}).get("operation", "")
+                            )
+                            summary = (
+                                f"🔧 {tool_name}.{operation}"
+                                if operation
+                                else f"🔧 {tool_name}"
+                            )
+                            tool_summaries.append(summary)
+                            logger.debug(f"Agent tool call: {summary}")
 
-                        # Refresh typing indicator for long operations
-                        await discord_conn.send_typing(channel_id=channel_id)
+                            # Refresh typing indicator for long operations
+                            await discord_conn.send_typing(channel_id=channel_id)
 
-                elif event.type == "tool_result":
-                    # Forward screenshots to Discord as files
-                    if event.data.get("screenshot") and event.data.get("image_base64"):
-                        sent = await self._send_screenshot(
-                            event.data["image_base64"], channel_id, discord_conn
-                        )
-                        if sent:
-                            screenshots_sent += 1
+                    elif event.type == "tool_result":
+                        # Forward screenshots to Discord as files
+                        if event.data.get("screenshot") and event.data.get("image_base64"):
+                            sent = await self._send_screenshot(
+                                event.data["image_base64"], channel_id, discord_conn
+                            )
+                            if sent:
+                                screenshots_sent += 1
 
-                elif event.type == "error":
-                    error_msg = event.data.get("message", "Unknown error")
-                    response_parts.append(f"⚠️ {error_msg}")
-                    logger.warning(f"Agent error event: {error_msg}")
+                    elif event.type == "error":
+                        error_msg = event.data.get("message", "Unknown error")
+                        response_parts.append(f"⚠️ {error_msg}")
+                        logger.warning(f"Agent error event: {error_msg}")
 
-                elif event.type == "done":
-                    logger.info("Agent processing complete")
+                    elif event.type == "done":
+                        logger.info("Agent processing complete")
 
         except Exception as e:
             logger.exception("Agent processing failed for Discord message")
             response_parts.append(f"⚠️ Processing error: {str(e)[:300]}")
+            await self._broadcast({"type": "error", "message": str(e)[:300]})
+
+        await self._broadcast({"type": "done"})
 
         # Build the final response
         final_response = "\n".join(response_parts).strip()
@@ -327,6 +353,14 @@ class DiscordBridge:
         except Exception as e:
             logger.error(f"Failed to send screenshot to Discord: {e}")
             return False
+
+
+class _NullLock:
+    """A no-op async context manager used when no lock is needed."""
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *_):
+        pass
 
 
 # Singleton bridge instance

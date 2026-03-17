@@ -5,6 +5,7 @@ Supports Anthropic, OpenAI, local models (Ollama), and any OpenAI-compatible end
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -444,8 +445,26 @@ class LLMClient:
         if built_tools:
             call_kwargs["tools"] = built_tools
 
-        response = await litellm.acompletion(**call_kwargs)
-        return self._parse_response(response)
+        # Retry up to 3 times on transient server errors (Anthropic 500, 529, etc.)
+        _retryable = (
+            litellm.InternalServerError,
+            litellm.ServiceUnavailableError,
+            litellm.RateLimitError,
+        )
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = await litellm.acompletion(**call_kwargs)
+                return self._parse_response(response)
+            except _retryable as exc:
+                last_exc = exc
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(
+                    f"LLM transient error (attempt {attempt + 1}/3), "
+                    f"retrying in {wait}s: {type(exc).__name__}: {exc}"
+                )
+                await asyncio.sleep(wait)
+        raise last_exc  # type: ignore[misc]
 
     async def stream(
         self,
