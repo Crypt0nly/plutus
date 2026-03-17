@@ -6,6 +6,7 @@ import {
   X,
   Search,
   MoreHorizontal,
+  Loader2,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/appStore";
@@ -31,6 +32,19 @@ export function ConversationHistory({ send }: Props) {
   const { activeSessionId, sessionStates, setConversationId, clearMessages, setView, connected } =
     useAppStore();
   const conversationId = sessionStates[activeSessionId]?.conversationId ?? null;
+
+  // Build a set of conversation IDs that are currently being processed
+  // across ALL sessions (not just the active one) so we can show spinners
+  // on any chat that Plutus is working in right now.
+  const processingConvIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const state of Object.values(sessionStates)) {
+      if (state.isProcessing && state.conversationId) {
+        ids.add(state.conversationId);
+      }
+    }
+    return ids;
+  }, [sessionStates]);
 
   const fetchConversations = useCallback(() => {
     if (!connected) return; // Don't poll when backend is down
@@ -189,6 +203,7 @@ export function ConversationHistory({ send }: Props) {
                     <div className="space-y-0.5">
                       {group.items.map((conv) => {
                         const isActive = conv.id === conversationId;
+                        const isWorking = processingConvIds.has(conv.id);
                         const isEditing = editingId === conv.id;
                         const isConfirmingDelete = confirmDeleteId === conv.id;
                         const isMenuOpen = menuOpenId === conv.id;
@@ -294,7 +309,21 @@ export function ConversationHistory({ send }: Props) {
                                   </span>
                                 </div>
 
-                                {/* Context menu trigger */}
+                                {/* Processing spinner — shown when Plutus is actively working in this chat.
+                                     Replaces the context-menu button while processing so they don't overlap. */}
+                                {isWorking ? (
+                                  <span
+                                    className="flex-shrink-0"
+                                    title="Plutus is working in this chat"
+                                  >
+                                    <Loader2
+                                      className="w-3.5 h-3.5 animate-spin"
+                                      style={{ color: "#818cf8" }}
+                                    />
+                                  </span>
+                                ) : null}
+
+                                {/* Context menu trigger — hidden while processing to avoid overlap */}
                                 <div className="relative shrink-0" ref={isMenuOpen ? menuRef : undefined}>
                                   <button
                                     onClick={(e) => {
@@ -304,7 +333,9 @@ export function ConversationHistory({ send }: Props) {
                                     className={`p-0.5 rounded transition-all ${
                                       isMenuOpen
                                         ? "text-gray-300 bg-gray-700/50"
-                                        : "text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-300 hover:bg-gray-700/50"
+                                        : isWorking
+                                          ? "hidden"
+                                          : "text-gray-700 opacity-0 group-hover:opacity-100 hover:text-gray-300 hover:bg-gray-700/50"
                                     }`}
                                   >
                                     <MoreHorizontal className="w-3.5 h-3.5" />
