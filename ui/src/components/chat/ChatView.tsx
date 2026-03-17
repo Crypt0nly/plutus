@@ -9,7 +9,9 @@ interface Props {
 }
 
 export function ChatView({ send }: Props) {
-  const { messages, isProcessing, keyConfigured, activeSessionId } = useAppStore();
+  const { keyConfigured, activeSessionId, sessionStates } = useAppStore();
+  const messages = sessionStates[activeSessionId]?.messages ?? [];
+  const isProcessing = sessionStates[activeSessionId]?.isProcessing ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -339,7 +339,8 @@ function SummaryCard({ summary }: { summary: Record<string, any> | null }) {
 // ─── Main View ────────────────────────────────────────────────
 
 export function MemoryView() {
-  const { conversationId } = useAppStore();
+  const { activeSessionId, sessionStates } = useAppStore();
+  const conversationId = sessionStates[activeSessionId]?.conversationId ?? null;
 
   const [stats, setStats] = useState<Record<string, any> | null>(null);
   const [plans, setPlans] = useState<Record<string, any>[]>([]);

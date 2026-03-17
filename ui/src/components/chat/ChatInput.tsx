@@ -29,7 +29,8 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { isProcessing } = useAppStore();
+  const { activeSessionId, sessionStates } = useAppStore();
+  const isProcessing = sessionStates[activeSessionId]?.isProcessing ?? false;
 
   // Auto-resize textarea
   useEffect(() => {
