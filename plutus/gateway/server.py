@@ -57,11 +57,28 @@ async def _heartbeat_on_beat(prompt: str) -> None:
     agent: AgentRuntime | None = _state.get("agent")
     if not agent:
         return
-    # Use the lock to prevent concurrent process_message calls
-    # (e.g. heartbeat firing while a user message is being processed)
-    if _agent_lock.locked():
-        logger.debug("Skipping heartbeat — agent is busy processing")
+
+    # Skip if the agent is actively processing a message (user or previous heartbeat)
+    if getattr(agent, 'is_processing', False):
+        logger.debug("Skipping heartbeat — agent is currently processing a message")
         return
+
+    # Skip if the lock is held (belt-and-suspenders: covers race between is_processing check and lock acquire)
+    if _agent_lock.locked():
+        logger.debug("Skipping heartbeat — agent lock is held")
+        return
+
+    # Skip if any background workers are actively running
+    subprocess_mgr = _state.get("subprocess_manager")
+    if subprocess_mgr and hasattr(subprocess_mgr, 'list_active'):
+        active_workers = subprocess_mgr.list_active()
+        if active_workers:
+            logger.debug(
+                "Skipping heartbeat — %d background worker(s) still running: %s",
+                len(active_workers),
+                [w.get('id', '?') for w in active_workers],
+            )
+            return
     try:
         async with _agent_lock:
             async for event in agent.process_message(prompt):

@@ -973,6 +973,9 @@ class AgentRuntime:
         # Cancellation flag — set by cancel() to stop the current process_message loop
         self._cancelled = False
 
+        # Processing flag — True while process_message() is actively running
+        self._processing = False
+
     @property
     def conversation(self) -> ConversationManager:
         return self._conversation
@@ -1004,6 +1007,11 @@ class AgentRuntime:
     def cancel(self) -> None:
         """Cancel the currently running process_message loop."""
         self._cancelled = True
+
+    @property
+    def is_processing(self) -> bool:
+        """True while process_message() is actively running."""
+        return self._processing
 
     def on_event(self, handler: Callable[[AgentEvent], Any]) -> None:
         """Register an event handler for agent events."""
@@ -1327,6 +1335,7 @@ class AgentRuntime:
             self._pending_worker_results.clear()
 
         self._cancelled = False
+        self._processing = True
         yield AgentEvent("thinking", {"message": "Processing your request..."})
 
         tool_defs = self._get_tool_definitions()
@@ -1337,6 +1346,7 @@ class AgentRuntime:
 
         for round_num in range(max_rounds):
             if self._cancelled:
+                self._processing = False
                 yield AgentEvent("cancelled", {"message": "Task stopped by user"})
                 return
             messages = await self._conversation.build_messages()
@@ -1351,10 +1361,12 @@ class AgentRuntime:
             try:
                 response = await self._llm.complete(messages, tools=tool_defs or None)
             except Exception as e:
+                self._processing = False
                 yield AgentEvent("error", {"message": f"LLM error: {e}"})
                 return
 
             if self._cancelled:
+                self._processing = False
                 yield AgentEvent("cancelled", {"message": "Task stopped by user"})
                 return
 
@@ -1387,6 +1399,7 @@ class AgentRuntime:
             # If no tool calls, we're done
             if not response.tool_calls:
                 await self._conversation.add_assistant_message(content=response.content)
+                self._processing = False
                 yield AgentEvent("done", {})
                 return
 
@@ -1517,6 +1530,7 @@ class AgentRuntime:
         # If we exhausted all rounds, save a checkpoint before stopping
         await self._auto_checkpoint()
 
+        self._processing = False
         yield AgentEvent(
             "error",
             {"message": f"Reached maximum tool rounds ({max_rounds}). Stopping."},
