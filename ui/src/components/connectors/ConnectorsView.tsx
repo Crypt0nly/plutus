@@ -39,6 +39,7 @@ import {
   Upload,
 } from "lucide-react";
 import { api } from "../../lib/api";
+import { ConnectorLogo, CONNECTOR_LOGO_MAP } from "./ConnectorLogos";
 
 interface ConnectorField {
   name: string;
@@ -90,6 +91,7 @@ function AIProviderCard({
   onConfigure: (c: ConnectorData) => void;
 }) {
   const Icon = ICON_MAP[connector.icon] || Brain;
+  const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
 
   return (
     <div
@@ -100,10 +102,10 @@ function AIProviderCard({
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
-          style={connector.configured ? { background: "rgba(168, 85, 247, 0.12)", color: "#c084fc" } : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }}
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors overflow-hidden"
+          style={connector.configured ? { background: hasBrandLogo ? "transparent" : "rgba(168, 85, 247, 0.12)", color: "#c084fc" } : { background: hasBrandLogo ? "transparent" : "rgba(255,255,255,0.05)", color: "#6b7280" }}
           >
-            <Icon className="w-5 h-5" />
+            {hasBrandLogo ? <ConnectorLogo name={connector.name} size={36} /> : <Icon className="w-5 h-5" />}
           </div>
 
           {connector.configured ? (
@@ -177,6 +179,7 @@ function HostingConnectorCard({
   onConfigure: (c: ConnectorData) => void;
 }) {
   const Icon = ICON_MAP[connector.icon] || Rocket;
+  const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
   const isVercel = connector.name === "vercel";
   // Vercel: black/white brand feel → use indigo accent
   // Netlify: teal brand → use teal/emerald accent
@@ -203,14 +206,14 @@ function HostingConnectorCard({
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors overflow-hidden"
             style={
               connector.configured
-                ? { background: accentBg, color: isVercel ? "#818cf8" : "#2dd4bf" }
-                : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
+                ? { background: hasBrandLogo ? "transparent" : accentBg, color: isVercel ? "#818cf8" : "#2dd4bf" }
+                : { background: hasBrandLogo ? "transparent" : "rgba(255,255,255,0.05)", color: "#6b7280" }
             }
           >
-            <Icon className="w-5 h-5" />
+            {hasBrandLogo ? <ConnectorLogo name={connector.name} size={36} /> : <Icon className="w-5 h-5" />}
           </div>
 
           {connector.configured ? (
@@ -296,6 +299,7 @@ function ConnectorCard({
   onConfigure: (c: ConnectorData) => void;
 }) {
   const Icon = ICON_MAP[connector.icon] || Plug;
+  const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
   const isListening =
     (connector.name === "telegram" || connector.name === "discord") && connector.configured && connector.connected;
 
@@ -313,15 +317,15 @@ function ConnectorCard({
         {/* Icon + Status */}
         <div className="flex items-start justify-between mb-3">
           <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors overflow-hidden"
           style={isListening
-            ? { background: "rgba(59, 130, 246, 0.12)", color: "#60a5fa" }
+            ? { background: hasBrandLogo ? "transparent" : "rgba(59, 130, 246, 0.12)", color: "#60a5fa" }
             : connector.configured
-            ? { background: "rgba(16, 185, 129, 0.12)", color: "#34d399" }
-            : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
+            ? { background: hasBrandLogo ? "transparent" : "rgba(16, 185, 129, 0.12)", color: "#34d399" }
+            : { background: hasBrandLogo ? "transparent" : "rgba(255,255,255,0.05)", color: "#6b7280" }
           }
           >
-            <Icon className="w-5 h-5" />
+            {hasBrandLogo ? <ConnectorLogo name={connector.name} size={36} /> : <Icon className="w-5 h-5" />}
           </div>
 
           {/* Status pill */}
@@ -387,6 +391,7 @@ function GoogleConnectorCard({
   onConfigure: (c: ConnectorData) => void;
 }) {
   const Icon = ICON_MAP[connector.icon] || Globe;
+  const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
 
   return (
     <div
@@ -397,10 +402,10 @@ function GoogleConnectorCard({
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors"
-          style={connector.configured ? { background: "rgba(14, 165, 233, 0.12)", color: "#38bdf8" } : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }}
+            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors overflow-hidden"
+          style={connector.configured ? { background: hasBrandLogo ? "transparent" : "rgba(14, 165, 233, 0.12)", color: "#38bdf8" } : { background: hasBrandLogo ? "transparent" : "rgba(255,255,255,0.05)", color: "#6b7280" }}
           >
-            <Icon className="w-5 h-5" />
+            {hasBrandLogo ? <ConnectorLogo name={connector.name} size={36} /> : <Icon className="w-5 h-5" />}
           </div>
 
           {connector.configured ? (
@@ -501,6 +506,7 @@ function ConfigureModal({
   const [authorizing, setAuthorizing] = useState(false);
 
   const Icon = ICON_MAP[connector.icon] || Plug;
+  const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
   const isAI = connector.category === "ai";
   const isGoogle = connector.auth_type === "oauth";
   const isHosting = connector.category === "hosting";
@@ -686,7 +692,7 @@ function ConfigureModal({
         {/* Modal header */}
         <div className="flex items-center gap-4 px-6 pt-6 pb-4" style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
           <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center ${
+            className={`w-11 h-11 rounded-xl flex items-center justify-center overflow-hidden ${
               isGoogle
                 ? connector.configured
                   ? "bg-sky-500/15 text-sky-400"
@@ -706,7 +712,7 @@ function ConfigureModal({
                 : "bg-plutus-500/10 text-plutus-400"
             }`}
           >
-            <Icon className="w-5 h-5" />
+            {hasBrandLogo ? <ConnectorLogo name={connector.name} size={36} /> : <Icon className="w-5 h-5" />}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">

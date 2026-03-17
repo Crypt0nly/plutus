@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Loader2, Wifi, WifiOff, Plus, Trash2 } from "lucide-react";
 import { useAppStore, DEFAULT_SESSION_ID } from "../../stores/appStore";
+import { ConnectorLogo, CONNECTOR_LOGO_MAP } from "../connectors/ConnectorLogos";
 import { MessageBubble } from "../chat/MessageBubble";
 import { ChatInput, type Attachment } from "../chat/ChatInput";
 import { api } from "../../lib/api";
@@ -210,10 +211,13 @@ export default function SessionsView({ send }: Props) {
                   }
                 >
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-base"
-                    style={{ background: meta.bg, border: `1px solid ${meta.border}` }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden"
+                    style={{ background: CONNECTOR_LOGO_MAP[key] ? "transparent" : meta.bg, border: CONNECTOR_LOGO_MAP[key] ? "none" : `1px solid ${meta.border}` }}
                   >
-                    {session.icon || "🔌"}
+                    {CONNECTOR_LOGO_MAP[key]
+                      ? <ConnectorLogo name={key} size={32} />
+                      : <span className="text-base">{session.icon || "🔌"}</span>
+                    }
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
