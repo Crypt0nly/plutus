@@ -2,7 +2,6 @@ import { useRef, useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput, Attachment } from "./ChatInput";
-import { SessionTabBar } from "./SessionTabBar";
 import { Globe, MousePointer, AppWindow, KeyRound, Brain, ArrowRight, Sparkles } from "lucide-react";
 
 interface Props {
@@ -50,9 +49,6 @@ export function ChatView({ send }: Props) {
           }}
         />
       </div>
-
-      {/* Session tab bar */}
-      <SessionTabBar send={send} />
 
       {/* Messages area */}
       <div ref={scrollRef} className="relative flex-1 overflow-y-auto">

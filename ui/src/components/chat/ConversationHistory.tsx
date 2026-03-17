@@ -26,8 +26,11 @@ export function ConversationHistory({ send }: Props) {
   const editInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { conversationId, setConversationId, clearMessages, setView, connected } =
+  // Read conversationId from sessionStates directly so Zustand can track it
+  // as a reactive dependency (computed getters on the store are not tracked).
+  const { activeSessionId, sessionStates, setConversationId, clearMessages, setView, connected } =
     useAppStore();
+  const conversationId = sessionStates[activeSessionId]?.conversationId ?? null;
 
   const fetchConversations = useCallback(() => {
     if (!connected) return; // Don't poll when backend is down
