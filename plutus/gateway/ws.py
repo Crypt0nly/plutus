@@ -8,11 +8,14 @@ Plutus uses TWO agent modes:
      Screenshot-based vision — only activated when the user explicitly requests it
      via the UI toggle or by saying "use computer use" / "use screenshots".
 
-The Standard agent handles ALL messages by default, including desktop interaction.
+Multi-session support: each WebSocket message includes a `session_id` field.
+Each session has its own AgentRuntime instance and asyncio.Lock so that multiple
+conversations (including connector sessions) can run fully in parallel.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -29,8 +32,10 @@ _FORCE_CU_KEYWORDS = {
     "switch to computer use", "enable computer use",
 }
 
-
 _MAX_WS_CONNECTIONS = 50  # safety limit to prevent FD/memory exhaustion
+
+# Default session used when no session_id is provided (backwards-compat)
+_DEFAULT_SESSION_ID = "session_main"
 
 
 class ConnectionManager:
@@ -68,6 +73,13 @@ class ConnectionManager:
         for ws in dead:
             self._connections.remove(ws)
 
+    async def broadcast_to_session(
+        self, session_id: str, message: dict[str, Any]
+    ) -> None:
+        """Broadcast a message tagged with session_id to all connected clients."""
+        payload = {**message, "session_id": session_id}
+        await self.broadcast(payload)
+
 
 manager = ConnectionManager()
 
@@ -103,13 +115,19 @@ async def _handle_message(ws: WebSocket, message: dict[str, Any]) -> None:
     elif msg_type == "approve":
         await _handle_approval(ws, message)
     elif msg_type == "new_conversation":
-        await _handle_new_conversation(ws)
+        await _handle_new_conversation(ws, message)
+    elif msg_type == "new_session":
+        await _handle_new_session(ws, message)
+    elif msg_type == "close_session":
+        await _handle_close_session(ws, message)
+    elif msg_type == "list_sessions":
+        await _handle_list_sessions(ws)
     elif msg_type == "resume_conversation":
         await _handle_resume_conversation(ws, message)
     elif msg_type == "heartbeat_control":
         await _handle_heartbeat_control(ws, message)
     elif msg_type == "stop_task":
-        await _handle_stop_task(ws)
+        await _handle_stop_task(ws, message)
     elif msg_type == "ping":
         await ws.send_json({"type": "pong"})
     else:
@@ -117,107 +135,129 @@ async def _handle_message(ws: WebSocket, message: dict[str, Any]) -> None:
 
 
 def _should_use_computer_use(message: str) -> bool:
-    """Determine if a message should use the Computer Use agent.
-
-    Returns True ONLY if the user explicitly requests Computer Use mode.
-    The Standard agent (with accessibility tree snapshots) is the default
-    for ALL messages, including desktop interaction.
-    """
+    """Determine if a message should use the Computer Use agent."""
     lower = message.lower()
-
-    # Only use CU if the user explicitly asks for it
     for kw in _FORCE_CU_KEYWORDS:
         if kw in lower:
             return True
-
-    # Default: use Standard agent (accessibility tree, not screenshots)
     return False
 
 
-async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
-    """Process a user chat message.
-
-    Routes to the Standard agent (primary) or Computer Use agent (explicit only).
-    """
+def _get_session(session_id: str | None) -> Any | None:
+    """Look up a session from the registry. Falls back to default session."""
     from plutus.gateway.server import get_state
+    from plutus.core.session_registry import get_registry
+
+    registry = get_registry()
+    sid = session_id or _DEFAULT_SESSION_ID
+    session = registry.get(sid)
+    if session is None:
+        # Fall back to the legacy single-agent state for backwards compatibility
+        state = get_state()
+        return None
+    return session
+
+
+async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
+    """Process a user chat message, routed to the correct session's agent."""
+    from plutus.gateway.server import get_state
+    from plutus.core.session_registry import get_registry
 
     state = get_state()
-    agent = state.get("agent")
     cu_agent = state.get("cu_agent")
     heartbeat = state.get("heartbeat")
-
-    if not agent and not cu_agent:
-        await ws.send_json({"type": "error", "message": "Agent not initialized"})
-        return
 
     user_text = message.get("content", "").strip()
     if not user_text:
         return
 
-    # Extract file attachments (base64-encoded)
-    attachments = message.get("attachments")  # list of {name, type, data}
+    session_id = message.get("session_id") or _DEFAULT_SESSION_ID
+    attachments = message.get("attachments")
 
     # Real user message — reset the heartbeat consecutive counter
     if heartbeat:
         heartbeat.reset_consecutive()
 
+    # Resolve the agent for this session
+    registry = get_registry()
+    session = registry.get(session_id)
+
+    if session is None:
+        # Fall back to the global agent for backwards compatibility
+        agent = state.get("agent")
+        if not agent:
+            await ws.send_json({"type": "error", "message": "Agent not initialized", "session_id": session_id})
+            return
+        session_lock = state.get("_agent_lock_fallback")
+        if session_lock is None:
+            from plutus.gateway.server import _agent_lock
+            session_lock = _agent_lock
+    else:
+        agent = session.agent
+        session_lock = session.lock
+
     # Decide which agent to use
-    # Priority: explicit UI override > explicit keyword > default (standard)
-    use_cu = message.get("computer_use", None)  # Explicit override from UI toggle
+    use_cu = message.get("computer_use", None)
     if use_cu is None:
-        # Only use CU if user explicitly asks for it AND the CU agent is available
         use_cu = cu_agent is not None and _should_use_computer_use(user_text)
 
     if use_cu and cu_agent:
-        await _handle_computer_use_chat(ws, cu_agent, user_text)
+        await _handle_computer_use_chat(ws, cu_agent, user_text, session_id=session_id)
     elif agent:
-        await _handle_standard_chat(ws, agent, user_text, attachments=attachments)
+        await _handle_standard_chat(
+            ws, agent, user_text,
+            attachments=attachments,
+            session_lock=session_lock,
+            session_id=session_id,
+        )
     else:
-        await ws.send_json({"type": "error", "message": "No suitable agent available"})
+        await ws.send_json({"type": "error", "message": "No suitable agent available", "session_id": session_id})
 
 
-async def _handle_computer_use_chat(ws: WebSocket, cu_agent: Any, user_text: str) -> None:
+async def _handle_computer_use_chat(
+    ws: WebSocket,
+    cu_agent: Any,
+    user_text: str,
+    session_id: str = _DEFAULT_SESSION_ID,
+) -> None:
     """Process a message through the Anthropic Computer Use agent."""
     from plutus.core.computer_use_agent import ComputerUseEvent
 
-    logger.info(f"Computer Use agent handling: {user_text[:80]}")
+    logger.info(f"Computer Use agent handling [{session_id}]: {user_text[:80]}")
 
-    # Notify UI that we're using computer use mode
     await ws.send_json({
         "type": "mode",
         "mode": "computer_use",
         "message": "Using Computer Use mode — I can see and control your screen",
+        "session_id": session_id,
     })
 
     try:
         async for event in cu_agent.run_task(user_text):
             event_dict = event.to_dict()
+            event_dict["session_id"] = session_id
 
-            # Transform computer use events to match the UI's expected format
             if event.type == "tool_call":
-                # Include screenshot indicator for the UI
                 tool_name = event.data.get("tool", "")
                 tool_input = event.data.get("input", {})
                 action = tool_input.get("action", "") if isinstance(tool_input, dict) else ""
-
                 await ws.send_json({
                     "type": "tool_call",
                     "id": event.data.get("id", ""),
                     "tool": f"computer.{action}" if tool_name == "computer" else tool_name,
                     "arguments": tool_input,
+                    "session_id": session_id,
                 })
-
             elif event.type == "tool_result":
                 result = event.data.get("result", {})
                 result_data: dict[str, Any] = {
                     "type": "tool_result",
                     "id": event.data.get("id", ""),
                     "tool": event.data.get("tool", ""),
+                    "session_id": session_id,
                 }
-
                 if isinstance(result, dict):
                     if result.get("type") == "image":
-                        # Screenshot result — send base64 to UI
                         result_data["screenshot"] = True
                         result_data["image_base64"] = result.get("base64", "")
                         result_data["result"] = "Screenshot captured"
@@ -228,51 +268,43 @@ async def _handle_computer_use_chat(ws: WebSocket, cu_agent: Any, user_text: str
                         result_data["result"] = result.get("text", str(result))
                 else:
                     result_data["result"] = str(result)
-
                 await ws.send_json(result_data)
-
             elif event.type == "text":
                 await ws.send_json({
                     "type": "text",
                     "content": event.data.get("content", ""),
+                    "session_id": session_id,
                 })
-
             elif event.type == "thinking":
                 await ws.send_json({
                     "type": "thinking",
                     "message": event.data.get("message", ""),
+                    "session_id": session_id,
                 })
-
-            elif event.type == "iteration":
-                await ws.send_json({
-                    "type": "iteration",
-                    "number": event.data.get("number", 0),
-                    "max": event.data.get("max", 50),
-                })
-
             elif event.type == "done":
                 await ws.send_json({
                     "type": "done",
                     "iterations": event.data.get("iterations", 0),
+                    "session_id": session_id,
                 })
-
             elif event.type == "error":
                 await ws.send_json({
                     "type": "error",
                     "message": event.data.get("message", "Unknown error"),
+                    "session_id": session_id,
                 })
-
             elif event.type == "cancelled":
                 await ws.send_json({
                     "type": "cancelled",
                     "message": event.data.get("message", "Task cancelled"),
+                    "session_id": session_id,
                 })
-
     except Exception as e:
         logger.exception("Computer Use agent error")
         await ws.send_json({
             "type": "error",
             "message": f"Computer Use error: {str(e)}",
+            "session_id": session_id,
         })
 
 
@@ -281,46 +313,52 @@ async def _handle_standard_chat(
     agent: Any,
     user_text: str,
     attachments: list[dict[str, str]] | None = None,
+    session_lock: asyncio.Lock | None = None,
+    session_id: str = _DEFAULT_SESSION_ID,
 ) -> None:
     """Process a message through the standard LiteLLM agent."""
     from plutus.gateway.server import _agent_lock
 
-    logger.info(f"Standard agent handling: {user_text[:80]}")
+    lock = session_lock or _agent_lock
+    logger.info(f"Standard agent handling [{session_id}]: {user_text[:80]}")
 
-    # Notify UI that we're using standard mode
     await ws.send_json({
         "type": "mode",
         "mode": "standard",
         "message": "🖥️ Computer Use mode — I can see and control your screen",
+        "session_id": session_id,
     })
 
     disconnected = False
     try:
-        async with _agent_lock:
+        async with lock:
             async for event in agent.process_message(user_text, attachments=attachments):
                 if disconnected:
-                    # Client disconnected — keep draining the generator so the
-                    # agent finishes cleanly (tool_use / tool_result stay paired).
                     continue
                 try:
-                    await ws.send_json(event.to_dict())
+                    payload = event.to_dict()
+                    payload["session_id"] = session_id
+                    await ws.send_json(payload)
                 except (WebSocketDisconnect, RuntimeError, Exception) as send_err:
-                    logger.warning(f"Client disconnected during processing: {send_err}")
+                    logger.warning(f"Client disconnected during processing [{session_id}]: {send_err}")
                     disconnected = True
                     continue
 
                 if event.type == "tool_approval_needed":
                     try:
-                        await manager.broadcast(event.to_dict())
+                        payload = event.to_dict()
+                        payload["session_id"] = session_id
+                        await manager.broadcast(payload)
                     except Exception:
                         pass
     except Exception as e:
-        logger.exception("Standard agent error")
+        logger.exception(f"Standard agent error [{session_id}]")
         if not disconnected:
             try:
                 await ws.send_json({
                     "type": "error",
                     "message": f"Agent error: {str(e)}",
+                    "session_id": session_id,
                 })
             except Exception:
                 pass
@@ -332,81 +370,156 @@ async def _handle_approval(ws: WebSocket, message: dict[str, Any]) -> None:
 
     state = get_state()
     guardrails = state.get("guardrails")
-
     approval_id = message.get("approval_id")
     approved = message.get("approved", False)
 
     if not guardrails:
         await ws.send_json({"type": "error", "message": "Guardrails not initialized"})
         return
-
     if not approval_id:
         await ws.send_json({"type": "error", "message": "Missing approval_id"})
         return
 
     success = guardrails.resolve_approval(approval_id, approved)
-    await ws.send_json(
-        {
-            "type": "approval_resolved",
-            "approval_id": approval_id,
-            "approved": approved,
-            "success": success,
-        }
+    await ws.send_json({
+        "type": "approval_resolved",
+        "approval_id": approval_id,
+        "approved": approved,
+        "success": success,
+    })
+
+
+async def _handle_new_conversation(ws: WebSocket, message: dict[str, Any]) -> None:
+    """Start a new conversation within a session (clears chat history for that session)."""
+    from plutus.core.session_registry import get_registry
+
+    session_id = message.get("session_id") or _DEFAULT_SESSION_ID
+    registry = get_registry()
+    session = registry.get(session_id)
+
+    if session:
+        conv_id = await registry.new_conversation_in_session(session_id)
+        await ws.send_json({
+            "type": "conversation_started",
+            "conversation_id": conv_id,
+            "session_id": session_id,
+        })
+    else:
+        # Fallback to legacy behaviour
+        from plutus.gateway.server import get_state
+        state = get_state()
+        agent = state.get("agent")
+        if agent:
+            conv_id = await agent.conversation.start_conversation()
+            await ws.send_json({
+                "type": "conversation_started",
+                "conversation_id": conv_id,
+                "session_id": session_id,
+            })
+
+
+async def _handle_new_session(ws: WebSocket, message: dict[str, Any]) -> None:
+    """Create a new user session (a new independent chat tab)."""
+    from plutus.core.session_registry import get_registry
+
+    registry = get_registry()
+    display_name = message.get("display_name", "New Chat")
+    icon = message.get("icon", "💬")
+
+    session = await registry.create_session(
+        display_name=display_name,
+        icon=icon,
+        is_connector=False,
     )
+    await ws.send_json({
+        "type": "session_created",
+        "session": session.to_dict(),
+    })
 
 
-async def _handle_new_conversation(ws: WebSocket) -> None:
-    from plutus.gateway.server import get_state
+async def _handle_close_session(ws: WebSocket, message: dict[str, Any]) -> None:
+    """Close a user session."""
+    from plutus.core.session_registry import get_registry
 
-    state = get_state()
-    agent = state.get("agent")
+    session_id = message.get("session_id")
+    if not session_id:
+        await ws.send_json({"type": "error", "message": "Missing session_id"})
+        return
 
-    if agent:
-        conv_id = await agent.conversation.start_conversation()
-        await ws.send_json({"type": "conversation_started", "conversation_id": conv_id})
+    registry = get_registry()
+    removed = await registry.close_session(session_id)
+    await ws.send_json({
+        "type": "session_closed",
+        "session_id": session_id,
+        "success": removed,
+    })
+
+
+async def _handle_list_sessions(ws: WebSocket) -> None:
+    """Return all active sessions."""
+    from plutus.core.session_registry import get_registry
+
+    registry = get_registry()
+    sessions = registry.list_sessions()
+    await ws.send_json({
+        "type": "sessions_list",
+        "sessions": sessions,
+    })
 
 
 async def _handle_resume_conversation(ws: WebSocket, message: dict[str, Any]) -> None:
     from plutus.gateway.server import get_state
+    from plutus.core.session_registry import get_registry
 
     state = get_state()
-    agent = state.get("agent")
+    session_id = message.get("session_id") or _DEFAULT_SESSION_ID
     conv_id = message.get("conversation_id")
+
+    registry = get_registry()
+    session = registry.get(session_id)
+    agent = session.agent if session else state.get("agent")
 
     if agent and conv_id:
         await agent.conversation.resume_conversation(conv_id)
-        # Limit messages sent over WebSocket to prevent OOM on large conversations
         messages = await state["memory"].get_messages(conv_id, limit=200)
-        await ws.send_json(
-            {
-                "type": "conversation_resumed",
-                "conversation_id": conv_id,
-                "messages": messages,
-            }
-        )
+        await ws.send_json({
+            "type": "conversation_resumed",
+            "conversation_id": conv_id,
+            "session_id": session_id,
+            "messages": messages,
+        })
 
 
-async def _handle_stop_task(ws: WebSocket) -> None:
-    """Stop the currently running agent task (standard or computer use)."""
+async def _handle_stop_task(ws: WebSocket, message: dict[str, Any]) -> None:
+    """Stop the currently running agent task in a session."""
     from plutus.gateway.server import get_state
+    from plutus.core.session_registry import get_registry
 
     state = get_state()
-    agent = state.get("agent")
+    session_id = message.get("session_id") or _DEFAULT_SESSION_ID
     cu_agent = state.get("cu_agent")
-    stopped = False
 
-    if cu_agent and cu_agent.is_running:
+    registry = get_registry()
+    session = registry.get(session_id)
+
+    stopped = False
+    if cu_agent and getattr(cu_agent, "is_running", False):
         cu_agent.stop()
         stopped = True
 
-    if agent:
-        agent.cancel()
+    if session and session.agent:
+        session.agent.cancel()
         stopped = True
+    elif not session:
+        agent = state.get("agent")
+        if agent:
+            agent.cancel()
+            stopped = True
 
     if stopped:
-        await ws.send_json({"type": "task_stopped", "message": "Task stopped"})
+        await ws.send_json({"type": "task_stopped", "message": "Task stopped", "session_id": session_id})
     else:
-        await ws.send_json({"type": "info", "message": "No task is currently running"})
+        await ws.send_json({"type": "info", "message": "No task is currently running", "session_id": session_id})
 
 
 async def _handle_heartbeat_control(ws: WebSocket, message: dict[str, Any]) -> None:

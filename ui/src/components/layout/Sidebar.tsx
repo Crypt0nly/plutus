@@ -68,11 +68,11 @@ export function Sidebar({ send }: SidebarProps) {
   };
 
   const handleNewChat = () => {
-    useAppStore.getState().clearMessages();
-    useAppStore.getState().setConversationId(null);
     setView("chat");
     if (send) {
-      send({ type: "new_conversation" });
+      // Create a new independent session — the backend will respond with
+      // a "session_created" message and the UI will switch to it automatically.
+      send({ type: "new_session", display_name: "New Chat", icon: "💬" });
     }
   };
 

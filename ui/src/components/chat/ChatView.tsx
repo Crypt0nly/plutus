@@ -2,14 +2,15 @@ import { useRef, useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput, Attachment } from "./ChatInput";
-import { Globe, MousePointer, AppWindow, KeyRound, Zap, Brain, ArrowRight, Sparkles } from "lucide-react";
+import { SessionTabBar } from "./SessionTabBar";
+import { Globe, MousePointer, AppWindow, KeyRound, Brain, ArrowRight, Sparkles } from "lucide-react";
 
 interface Props {
   send: (data: Record<string, unknown>) => void;
 }
 
 export function ChatView({ send }: Props) {
-  const { messages, isProcessing, keyConfigured } = useAppStore();
+  const { messages, isProcessing, keyConfigured, activeSessionId } = useAppStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,9 +25,9 @@ export function ChatView({ send }: Props) {
       const names = attachments.map((a) => a.name).join(", ");
       displayParts.push(`\n[Attached: ${names}]`);
     }
-    useAppStore.getState().addMessage({ role: "user", content: displayParts.join("") });
+    useAppStore.getState().addMessage({ role: "user", content: displayParts.join("") }, activeSessionId);
 
-    const wsPayload: Record<string, unknown> = { type: "chat", content };
+    const wsPayload: Record<string, unknown> = { type: "chat", content, session_id: activeSessionId };
     if (attachments?.length) {
       wsPayload.attachments = attachments.map(({ name, type, data }) => ({
         name, type, data,
@@ -36,7 +37,7 @@ export function ChatView({ send }: Props) {
   };
 
   const handleStop = () => {
-    send({ type: "stop_task" });
+    send({ type: "stop_task", session_id: activeSessionId });
   };
 
   return (
@@ -49,6 +50,9 @@ export function ChatView({ send }: Props) {
           }}
         />
       </div>
+
+      {/* Session tab bar */}
+      <SessionTabBar send={send} />
 
       {/* Messages area */}
       <div ref={scrollRef} className="relative flex-1 overflow-y-auto">

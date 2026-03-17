@@ -24,6 +24,9 @@ export function useWebSocket(onMessage: MessageHandler) {
         setConnected(true);
         reconnectDelay = 1000; // Reset backoff on successful connect
 
+        // Request the current session list so the tab bar is populated
+        ws.send(JSON.stringify({ type: "list_sessions" }));
+
         // Application-level ping every 15s (supplements protocol-level ping)
         const interval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {

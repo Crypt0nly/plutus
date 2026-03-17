@@ -30,6 +30,7 @@ from plutus.core.heartbeat import HeartbeatRunner
 from plutus.core.memory import MemoryStore
 from plutus.core.model_router import ModelRouter, ModelRoutingConfig
 from plutus.core.scheduler import Scheduler, ScheduledJob
+from plutus.core.session_registry import SessionRegistry, get_registry, CONNECTOR_SESSIONS, SESSION_DISPLAY_NAMES, SESSION_ICONS
 from plutus.core.worker_pool import WorkerPool, WorkerTask, WorkerStatus, WorkerState
 from plutus.gateway.routes import create_router
 from plutus.gateway.ws import create_ws_router, manager as ws_manager
@@ -852,6 +853,44 @@ async def lifespan(app: FastAPI):
                 f"Conversation auto-cleanup enabled: {config.memory.conversation_auto_delete_days} days"
             )
 
+        # ── Session Registry ────────────────────────────────────────────────
+        # Build an agent factory that creates a new AgentRuntime sharing the
+        # same tool_registry, memory, guardrails, and config as the primary agent.
+        async def _agent_factory(
+            session_id: str,
+            connector_name: str | None = None,
+        ) -> AgentRuntime:
+            new_agent = AgentRuntime(
+                config=config,
+                guardrails=guardrails,
+                memory=memory,
+                tool_registry=tool_registry,
+                secrets=secrets,
+            )
+            await new_agent.initialize()
+            new_agent.set_connector_manager(connector_manager)
+            return new_agent
+
+        session_registry = get_registry()
+        session_registry.set_agent_factory(_agent_factory)
+
+        # Create the default "main" session backed by the already-initialized agent
+        from plutus.core.session_registry import Session
+        import asyncio as _asyncio
+        main_conv_id = await agent.conversation.start_conversation()
+        main_session = Session(
+            session_id="session_main",
+            agent=agent,
+            conversation_id=main_conv_id,
+            display_name="Main",
+            icon="🏠",
+            is_connector=False,
+        )
+        session_registry._sessions["session_main"] = main_session
+
+        # Create dedicated connector sessions
+        await session_registry.ensure_connector_sessions()
+
         # Store all state
         _state["config"] = config
         _state["secrets"] = secrets
@@ -865,6 +904,7 @@ async def lifespan(app: FastAPI):
         _state["model_router"] = model_router
         _state["worker_pool"] = worker_pool
         _state["scheduler"] = scheduler
+        _state["session_registry"] = session_registry
 
         key_status = "configured" if agent.key_configured else "NOT configured"
         cu_status = "enabled" if cu_agent else "disabled"
