@@ -162,6 +162,8 @@ async def _handle_message(ws: WebSocket, message: dict[str, Any]) -> None:
         await _handle_heartbeat_control(ws, message)
     elif msg_type == "stop_task":
         await _handle_stop_task(ws, message)
+    elif msg_type == "clear_session_history":
+        await _handle_clear_session_history(ws, message)
     elif msg_type == "ping":
         await ws.send_json({"type": "pong"})
     else:
@@ -561,6 +563,57 @@ async def _handle_stop_task(ws: WebSocket, message: dict[str, Any]) -> None:
         await ws.send_json({"type": "task_stopped", "message": "Task stopped", "session_id": session_id})
     else:
         await ws.send_json({"type": "info", "message": "No task is currently running", "session_id": session_id})
+
+
+async def _handle_clear_session_history(ws: WebSocket, message: dict[str, Any]) -> None:
+    """Clear all stored messages for a connector session and start a fresh conversation.
+
+    Only allowed for connector sessions (is_connector=True).  Deletes every
+    message in the current conversation from the database, resets the
+    conversation summary, and starts a brand-new conversation so the agent
+    has a clean context on the next message.
+    """
+    from plutus.core.session_registry import get_registry
+
+    session_id = message.get("session_id") or _DEFAULT_SESSION_ID
+    registry = get_registry()
+    session = registry.get(session_id)
+
+    if not session:
+        await ws.send_json({"type": "error", "message": "Session not found", "session_id": session_id})
+        return
+
+    if not session.is_connector:
+        await ws.send_json({
+            "type": "error",
+            "message": "clear_session_history is only allowed for connector sessions",
+            "session_id": session_id,
+        })
+        return
+
+    agent = session.agent
+    if not agent:
+        await ws.send_json({"type": "error", "message": "No agent for session", "session_id": session_id})
+        return
+
+    conv = agent.conversation
+    # Delete all messages for the current conversation from the database
+    if conv.conversation_id:
+        await agent._memory.clear_conversation_messages(conv.conversation_id)
+
+    # Start a fresh conversation so the agent has a clean context
+    new_conv_id = await conv.start_conversation()
+    session.conversation_id = new_conv_id
+
+    logger.info(
+        "Cleared history for connector session %r, new conversation %r",
+        session_id, new_conv_id,
+    )
+    await ws.send_json({
+        "type": "session_history_cleared",
+        "session_id": session_id,
+        "message": "Chat history cleared. Starting fresh.",
+    })
 
 
 async def _handle_heartbeat_control(ws: WebSocket, message: dict[str, Any]) -> None:
