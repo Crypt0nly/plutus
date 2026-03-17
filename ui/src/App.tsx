@@ -48,6 +48,7 @@ function HistoryPillToggle() {
 export default function App() {
   const {
     view,
+    setView,
     addMessage,
     setProcessing,
     setConnected,
@@ -188,6 +189,9 @@ export default function App() {
           break;
 
         case "conversation_resumed":
+          // Ensure the active session matches where the conversation is being loaded.
+          // sid comes from the backend (which echoes back the session_id we sent).
+          if (sid) setActiveSessionId(sid);
           setConversationId(msg.conversation_id, sid);
           clearMessages(sid);
           msg.messages.forEach((m: any) => {
@@ -208,6 +212,8 @@ export default function App() {
             }
             addMessage(m, sid);
           });
+          // Navigate to chat view so the loaded messages are visible
+          setView("chat");
           break;
 
         // ── Session management events ──────────────────────────────────

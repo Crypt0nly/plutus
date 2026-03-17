@@ -98,7 +98,13 @@ export function ConversationHistory({ send }: Props) {
 
   const handleLoadConversation = (conv: Conversation) => {
     if (conv.id === conversationId) return;
-    send({ type: "resume_conversation", conversation_id: conv.id });
+    // Always include session_id so the backend routes to the correct session
+    // and the frontend receives conversation_resumed tagged with the right sid.
+    send({
+      type: "resume_conversation",
+      conversation_id: conv.id,
+      session_id: activeSessionId,
+    });
     setView("chat");
   };
 
