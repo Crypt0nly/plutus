@@ -4,7 +4,7 @@
  *
  * User sessions (non-connector) are excluded — those live in the normal Chat view.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageSquare, Loader2, Wifi, WifiOff } from "lucide-react";
 import { useAppStore, DEFAULT_SESSION_ID } from "../../stores/appStore";
 import { MessageBubble } from "../chat/MessageBubble";
@@ -52,31 +52,33 @@ function getConnectorKey(session: { id: string; connector_name?: string | null }
 export default function SessionsView({ send }: Props) {
   const {
     sessions,
-    activeSessionId,
-    setActiveSessionId,
     sessionStates,
   } = useAppStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Only show connector sessions
+  // Only show connector sessions — use local state so we never change
+  // activeSessionId (which belongs to the main chat view).
   const connectorSessions = sessions.filter(
     (s) => s.is_connector && s.id !== DEFAULT_SESSION_ID
   );
 
-  // If no connector session is selected, or the selected one is not a connector,
-  // auto-select the first connector session.
-  const selectedSession =
-    connectorSessions.find((s) => s.id === activeSessionId) ??
-    connectorSessions[0] ??
-    null;
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    connectorSessions[0]?.id ?? null
+  );
 
-  // Auto-select first connector session when view opens
+  // When connector sessions list changes, ensure selectedSessionId is valid
   useEffect(() => {
-    if (selectedSession && selectedSession.id !== activeSessionId) {
-      setActiveSessionId(selectedSession.id);
+    if (connectorSessions.length === 0) {
+      setSelectedSessionId(null);
+      return;
     }
-  }, [selectedSession?.id]);
+    if (!selectedSessionId || !connectorSessions.find((s) => s.id === selectedSessionId)) {
+      setSelectedSessionId(connectorSessions[0].id);
+    }
+  }, [connectorSessions.map((s) => s.id).join(",")]);
+
+  const selectedSession = connectorSessions.find((s) => s.id === selectedSessionId) ?? null;
 
   // Scroll to bottom when messages change
   const messages = selectedSession
@@ -147,14 +149,14 @@ export default function SessionsView({ send }: Props) {
                 bg: "rgba(156,163,175,0.08)",
                 border: "rgba(156,163,175,0.15)",
               };
-              const isSelected = session.id === activeSessionId;
+              const isSelected = session.id === selectedSessionId;
               const processing = sessionStates[session.id]?.isProcessing ?? false;
               const msgCount = sessionStates[session.id]?.messages?.length ?? 0;
 
               return (
                 <button
                   key={session.id}
-                  onClick={() => setActiveSessionId(session.id)}
+                  onClick={() => setSelectedSessionId(session.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 ${
                     isSelected
                       ? "bg-gray-800/80"

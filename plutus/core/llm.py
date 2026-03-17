@@ -445,22 +445,26 @@ class LLMClient:
         if built_tools:
             call_kwargs["tools"] = built_tools
 
-        # Retry up to 3 times on transient server errors (Anthropic 500, 529, etc.)
+        # Retry up to 4 times on transient server errors (Anthropic 500, 529, etc.)
+        # Longer waits give Anthropic time to recover from brief outages.
         _retryable = (
             litellm.InternalServerError,
             litellm.ServiceUnavailableError,
             litellm.RateLimitError,
         )
+        _retry_waits = [2, 5, 10, 20]  # seconds between attempts
         last_exc: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(len(_retry_waits) + 1):
             try:
                 response = await litellm.acompletion(**call_kwargs)
                 return self._parse_response(response)
             except _retryable as exc:
                 last_exc = exc
-                wait = 2 ** attempt  # 1s, 2s, 4s
+                if attempt >= len(_retry_waits):
+                    break  # exhausted all retries
+                wait = _retry_waits[attempt]
                 logger.warning(
-                    f"LLM transient error (attempt {attempt + 1}/3), "
+                    f"LLM transient error (attempt {attempt + 1}/{len(_retry_waits) + 1}), "
                     f"retrying in {wait}s: {type(exc).__name__}: {exc}"
                 )
                 await asyncio.sleep(wait)

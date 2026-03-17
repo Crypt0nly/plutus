@@ -81,9 +81,13 @@ export default function App() {
           setProcessing(true, sid);
           break;
 
-        case "text":
-          addMessage({ role: "assistant", content: msg.content }, sid);
+        case "text": {
+          // Connector bridges send role: "user" for incoming user messages.
+          // All other text events default to "assistant".
+          const textRole = msg.role === "user" ? "user" : "assistant";
+          addMessage({ role: textRole, content: msg.content }, sid);
           break;
+        }
 
         case "tool_call": {
           const toolName = msg.tool || "";
@@ -249,8 +253,12 @@ export default function App() {
               created_at: s.created_at,
               last_active: s.last_active,
             });
-            // Auto-switch to the new session
-            setActiveSessionId(s.session_id || s.id);
+            // Only auto-switch for user-created sessions, not connector sessions.
+            // Connector sessions are pre-created at startup and should never
+            // hijack the user's active chat.
+            if (!s.is_connector) {
+              setActiveSessionId(s.session_id || s.id);
+            }
           }
           break;
         }
