@@ -215,7 +215,9 @@ class DesktopControl:
             return {"success": False, "error": f"No window found{' matching: ' + window_title if window_title else ''}"}
 
         window = windows[0]
-        window_wrapper = window.wrapper_object()
+        # In some pywinauto versions the element is already a wrapper (UIAWrapper),
+        # not a WindowSpecification — calling wrapper_object() on it raises AttributeError.
+        window_wrapper = window.wrapper_object() if hasattr(window, 'wrapper_object') and not hasattr(window, 'window_text') else window
 
         # Reset ref map
         self._ref_map = {}
@@ -1423,7 +1425,8 @@ print(json.dumps({{
             desktop = PywinautoDesktop(backend="uia")
             windows = desktop.windows(handle=hwnd)
             if windows:
-                w = windows[0].wrapper_object()
+                raw = windows[0]
+                w = raw.wrapper_object() if hasattr(raw, 'wrapper_object') and not hasattr(raw, 'window_text') else raw
                 return {
                     "success": True,
                     "title": w.window_text(),
@@ -1509,7 +1512,7 @@ print(json.dumps({{
             window_list = []
             for w in windows:
                 try:
-                    wrapper = w.wrapper_object()
+                    wrapper = w.wrapper_object() if hasattr(w, 'wrapper_object') and not hasattr(w, 'window_text') else w
                     title = wrapper.window_text()
                     if title and title.strip():
                         window_list.append({
@@ -1621,7 +1624,8 @@ print(json.dumps({{
         windows = desktop.windows(title_re=f".*{title}.*", visible_only=True)
         if not windows:
             return {"success": False, "error": f"No window matching: {title}"}
-        w = windows[0].wrapper_object()
+        raw = windows[0]
+        w = raw.wrapper_object() if hasattr(raw, 'wrapper_object') and not hasattr(raw, 'window_text') else raw
         w.set_focus()
         return {
             "success": True,
