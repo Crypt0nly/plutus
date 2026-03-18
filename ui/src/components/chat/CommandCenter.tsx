@@ -327,8 +327,8 @@ export function CommandCenter() {
                     style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.12)" }}
                   >
                     <div className="flex items-center gap-2">
-                      <div className={`w-5 h-5 rounded text-[9px] font-bold bg-gradient-to-br ${providers.find(p => p.id === provider)?.color || "from-gray-500 to-gray-600"} text-white flex items-center justify-center shrink-0`}>
-                        {providers.find(p => p.id === provider)?.icon || "?"}
+                      <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${providers.find(p => p.id === provider)?.logoBg || "bg-gray-800"}`}>
+                        {providers.find(p => p.id === provider)?.renderLogo(true) ?? <span className="text-[9px] font-bold text-gray-400">?</span>}
                       </div>
                       <span className="text-xs font-medium text-gray-300">
                         {models.find(m => m.id === model)?.label || model || "No model"}

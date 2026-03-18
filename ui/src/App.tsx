@@ -197,6 +197,9 @@ export default function App() {
           // sid comes from the backend (which echoes back the session_id we sent).
           if (sid) setActiveSessionId(sid);
           setConversationId(msg.conversation_id, sid);
+          // Clear any stale isProcessing flag so the spinner doesn't bleed onto
+          // a freshly loaded conversation that Plutus is not actively working in.
+          setProcessing(false, sid);
           clearMessages(sid);
           msg.messages.forEach((m: any) => {
             // Remap internal/system messages that were stored as "user" role
@@ -242,8 +245,9 @@ export default function App() {
         case "session_created": {
           const s = msg.session;
           if (s) {
+            const newId = s.session_id || s.id;
             addSession({
-              id: s.session_id || s.id,
+              id: newId,
               display_name: s.display_name,
               icon: s.icon,
               is_connector: s.is_connector,
@@ -257,7 +261,15 @@ export default function App() {
             // Connector sessions are pre-created at startup and should never
             // hijack the user's active chat.
             if (!s.is_connector) {
-              setActiveSessionId(s.session_id || s.id);
+              setActiveSessionId(newId);
+            }
+            // Fire the one-shot callback registered by ChatView so the first
+            // message is sent to the correct session even if the user switched
+            // chats while waiting for session_created.
+            const cb = useAppStore.getState().pendingSessionCallback;
+            if (cb) {
+              useAppStore.getState().setPendingSessionCallback(null);
+              cb(newId);
             }
           }
           break;

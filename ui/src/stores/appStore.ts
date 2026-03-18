@@ -104,6 +104,13 @@ interface AppState {
   pendingNewSession: boolean;
   setPendingNewSession: (v: boolean) => void;
 
+  // One-shot callback invoked by App.tsx when session_created arrives.
+  // ChatView registers this so it can send the first message to the correct
+  // new session ID regardless of whether the user switched chats in the
+  // meantime (avoids the polling-activeSessionId race condition).
+  pendingSessionCallback: ((newSessionId: string) => void) | null;
+  setPendingSessionCallback: (cb: ((newSessionId: string) => void) | null) => void;
+
   // Conversation history panel
   historyPanelOpen: boolean;
   setHistoryPanelOpen: (v: boolean) => void;
@@ -297,6 +304,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Lazy session creation
   pendingNewSession: false,
   setPendingNewSession: (pendingNewSession) => set({ pendingNewSession }),
+  pendingSessionCallback: null,
+  setPendingSessionCallback: (pendingSessionCallback) => set({ pendingSessionCallback }),
 
   // Conversation history panel
   historyPanelOpen: false,
