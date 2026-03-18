@@ -10,23 +10,21 @@ structured JSON bodies with ``detail`` and ``error_code`` keys.
 from __future__ import annotations
 
 import time
-from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.database import get_session
 from app.sync.sync_service import (
+    ENTITY_MAP,
     BatchProcessingError,
-    ConflictError,
     EntityNotFoundError,
     SyncError,
     SyncService,
     VersionGapError,
-    ENTITY_MAP,
 )
 
 router = APIRouter()
@@ -35,6 +33,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Pydantic request / response models
 # ---------------------------------------------------------------------------
+
 
 class SyncPayloadItem(BaseModel):
     """A single change payload sent by the bridge ``sync_client.py``."""
@@ -69,8 +68,7 @@ class SyncPayloadItem(BaseModel):
     def validate_table(cls, v: str) -> str:
         if v not in ENTITY_MAP:
             raise ValueError(
-                f"Unknown entity type {v!r}. "
-                f"Must be one of: {', '.join(sorted(ENTITY_MAP))}"
+                f"Unknown entity type {v!r}. Must be one of: {', '.join(sorted(ENTITY_MAP))}"
             )
         return v
 
@@ -165,7 +163,9 @@ class ResolveConflictRequest(BaseModel):
     )
     resolution: str = Field(
         ...,
-        description="Label for the resolution (e.g. 'manual_local', 'manual_cloud', 'manual_merge').",
+        description=(
+            "Label for the resolution (e.g. 'manual_local', 'manual_cloud', 'manual_merge')."
+        ),
         examples=["manual_local", "manual_cloud", "manual_merge"],
     )
 
@@ -174,8 +174,7 @@ class ResolveConflictRequest(BaseModel):
     def validate_entity_type(cls, v: str) -> str:
         if v not in ENTITY_MAP:
             raise ValueError(
-                f"Unknown entity type {v!r}. "
-                f"Must be one of: {', '.join(sorted(ENTITY_MAP))}"
+                f"Unknown entity type {v!r}. Must be one of: {', '.join(sorted(ENTITY_MAP))}"
             )
         return v
 
@@ -205,8 +204,8 @@ class ErrorResponse(BaseModel):
 # Simple per-response rate-limit headers.  A production deployment would
 # use a Redis-backed sliding window, but these headers let clients know
 # the *intended* contract.
-_RATE_LIMIT = 120          # requests per window
-_RATE_LIMIT_WINDOW = 60    # seconds
+_RATE_LIMIT = 120  # requests per window
+_RATE_LIMIT_WINDOW = 60  # seconds
 
 
 def _attach_rate_limit_headers(response: Response) -> None:
@@ -219,6 +218,7 @@ def _attach_rate_limit_headers(response: Response) -> None:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/push",

@@ -1,6 +1,7 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.agent_state import AgentState, Memory, Skill, ScheduledTask
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.agent_state import AgentState, Memory, ScheduledTask, Skill
 
 
 class AgentService:
@@ -12,9 +13,7 @@ class AgentService:
     # --- Agent State ---
 
     async def get_agent_state(self, user_id: str) -> AgentState | None:
-        result = await self.session.execute(
-            select(AgentState).where(AgentState.user_id == user_id)
-        )
+        result = await self.session.execute(select(AgentState).where(AgentState.user_id == user_id))
         return result.scalar_one_or_none()
 
     async def ensure_agent_state(self, user_id: str) -> AgentState:
@@ -29,7 +28,13 @@ class AgentService:
 
     # --- Memory ---
 
-    async def save_memory(self, user_id: str, category: str, content: str, metadata: dict | None = None) -> Memory:
+    async def save_memory(
+        self,
+        user_id: str,
+        category: str,
+        content: str,
+        metadata: dict | None = None,
+    ) -> Memory:
         mem = Memory(
             user_id=user_id,
             category=category,
@@ -41,7 +46,12 @@ class AgentService:
         await self.session.refresh(mem)
         return mem
 
-    async def recall_memories(self, user_id: str, category: str | None = None, limit: int = 20) -> list[Memory]:
+    async def recall_memories(
+        self,
+        user_id: str,
+        category: str | None = None,
+        limit: int = 20,
+    ) -> list[Memory]:
         query = select(Memory).where(Memory.user_id == user_id)
         if category:
             query = query.where(Memory.category == category)
@@ -53,13 +63,18 @@ class AgentService:
 
     async def list_skills(self, user_id: str) -> list[Skill]:
         """Get user's custom skills + shared base skills."""
-        query = select(Skill).where(
-            (Skill.user_id == user_id) | (Skill.is_shared == True)
-        )
+        query = select(Skill).where((Skill.user_id == user_id) | Skill.is_shared)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def save_skill(self, user_id: str, name: str, definition: dict, description: str = "", skill_type: str = "simple") -> Skill:
+    async def save_skill(
+        self,
+        user_id: str,
+        name: str,
+        definition: dict,
+        description: str = "",
+        skill_type: str = "simple",
+    ) -> Skill:
         skill = Skill(
             user_id=user_id,
             name=name,
@@ -79,7 +94,14 @@ class AgentService:
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def create_scheduled_task(self, user_id: str, name: str, schedule: str, prompt: str, description: str = "") -> ScheduledTask:
+    async def create_scheduled_task(
+        self,
+        user_id: str,
+        name: str,
+        schedule: str,
+        prompt: str,
+        description: str = "",
+    ) -> ScheduledTask:
         task = ScheduledTask(
             user_id=user_id,
             name=name,
@@ -96,12 +118,19 @@ class AgentService:
 
     async def create_conversation(self, conversation_id: str, user_id: str) -> None:
         from app.models.conversation import Conversation
-        conv = Conversation(id=conversation_id, user_id=user_id, title="New Conversation", is_active=True)
+
+        conv = Conversation(
+            id=conversation_id,
+            user_id=user_id,
+            title="New Conversation",
+            is_active=True,
+        )
         self.session.add(conv)
         await self.session.commit()
 
     async def get_messages(self, conversation_id: str):
         from app.models.conversation import Message
+
         result = await self.session.execute(
             select(Message)
             .where(Message.conversation_id == conversation_id)
@@ -109,9 +138,21 @@ class AgentService:
         )
         return list(result.scalars().all())
 
-    async def save_message(self, conversation_id: str, role: str, content: str, user_id: str = None) -> None:
+    async def save_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        user_id: str | None = None,
+    ) -> None:
         from app.models.conversation import Message
-        msg = Message(conversation_id=conversation_id, user_id=user_id or "", role=role, content=content)
+
+        msg = Message(
+            conversation_id=conversation_id,
+            user_id=user_id or "",
+            role=role,
+            content=content,
+        )
         self.session.add(msg)
         await self.session.commit()
 

@@ -6,9 +6,8 @@ Create Date: 2025-01-01 00:00:00.000000
 
 """
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "001"
@@ -28,7 +27,12 @@ def upgrade() -> None:
         sa.Column("plan", sa.String(), nullable=True, server_default="free"),
         sa.Column("is_active", sa.Boolean(), nullable=True, server_default=sa.text("true")),
         sa.Column("settings", sa.JSON(), nullable=True, server_default=sa.text("'{}'")),
-        sa.Column("connector_credentials", sa.JSON(), nullable=True, server_default=sa.text("'{}'")),
+        sa.Column(
+            "connector_credentials",
+            sa.JSON(),
+            nullable=True,
+            server_default=sa.text("'{}'"),
+        ),
         sa.Column(
             "last_seen_at",
             sa.DateTime(timezone=True),

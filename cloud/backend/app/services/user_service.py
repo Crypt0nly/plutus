@@ -1,5 +1,6 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.user import User
 
 
@@ -9,11 +10,11 @@ class UserService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_or_create_user(self, clerk_user_id: str, email: str, display_name: str | None = None) -> User:
+    async def get_or_create_user(
+        self, clerk_user_id: str, email: str, display_name: str | None = None
+    ) -> User:
         """Get existing user or create a new one from Clerk data."""
-        result = await self.session.execute(
-            select(User).where(User.id == clerk_user_id)
-        )
+        result = await self.session.execute(select(User).where(User.id == clerk_user_id))
         user = result.scalar_one_or_none()
 
         if not user:
@@ -32,9 +33,7 @@ class UserService:
         return user
 
     async def get_user(self, clerk_user_id: str) -> User | None:
-        result = await self.session.execute(
-            select(User).where(User.id == clerk_user_id)
-        )
+        result = await self.session.execute(select(User).where(User.id == clerk_user_id))
         return result.scalar_one_or_none()
 
     async def update_settings(self, clerk_user_id: str, settings: dict) -> User | None:

@@ -7,17 +7,16 @@ can detect schema changes.
 import asyncio
 from logging.config import fileConfig
 
-from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
-
 from alembic import context
+from app.models.agent_state import AgentState, Memory, ScheduledTask, Skill  # noqa: F401
 
 # ── Import all models so Base.metadata contains every table ──────────
 from app.models.base import Base
-from app.models.user import User  # noqa: F401
-from app.models.agent_state import AgentState, Memory, Skill, ScheduledTask  # noqa: F401
 from app.models.conversation import Conversation, Message  # noqa: F401
 from app.models.sync_log import SyncLog  # noqa: F401
+from app.models.user import User  # noqa: F401
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # ── Alembic Config object ───────────────────────────────────────────
 config = context.config
@@ -26,6 +25,7 @@ config = context.config
 # truth is always app/config.py (and .env), not alembic.ini.
 try:
     from app.config import settings
+
     config.set_main_option("sqlalchemy.url", settings.database_url)
 except Exception:
     pass  # Fall back to alembic.ini value if app config is unavailable

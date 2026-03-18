@@ -1,9 +1,9 @@
 from uuid import uuid4
+
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.conversation import Conversation, Message
 from app.services.agent_service import AgentService
 
 

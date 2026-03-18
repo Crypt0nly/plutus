@@ -15,14 +15,14 @@ may also invoke manual resolution through the API.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Sequence
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent_state import Memory, Skill, ScheduledTask
+from app.models.agent_state import Memory, ScheduledTask, Skill
 from app.models.sync_log import SyncLog
 from shared.models.sync import SyncConflict, SyncPayload
 
@@ -45,6 +45,7 @@ MAX_VERSION_GAP: int = 500
 # ---------------------------------------------------------------------------
 # Custom exceptions
 # ---------------------------------------------------------------------------
+
 
 class SyncError(Exception):
     """Base exception for all sync-engine errors."""
@@ -108,6 +109,7 @@ class BatchProcessingError(SyncError):
 # Result containers
 # ---------------------------------------------------------------------------
 
+
 class PushResult:
     """Structured result returned by :meth:`SyncService.push_changes`."""
 
@@ -164,6 +166,7 @@ class PullResult:
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
+
 
 class SyncService:
     """Manages bidirectional sync between local SQLite and cloud Postgres.
@@ -224,19 +227,22 @@ class SyncService:
                 for idx, change in enumerate(changes):
                     try:
                         applied = await self._apply_single_change(
-                            user_id, change, result,
+                            user_id,
+                            change,
+                            result,
                         )
                         if applied:
                             result.applied += 1
                         else:
                             result.skipped += 1
-                    except (EntityNotFoundError, ConflictError):
+                    except EntityNotFoundError, ConflictError:
                         # Already recorded in result.conflicts / logged
                         result.skipped += 1
                     except SQLAlchemyError as exc:
                         logger.exception(
                             "DB error at batch index %d for user %s",
-                            idx, user_id,
+                            idx,
+                            user_id,
                         )
                         raise BatchProcessingError(idx, exc) from exc
 
@@ -376,7 +382,7 @@ class SyncService:
                     user_id=user_id,
                     action=p["operation"],
                     data=p.get("data") or {},
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     source="local",
                     sync_version=p.get("client_version", 0),
                 )
@@ -409,7 +415,10 @@ class SyncService:
         PullResult
         """
         return await self.pull_changes(
-            user_id, since_version, limit=limit, offset=offset,
+            user_id,
+            since_version,
+            limit=limit,
+            offset=offset,
         )
 
     async def get_version(self, user_id: str) -> int:
@@ -464,9 +473,7 @@ class SyncService:
         entity_counts: dict[str, int] = {}
         for entity_name, model in ENTITY_MAP.items():
             cnt_q = (
-                select(func.count())
-                .select_from(model)
-                .where(model.user_id == user_id)  # type: ignore[attr-defined]
+                select(func.count()).select_from(model).where(model.user_id == user_id)  # type: ignore[attr-defined]
             )
             entity_counts[entity_name] = (await self.session.execute(cnt_q)).scalar() or 0
 
@@ -589,7 +596,9 @@ class SyncService:
             await self.session.rollback()
             logger.exception(
                 "Manual conflict resolution failed for %s/%s user %s",
-                entity_type, entity_id, user_id,
+                entity_type,
+                entity_id,
+                user_id,
             )
             raise SyncError(
                 "Failed to resolve conflict",
@@ -598,7 +607,10 @@ class SyncService:
 
         logger.info(
             "Manually resolved conflict %s/%s for user %s → %s",
-            entity_type, entity_id, user_id, resolution,
+            entity_type,
+            entity_id,
+            user_id,
+            resolution,
         )
         return await self.get_version(user_id)
 
@@ -689,7 +701,8 @@ class SyncService:
             if change.action == "delete":
                 logger.debug(
                     "Delete for non-existent %s/%s — skipping",
-                    change.entity_type, change.entity_id,
+                    change.entity_type,
+                    change.entity_id,
                 )
                 return False
 
@@ -701,15 +714,19 @@ class SyncService:
                 )
             )
             await self._record_change(
-                user_id, change.entity_type, change.entity_id,
-                "create", change.data,
+                user_id,
+                change.entity_type,
+                change.entity_id,
+                "create",
+                change.data,
             )
             return True
 
         # --- Conflict detection ---
         existing_ts: datetime = getattr(
-            existing, "updated_at",
-            datetime.min.replace(tzinfo=timezone.utc),
+            existing,
+            "updated_at",
+            datetime.min.replace(tzinfo=UTC),
         )
 
         if change.timestamp < existing_ts:
@@ -728,7 +745,8 @@ class SyncService:
             if resolved.resolution == "cloud_wins":
                 logger.info(
                     "Conflict on %s/%s resolved → cloud_wins (skipped)",
-                    change.entity_type, change.entity_id,
+                    change.entity_type,
+                    change.entity_id,
                 )
                 return False
             # else: local_wins — fall through and apply
@@ -737,16 +755,22 @@ class SyncService:
         if change.action == "delete":
             await self.session.delete(existing)
             await self._record_change(
-                user_id, change.entity_type, change.entity_id,
-                "delete", change.data,
+                user_id,
+                change.entity_type,
+                change.entity_id,
+                "delete",
+                change.data,
             )
         else:
             for key, value in change.data.items():
                 if hasattr(existing, key):
                     setattr(existing, key, value)
             await self._record_change(
-                user_id, change.entity_type, change.entity_id,
-                change.action, change.data,
+                user_id,
+                change.entity_type,
+                change.entity_id,
+                change.action,
+                change.data,
             )
 
         return True

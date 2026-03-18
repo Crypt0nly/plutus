@@ -1,13 +1,13 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
-from app.database import init_db, close_db
-from app.api import auth, chat, agents, bridge, health
+from app.api import agents, auth, bridge, chat, health
 from app.api.sync import router as sync_router
+from app.config import settings
+from app.database import close_db, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router,   prefix="/api/auth",   tags=["auth"])
-app.include_router(chat.router,   prefix="/api/chat",   tags=["chat"])
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(bridge.router, prefix="/api/bridge", tags=["bridge"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
-app.include_router(sync_router,   prefix="/api/sync",   tags=["sync"])
+app.include_router(sync_router, prefix="/api/sync", tags=["sync"])

@@ -1,6 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
-from app.api.auth import get_current_user, get_clerk_jwks
-import jwt, json
+import json
+
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+
+from app.api.auth import get_clerk_jwks, get_current_user
 
 router = APIRouter()
 active_bridges: dict[str, WebSocket] = {}

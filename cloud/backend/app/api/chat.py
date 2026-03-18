@@ -1,22 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
 from pydantic import BaseModel
-from typing import Optional
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agent.runtime import CloudAgentRuntime
+from app.api.auth import get_current_user
 from app.database import get_session
 from app.models.conversation import Conversation, Message
-from app.api.auth import get_current_user
-from app.agent.runtime import CloudAgentRuntime
 
 router = APIRouter()
 
+
 class ChatRequest(BaseModel):
     message: str
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
+
 
 class ChatResponse(BaseModel):
     response: str
     conversation_id: str
+
 
 @router.post("/", response_model=ChatResponse)
 async def send_message(
@@ -31,6 +34,7 @@ async def send_message(
     )
     return ChatResponse(response=result["response"], conversation_id=result["conversation_id"])
 
+
 @router.get("/history")
 async def get_history(
     user=Depends(get_current_user),
@@ -43,6 +47,7 @@ async def get_history(
     )
     conversations = result.scalars().all()
     return {"conversations": [c.__dict__ for c in conversations]}
+
 
 @router.get("/{conversation_id}")
 async def get_conversation(
@@ -60,6 +65,7 @@ async def get_conversation(
     )
     messages = result.scalars().all()
     return {"conversation": conv.__dict__, "messages": [m.__dict__ for m in messages]}
+
 
 @router.delete("/{conversation_id}")
 async def delete_conversation(
