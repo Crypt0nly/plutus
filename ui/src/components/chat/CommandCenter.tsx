@@ -20,13 +20,26 @@ import {
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/appStore";
 import type { Tier } from "../../lib/types";
+import { AnthropicLogo, OpenAILogo, OllamaLogo } from "../connectors/ConnectorLogos";
 
 /* ─── Data ──────────────────────────────────────────────────────────────── */
 
 const providers = [
-  { id: "anthropic", label: "Anthropic", icon: "A", color: "from-orange-500 to-amber-500" },
-  { id: "openai",    label: "OpenAI",    icon: "O", color: "from-emerald-500 to-teal-500" },
-  { id: "ollama",    label: "Ollama",    icon: "L", color: "from-blue-500 to-indigo-500"  },
+  {
+    id: "anthropic", label: "Anthropic",
+    logoBg: "bg-[#1c1008]",
+    renderLogo: (active: boolean) => <AnthropicLogo size={16} className={active ? "text-[#D4A574]" : "text-[#8a6040]"} />,
+  },
+  {
+    id: "openai", label: "OpenAI",
+    logoBg: "bg-[#0d0d0d]",
+    renderLogo: (active: boolean) => <OpenAILogo size={16} className={active ? "text-white" : "text-gray-500"} />,
+  },
+  {
+    id: "ollama", label: "Ollama",
+    logoBg: "bg-[#0d0d1a]",
+    renderLogo: (_active: boolean) => <OllamaLogo size={16} />,
+  },
 ];
 
 const defaultModels: Record<string, { id: string; label: string; desc: string }[]> = {
@@ -421,8 +434,8 @@ export function CommandCenter() {
                                 : "border-gray-800/50 bg-gray-800/20 hover:border-gray-700/60 hover:bg-gray-800/30"
                             }`}
                           >
-                            <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${p.color} text-white text-[11px] font-bold flex items-center justify-center shadow-sm`}>
-                              {p.icon}
+                            <div className={`w-7 h-7 rounded-lg ${p.logoBg} flex items-center justify-center shadow-sm`}>
+                              {p.renderLogo(active)}
                             </div>
                             <span className={`text-xs font-medium ${active ? "text-gray-100" : "text-gray-400"}`}>{p.label}</span>
                           </button>
