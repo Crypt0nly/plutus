@@ -24,14 +24,15 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/appStore";
+import { AnthropicLogo, OpenAILogo, OllamaLogo } from "../connectors/ConnectorLogos";
 
 const providers = [
   {
     id: "anthropic",
     label: "Anthropic",
     sublabel: "Claude models",
-    icon: "A",
-    color: "from-orange-500 to-amber-600",
+    logoBg: "bg-[#1c1008]",
+    renderLogo: () => <AnthropicLogo size={24} className="text-[#D4A574]" />,
     keyPlaceholder: "sk-ant-...",
     keyUrl: "https://console.anthropic.com/settings/keys",
     keyLabel: "Anthropic Console",
@@ -40,8 +41,8 @@ const providers = [
     id: "openai",
     label: "OpenAI",
     sublabel: "GPT models",
-    icon: "O",
-    color: "from-emerald-500 to-teal-600",
+    logoBg: "bg-[#0d0d0d]",
+    renderLogo: () => <OpenAILogo size={24} className="text-white" />,
     keyPlaceholder: "sk-...",
     keyUrl: "https://platform.openai.com/api-keys",
     keyLabel: "OpenAI Dashboard",
@@ -50,8 +51,8 @@ const providers = [
     id: "ollama",
     label: "Ollama",
     sublabel: "Free, local models",
-    icon: "L",
-    color: "from-blue-500 to-indigo-600",
+    logoBg: "bg-[#0d0d1a]",
+    renderLogo: () => <OllamaLogo size={24} />,
     keyPlaceholder: "",
     keyUrl: "",
     keyLabel: "",
@@ -60,8 +61,8 @@ const providers = [
     id: "custom",
     label: "Custom",
     sublabel: "Any endpoint",
-    icon: "C",
-    color: "from-gray-500 to-gray-600",
+    logoBg: "bg-gray-800",
+    renderLogo: () => <Server size={22} className="text-gray-400" />,
     keyPlaceholder: "your-api-key",
     keyUrl: "",
     keyLabel: "",
@@ -434,9 +435,9 @@ function StepProvider({
               }`}
             >
               <div
-                className={`w-12 h-12 rounded-xl bg-gradient-to-br ${p.color} flex items-center justify-center text-white text-lg font-bold shadow-md`}
+                className={`w-12 h-12 rounded-xl ${p.logoBg} flex items-center justify-center shadow-md`}
               >
-                {p.icon}
+                {p.renderLogo()}
               </div>
               <div>
                 <p className="text-base font-semibold text-gray-200">{p.label}</p>

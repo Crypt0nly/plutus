@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Brain, Save, Key, Eye, EyeOff, CheckCircle2, AlertTriangle, Trash2, Check, Minus, Plus } from "lucide-react";
+import { Brain, Save, Key, Eye, EyeOff, CheckCircle2, AlertTriangle, Trash2, Check, Minus, Plus, Server } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/appStore";
+import { AnthropicLogo, OpenAILogo, OllamaLogo } from "../connectors/ConnectorLogos";
 
 interface Props {
   config: Record<string, any>;
@@ -12,10 +13,26 @@ interface Props {
 }
 
 const providers = [
-  { id: "anthropic", label: "Anthropic", sublabel: "Claude", icon: "A", color: "from-orange-500 to-amber-600" },
-  { id: "openai", label: "OpenAI", sublabel: "GPT", icon: "O", color: "from-emerald-500 to-teal-600" },
-  { id: "ollama", label: "Ollama", sublabel: "Local", icon: "L", color: "from-blue-500 to-indigo-600" },
-  { id: "custom", label: "Custom", sublabel: "Endpoint", icon: "C", color: "from-gray-500 to-gray-600" },
+  {
+    id: "anthropic", label: "Anthropic", sublabel: "Claude",
+    logoBg: "bg-[#1c1008]",
+    renderLogo: (active: boolean) => <AnthropicLogo size={20} className={active ? "text-[#D4A574]" : "text-[#8a6040]"} />,
+  },
+  {
+    id: "openai", label: "OpenAI", sublabel: "GPT",
+    logoBg: "bg-[#0d0d0d]",
+    renderLogo: (active: boolean) => <OpenAILogo size={20} className={active ? "text-white" : "text-gray-500"} />,
+  },
+  {
+    id: "ollama", label: "Ollama", sublabel: "Local",
+    logoBg: "bg-[#0d0d1a]",
+    renderLogo: (_active: boolean) => <OllamaLogo size={20} />,
+  },
+  {
+    id: "custom", label: "Custom", sublabel: "Endpoint",
+    logoBg: "bg-gray-800",
+    renderLogo: (active: boolean) => <Server size={18} className={active ? "text-gray-300" : "text-gray-600"} />,
+  },
 ];
 
 const providerEnvVars: Record<string, string> = {
@@ -159,10 +176,10 @@ export function ModelConfig({ config, onSave, saving, keyStatus, onKeyStatusChan
                   }`}
                   data-active={active}
                 >
-                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${p.color} flex items-center justify-center text-white text-xs font-bold shadow-sm transition-transform duration-200 ${
+                  <div className={`w-8 h-8 rounded-lg ${p.logoBg} flex items-center justify-center shadow-sm transition-transform duration-200 ${
                     active ? "scale-110" : ""
                   }`}>
-                    {p.icon}
+                    {p.renderLogo(active)}
                   </div>
                   <span className={`text-xs font-medium transition-colors ${active ? "text-gray-100" : "text-gray-300"}`}>{p.label}</span>
                   <span className="text-[10px] text-gray-500">{p.sublabel}</span>
