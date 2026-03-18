@@ -129,14 +129,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: pnpm-ui-${{ runner.os }}-${{ hashFiles('ui/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-ui-${{ runner.os }}-
 
       - name: Install & build frontend
         run: |
           cd ui
-          npm ci
-          npm run build
+          pnpm install --frozen-lockfile
+          pnpm run build
 
       # ── Build wheels with cibuildwheel ───────────────────────────
       - uses: actions/setup-python@v5
