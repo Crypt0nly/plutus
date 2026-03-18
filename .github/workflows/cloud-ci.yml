@@ -1,6 +1,8 @@
 ###############################################################################
 # Plutus Cloud – CI/CD Pipeline
 # Jobs: lint → type-check → test → build → docker → deploy
+#
+# Only runs when cloud/, shared/, or bridge/ files change.
 ###############################################################################
 
 name: Cloud CI
@@ -28,6 +30,7 @@ concurrency:
 env:
   PYTHON_VERSION: '3.12'
   NODE_VERSION: '20'
+  PNPM_VERSION: '10'
 
 jobs:
 
@@ -54,7 +57,7 @@ jobs:
           restore-keys: |
             pip-lint-${{ runner.os }}-
 
-      - name: Install dependencies
+      - name: Install ruff
         run: pip install ruff
 
       - name: Lint with Ruff
@@ -92,8 +95,8 @@ jobs:
           pip install mypy types-redis
 
       - name: Run mypy
+        # || true allows initial adoption — remove once codebase is fully typed
         run: mypy cloud/backend/app/ --ignore-missing-imports --no-error-summary || true
-        # NOTE: `|| true` allows initial adoption – remove once codebase is fully typed
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Backend: Unit Tests (pytest)
@@ -175,7 +178,7 @@ jobs:
           retention-days: 7
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Frontend: Lint (ESLint + TypeScript)
+  # Frontend: Lint + Type Check
   # ═══════════════════════════════════════════════════════════════════════════
   frontend-lint:
     name: 'Frontend · Lint'
@@ -188,20 +191,39 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: cloud/frontend/package-lock.json
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: pnpm-cloud-frontend-${{ runner.os }}-${{ hashFiles('cloud/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-cloud-frontend-${{ runner.os }}-
 
       - name: Install dependencies
         working-directory: cloud/frontend
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: TypeScript type check
         working-directory: cloud/frontend
-        run: npx tsc --noEmit
+        run: pnpm exec tsc --noEmit
 
       - name: ESLint
         working-directory: cloud/frontend
-        run: npx eslint src/ --max-warnings=0 || echo "::warning::ESLint not configured – add eslint to devDependencies"
+        run: |
+          pnpm exec eslint src/ --max-warnings=0 \
+            || echo "::warning::ESLint not configured – add eslint to devDependencies"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Frontend: Build
@@ -221,16 +243,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: cloud/frontend/package-lock.json
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: pnpm-cloud-frontend-${{ runner.os }}-${{ hashFiles('cloud/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-cloud-frontend-${{ runner.os }}-
 
       - name: Install dependencies
         working-directory: cloud/frontend
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         working-directory: cloud/frontend
-        run: npm run build
+        run: pnpm run build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -240,7 +279,7 @@ jobs:
           retention-days: 7
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Docker: Build & Push Images
+  # Docker: Build images (no push — validates Dockerfiles are correct)
   # ═══════════════════════════════════════════════════════════════════════════
   docker-build:
     name: 'Docker · Build'
@@ -290,7 +329,7 @@ jobs:
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Deploy: Staging (main branch only)
+  # Deploy: Staging (main branch only, after docker build passes)
   # ═══════════════════════════════════════════════════════════════════════════
   deploy-staging:
     name: 'Deploy · Staging'
@@ -349,7 +388,7 @@ jobs:
           echo "🚀 Deploying to staging..."
           echo "   Backend:  ${{ vars.CONTAINER_REGISTRY }}/plutus-backend:${{ github.sha }}"
           echo "   Frontend: ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:${{ github.sha }}"
-          # TODO: Replace with actual deployment command, e.g.:
+          # TODO: Replace with your actual deployment command, e.g.:
           # ssh ${{ secrets.STAGING_HOST }} "cd /opt/plutus && docker compose pull && docker compose up -d"
           # or: kubectl set image deployment/plutus-backend ...
           echo "⚠️  Deployment command not yet configured – add your deploy step here"
