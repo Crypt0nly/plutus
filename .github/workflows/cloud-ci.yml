@@ -342,7 +342,13 @@ jobs:
     name: 'Deploy · Staging'
     runs-on: ubuntu-latest
     needs: [docker-build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Only run on main-branch pushes AND only when registry credentials are
+    # configured. Without the secrets check the login step fails immediately.
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      secrets.REGISTRY_USERNAME != '' &&
+      secrets.REGISTRY_PASSWORD != ''
     environment:
       name: staging
       url: ${{ vars.STAGING_URL }}
