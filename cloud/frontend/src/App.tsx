@@ -1,4 +1,4 @@
-import { Show, UserButton, SignInButton } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/clerk-react';
 import { Link, Route, Routes } from 'react-router-dom';
 import AgentChat from './pages/AgentChat';
 import Connectors from './pages/Connectors';
@@ -34,7 +34,8 @@ function AppLayout() {
           <Link to="/connectors" className="text-gray-300 hover:text-amber-400 transition-colors">Connectors</Link>
           <Link to="/settings" className="text-gray-300 hover:text-amber-400 transition-colors">Settings</Link>
         </nav>
-        <UserButton afterSignOutUrl="/" />
+        {/* afterSignOutUrl removed in Clerk v5 — redirect is configured in ClerkProvider */}
+        <UserButton />
       </header>
       <main className="p-6 max-w-7xl mx-auto">
         <Routes>
@@ -53,8 +54,8 @@ function AppLayout() {
 export default function App() {
   return (
     <>
-      <Show when="signed-out"><LandingPage /></Show>
-      <Show when="signed-in"><AppLayout /></Show>
+      <SignedOut><LandingPage /></SignedOut>
+      <SignedIn><AppLayout /></SignedIn>
     </>
   );
 }

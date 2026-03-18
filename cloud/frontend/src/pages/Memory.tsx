@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
-import { Trash2 } from "lucide-react";
+
+// Inline trash icon — lucide-react is not a dependency of cloud/frontend
+function TrashIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+    </svg>
+  )
+}
 
 interface Fact { id: number; content: string; category: string; created_at: string; }
 
@@ -11,13 +23,18 @@ export default function Memory() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const token = await getToken();
       const res = await fetch("/api/agents/memory", { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      setFacts(data.memories ?? data.facts ?? []);
-      setLoading(false);
+      const data = await res.json() as { memories?: Fact[]; facts?: Fact[] };
+      if (!cancelled) {
+        setFacts(data.memories ?? data.facts ?? []);
+        setLoading(false);
+      }
     })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const deleteFact = async (id: number) => {
@@ -26,15 +43,23 @@ export default function Memory() {
     setFacts(f => f.filter(x => x.id !== id));
   };
 
-  const filtered = facts.filter(f => f.content.toLowerCase().includes(query.toLowerCase()) || f.category.toLowerCase().includes(query.toLowerCase()));
-  const grouped = filtered.reduce<Record<string, Fact[]>>((acc, f) => ({ ...acc, [f.category]: [...(acc[f.category] ?? []), f] }), {});
+  const filtered = facts.filter(f =>
+    f.content.toLowerCase().includes(query.toLowerCase()) ||
+    f.category.toLowerCase().includes(query.toLowerCase())
+  );
+  const grouped = filtered.reduce<Record<string, Fact[]>>(
+    (acc, f) => ({ ...acc, [f.category]: [...(acc[f.category] ?? []), f] }),
+    {}
+  );
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-6">
       <h1 className="text-2xl font-bold text-amber-400 mb-4">Agent Memory</h1>
       <input
         className="w-full mb-6 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-amber-500"
-        placeholder="Search memories…" value={query} onChange={e => setQuery(e.target.value)}
+        placeholder="Search memories…"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
       />
       {loading ? (
         <p className="text-gray-500 text-center mt-20">Loading…</p>
@@ -50,8 +75,11 @@ export default function Memory() {
                   <p className="text-sm text-gray-100 leading-snug">{f.content}</p>
                   <p className="text-xs text-gray-500 mt-1">{new Date(f.created_at).toLocaleDateString()}</p>
                 </div>
-                <button onClick={() => deleteFact(f.id)} className="ml-3 text-gray-600 hover:text-red-400 transition-colors flex-shrink-0">
-                  <Trash2 size={15} />
+                <button
+                  onClick={() => deleteFact(f.id)}
+                  className="ml-3 text-gray-600 hover:text-red-400 transition-colors flex-shrink-0"
+                >
+                  <TrashIcon size={15} />
                 </button>
               </div>
             ))}
