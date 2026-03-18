@@ -257,6 +257,12 @@ export default function App() {
               created_at: s.created_at,
               last_active: s.last_active,
             });
+            // Seed the sessionState with the conversation_id from the session
+            // object so the spinner can activate as soon as thinking fires,
+            // without waiting for a separate conversation_started event.
+            if (s.conversation_id) {
+              setConversationId(s.conversation_id, newId);
+            }
             // Only auto-switch for user-created sessions, not connector sessions.
             // Connector sessions are pre-created at startup and should never
             // hijack the user's active chat.
