@@ -27,29 +27,44 @@ export function ChatView({ send }: Props) {
       displayParts.push(`\n[Attached: ${names}]`);
     }
 
-    // Always create a new backend session for every message.
-    // This ensures each conversation is isolated: Plutus' responses are
-    // pinned to the session that received the message, so switching chats
-    // while Plutus is working never mixes up messages.
-    // pendingNewSession (set by the "New Chat" button) is treated identically.
-    if (pendingNewSession) setPendingNewSession(false);
+    // Determine whether this message starts a brand-new conversation.
+    // A new session is needed when:
+    //   (a) the user explicitly clicked "New Chat" (pendingNewSession), OR
+    //   (b) the current view has no messages yet (first message ever in this session)
+    // In all other cases the message continues in the existing active session.
+    const currentMessages = useAppStore.getState().sessionStates[activeSessionId]?.messages ?? [];
+    const needsNewSession = pendingNewSession || currentMessages.length === 0;
 
-    const pendingContent = content;
-    const pendingAttachments = attachments;
-    const pendingDisplay = displayParts.join("");
+    if (needsNewSession) {
+      if (pendingNewSession) setPendingNewSession(false);
 
-    // Register a one-shot callback fired by App.tsx when session_created arrives.
-    // The callback captures the real new session ID so messages always go to
-    // the correct session regardless of what the user does in the meantime.
-    setPendingSessionCallback((newId: string) => {
-      useAppStore.getState().addMessage({ role: "user", content: pendingDisplay }, newId);
-      const wsPayload: Record<string, unknown> = { type: "chat", content: pendingContent, session_id: newId };
-      if (pendingAttachments?.length) {
-        wsPayload.attachments = pendingAttachments.map(({ name, type, data }) => ({ name, type, data }));
-      }
-      send(wsPayload);
-    });
-    send({ type: "new_session", display_name: "New Chat", icon: "💬" });
+      const pendingContent = content;
+      const pendingAttachments = attachments;
+      const pendingDisplay = displayParts.join("");
+
+      // Register a one-shot callback fired by App.tsx when session_created arrives.
+      // The callback captures the real new session ID so messages always go to
+      // the correct session regardless of whether the user switches chats while
+      // waiting for the backend to confirm the new session.
+      setPendingSessionCallback((newId: string) => {
+        useAppStore.getState().addMessage({ role: "user", content: pendingDisplay }, newId);
+        const wsPayload: Record<string, unknown> = { type: "chat", content: pendingContent, session_id: newId };
+        if (pendingAttachments?.length) {
+          wsPayload.attachments = pendingAttachments.map(({ name, type, data }) => ({ name, type, data }));
+        }
+        send(wsPayload);
+      });
+      send({ type: "new_session", display_name: "New Chat", icon: "💬" });
+      return;
+    }
+
+    // Existing conversation — send directly to the active session.
+    useAppStore.getState().addMessage({ role: "user", content: displayParts.join("") }, activeSessionId);
+    const wsPayload: Record<string, unknown> = { type: "chat", content, session_id: activeSessionId };
+    if (attachments?.length) {
+      wsPayload.attachments = attachments.map(({ name, type, data }) => ({ name, type, data }));
+    }
+    send(wsPayload);
   };
 
   const handleStop = () => {
