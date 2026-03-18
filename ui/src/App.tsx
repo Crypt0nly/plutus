@@ -201,7 +201,7 @@ export default function App() {
           // If the user switches away and back while Plutus is still running,
           // we must preserve isProcessing=true so the dot-pulse stays visible.
           // We only clear it to remove stale flags from previously finished tasks.
-          if (!useAppStore.getState().sessionStates[sid]?.isProcessing) {
+          if (sid && !useAppStore.getState().sessionStates[sid]?.isProcessing) {
             setProcessing(false, sid);
           }
           clearMessages(sid);
