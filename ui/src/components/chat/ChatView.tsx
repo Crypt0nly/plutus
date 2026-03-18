@@ -27,39 +27,29 @@ export function ChatView({ send }: Props) {
       displayParts.push(`\n[Attached: ${names}]`);
     }
 
-    if (pendingNewSession) {
-      // Lazy session creation: the user clicked "New Chat" but we haven't
-      // created a backend session yet. Send new_session first; the backend
-      // will reply with session_created, which fires our callback below.
-      setPendingNewSession(false);
-      const pendingContent = content;
-      const pendingAttachments = attachments;
-      const pendingDisplay = displayParts.join("");
-      // Register a one-shot callback that App.tsx will call when session_created
-      // arrives. This avoids polling activeSessionId and is race-condition-free:
-      // the message always goes to the correct new session even if the user
-      // switches to a different chat while waiting.
-      setPendingSessionCallback((newId: string) => {
-        useAppStore.getState().addMessage({ role: "user", content: pendingDisplay }, newId);
-        const wsPayload: Record<string, unknown> = { type: "chat", content: pendingContent, session_id: newId };
-        if (pendingAttachments?.length) {
-          wsPayload.attachments = pendingAttachments.map(({ name, type, data }) => ({ name, type, data }));
-        }
-        send(wsPayload);
-      });
-      send({ type: "new_session", display_name: "New Chat", icon: "💬" });
-      return;
-    }
+    // Always create a new backend session for every message.
+    // This ensures each conversation is isolated: Plutus' responses are
+    // pinned to the session that received the message, so switching chats
+    // while Plutus is working never mixes up messages.
+    // pendingNewSession (set by the "New Chat" button) is treated identically.
+    if (pendingNewSession) setPendingNewSession(false);
 
-    useAppStore.getState().addMessage({ role: "user", content: displayParts.join("") }, activeSessionId);
+    const pendingContent = content;
+    const pendingAttachments = attachments;
+    const pendingDisplay = displayParts.join("");
 
-    const wsPayload: Record<string, unknown> = { type: "chat", content, session_id: activeSessionId };
-    if (attachments?.length) {
-      wsPayload.attachments = attachments.map(({ name, type, data }) => ({
-        name, type, data,
-      }));
-    }
-    send(wsPayload);
+    // Register a one-shot callback fired by App.tsx when session_created arrives.
+    // The callback captures the real new session ID so messages always go to
+    // the correct session regardless of what the user does in the meantime.
+    setPendingSessionCallback((newId: string) => {
+      useAppStore.getState().addMessage({ role: "user", content: pendingDisplay }, newId);
+      const wsPayload: Record<string, unknown> = { type: "chat", content: pendingContent, session_id: newId };
+      if (pendingAttachments?.length) {
+        wsPayload.attachments = pendingAttachments.map(({ name, type, data }) => ({ name, type, data }));
+      }
+      send(wsPayload);
+    });
+    send({ type: "new_session", display_name: "New Chat", icon: "💬" });
   };
 
   const handleStop = () => {

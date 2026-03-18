@@ -58,6 +58,16 @@ export function ConversationHistory({ send }: Props) {
     fetchConversations();
   }, [fetchConversations, conversationId]);
 
+  // Re-fetch when any session finishes processing so newly created chats
+  // appear in the history list as soon as Plutus sends its first response.
+  const anyProcessing = useMemo(
+    () => Object.values(sessionStates).some((s) => s.isProcessing),
+    [sessionStates]
+  );
+  useEffect(() => {
+    if (!anyProcessing) fetchConversations();
+  }, [anyProcessing, fetchConversations]);
+
   useEffect(() => {
     if (!connected) return; // Don't start poll timer when disconnected
     const interval = setInterval(fetchConversations, 30000);
