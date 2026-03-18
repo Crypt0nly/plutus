@@ -167,6 +167,10 @@ class MemoryStore:
             "SELECT c.id, c.created_at, c.title, c.metadata, c.last_activity, "
             "(SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) as msg_count "
             "FROM conversations c "
+            # Only return conversations that have at least one message — empty
+            # conversations are created automatically at session/startup time
+            # (one per session per restart) and should never appear in the UI.
+            "WHERE (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) > 0 "
             "ORDER BY COALESCE(c.last_activity, c.created_at) DESC LIMIT ?",
             (limit,),
         )
@@ -209,6 +213,42 @@ class MemoryStore:
         await self._db.execute("DELETE FROM checkpoints WHERE conversation_id = ?", (conv_id,))
         await self._db.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
         await self._db.commit()
+
+    async def cleanup_empty_conversations(self) -> int:
+        """Delete conversation rows that have no messages.
+
+        These are created automatically at startup/session-creation time and
+        accumulate silently.  Purging them keeps the database tidy and prevents
+        empty chats from appearing in the history panel after a restart.
+        Returns the number of rows deleted.
+        """
+        assert self._db
+        cursor = await self._db.execute(
+            "SELECT id FROM conversations "
+            "WHERE (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = conversations.id) = 0"
+        )
+        empty_ids = [r[0] for r in await cursor.fetchall()]
+        if not empty_ids:
+            return 0
+        placeholders = ",".join("?" for _ in empty_ids)
+        await self._db.execute(
+            f"DELETE FROM conversation_summaries WHERE conversation_id IN ({placeholders})",
+            empty_ids,
+        )
+        await self._db.execute(
+            f"DELETE FROM goals WHERE conversation_id IN ({placeholders})",
+            empty_ids,
+        )
+        await self._db.execute(
+            f"DELETE FROM checkpoints WHERE conversation_id IN ({placeholders})",
+            empty_ids,
+        )
+        await self._db.execute(
+            f"DELETE FROM conversations WHERE id IN ({placeholders})",
+            empty_ids,
+        )
+        await self._db.commit()
+        return len(empty_ids)
 
     async def cleanup_stale_conversations(self, max_age_days: int = 30) -> int:
         """Delete conversations with no activity for more than max_age_days.

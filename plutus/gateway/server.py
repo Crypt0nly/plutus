@@ -898,6 +898,16 @@ async def lifespan(app: FastAPI):
         # Create dedicated connector sessions
         await session_registry.ensure_connector_sessions()
 
+        # Purge empty conversation rows left over from previous startups.
+        # Every session creation calls start_conversation() which inserts a row
+        # immediately — these accumulate as "ghost" chats in the history panel.
+        try:
+            purged = await memory.cleanup_empty_conversations()
+            if purged:
+                logger.info(f"Purged {purged} empty conversation(s) from previous sessions")
+        except Exception:
+            pass  # Non-critical — don't block startup
+
         # Store all state
         _state["config"] = config
         _state["secrets"] = secrets
