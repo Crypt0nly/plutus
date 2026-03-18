@@ -66,6 +66,7 @@ class HeartbeatUpdate(BaseModel):
     quiet_hours_end: str | None = None
     max_consecutive: int | None = None
     prompt: str | None = None
+    blocked_ops: list[str] | None = None  # None = don't change; [] = allow all ops
 
 
 class CreatePlanRequest(BaseModel):
@@ -883,7 +884,8 @@ def create_router() -> APIRouter:
             config.heartbeat.max_consecutive = body.max_consecutive
         if body.prompt is not None:
             config.heartbeat.prompt = body.prompt
-
+        if body.blocked_ops is not None:
+            config.heartbeat.blocked_ops = body.blocked_ops
         config.save()
         heartbeat.update_config(config.heartbeat)
 

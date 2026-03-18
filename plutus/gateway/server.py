@@ -82,14 +82,20 @@ async def _heartbeat_on_beat(prompt: str) -> None:
             return
     try:
         async with _agent_lock:
-            # Set the heartbeat flag so _execute_tool hard-blocks destructive ops
+            # Sync blocked_ops from the current config so the user's
+            # Settings → Heartbeat choices are respected at runtime.
+            config = _state.get("config")
+            agent._heartbeat_blocked_ops = (
+                list(config.heartbeat.blocked_ops) if config else []
+            )
             agent._is_heartbeat = True
             try:
                 async for event in agent.process_message(prompt):
                     await ws_manager.broadcast(event.to_dict())
             finally:
-                # Always clear the flag, even if an exception occurs
+                # Always clear the flags, even if an exception occurs
                 agent._is_heartbeat = False
+                agent._heartbeat_blocked_ops = []
     except Exception as e:
         logger.exception("Heartbeat agent processing failed")
         await ws_manager.broadcast({

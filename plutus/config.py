@@ -62,6 +62,17 @@ class MemoryConfig(BaseModel):
     conversation_auto_delete_days: int = 30  # 0 = disabled; delete conversations with no activity for N days
 
 
+# Default set of pc() operations that are blocked during unattended heartbeat runs.
+# Users can override this list in Settings → Heartbeat → Blocked Operations.
+_DEFAULT_HEARTBEAT_BLOCKED_OPS: list[str] = [
+    "open_app", "close_app", "run_command", "kill_process",
+    "open_file", "open_folder", "open_url",
+    "desktop_click", "desktop_click_ref", "desktop_type",
+    "desktop_type_ref", "desktop_key", "desktop_scroll",
+    "desktop_snapshot", "screenshot", "mouse_click", "mouse_scroll",
+]
+
+
 class HeartbeatConfig(BaseModel):
     enabled: bool = False
     interval_seconds: int = 300  # default: 5 minutes
@@ -69,6 +80,9 @@ class HeartbeatConfig(BaseModel):
     quiet_hours_end: str | None = None  # e.g. "07:00" — resume heartbeats
     max_consecutive: int = 50  # stop after N heartbeats with no user interaction
     prompt: str = ""  # custom heartbeat prompt; empty = use default
+    # PC operations blocked during unattended heartbeat runs.
+    # Set to an empty list to allow all operations.
+    blocked_ops: list[str] = Field(default_factory=lambda: list(_DEFAULT_HEARTBEAT_BLOCKED_OPS))
 
 
 class WorkerConfig(BaseModel):

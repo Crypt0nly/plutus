@@ -1,6 +1,45 @@
 import { useState, useEffect } from "react";
-import { Heart, Play, Square, Clock, Moon, Save, Info, Minus, Plus } from "lucide-react";
+import { Heart, Play, Square, Clock, Moon, Save, Info, Minus, Plus, ShieldOff } from "lucide-react";
 import { api } from "../../lib/api";
+
+// All pc() operations that can be blocked during heartbeat runs.
+// Grouped for clarity in the UI.
+const OP_GROUPS: { label: string; ops: { id: string; label: string }[] }[] = [
+  {
+    label: "App & Process Control",
+    ops: [
+      { id: "open_app",    label: "Open application" },
+      { id: "close_app",   label: "Close application" },
+      { id: "run_command", label: "Run shell command" },
+      { id: "kill_process",label: "Kill process" },
+      { id: "open_file",   label: "Open file" },
+      { id: "open_folder", label: "Open folder" },
+      { id: "open_url",    label: "Open URL in browser" },
+    ],
+  },
+  {
+    label: "Desktop Interaction",
+    ops: [
+      { id: "desktop_click",     label: "Click (by coordinates)" },
+      { id: "desktop_click_ref", label: "Click (by element ref)" },
+      { id: "desktop_type",      label: "Type text" },
+      { id: "desktop_type_ref",  label: "Type text (by ref)" },
+      { id: "desktop_key",       label: "Press key" },
+      { id: "desktop_scroll",    label: "Scroll" },
+      { id: "desktop_snapshot",  label: "Accessibility snapshot" },
+    ],
+  },
+  {
+    label: "Screen Capture & Mouse",
+    ops: [
+      { id: "screenshot",  label: "Take screenshot" },
+      { id: "mouse_click", label: "Mouse click" },
+      { id: "mouse_scroll",label: "Mouse scroll" },
+    ],
+  },
+];
+
+const ALL_OPS = OP_GROUPS.flatMap((g) => g.ops.map((o) => o.id));
 
 interface HeartbeatStatus {
   enabled: boolean;
@@ -11,6 +50,7 @@ interface HeartbeatStatus {
   max_consecutive: number;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
+  blocked_ops: string[];
 }
 
 interface Props {
@@ -27,10 +67,20 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
   const [quietStart, setQuietStart] = useState(config.quiet_hours_start ?? "");
   const [quietEnd, setQuietEnd] = useState(config.quiet_hours_end ?? "");
   const [prompt, setPrompt] = useState(config.prompt ?? "");
+  const [blockedOps, setBlockedOps] = useState<string[]>(
+    config.blocked_ops ?? ALL_OPS
+  );
   const [expanded, setExpanded] = useState(false);
 
   const fetchStatus = () => {
-    api.getHeartbeatStatus().then((s) => setStatus(s as HeartbeatStatus)).catch(() => {});
+    api.getHeartbeatStatus().then((s) => {
+      const hs = s as HeartbeatStatus;
+      setStatus(hs);
+      // Keep local blocked_ops in sync with what the server reports
+      if (Array.isArray(hs.blocked_ops)) {
+        setBlockedOps(hs.blocked_ops);
+      }
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -55,25 +105,26 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
     }
   };
 
+  const toggleOp = (opId: string) => {
+    setBlockedOps((prev) =>
+      prev.includes(opId) ? prev.filter((o) => o !== opId) : [...prev, opId]
+    );
+  };
+
   const handleSave = () => {
-    onSave({
-      heartbeat: {
-        enabled,
-        interval_seconds: interval,
-        max_consecutive: maxConsecutive,
-        quiet_hours_start: quietStart || null,
-        quiet_hours_end: quietEnd || null,
-        prompt: prompt || "",
-      },
-    });
-    api.updateHeartbeat({
+    const patch = {
       enabled,
       interval_seconds: interval,
       max_consecutive: maxConsecutive,
       quiet_hours_start: quietStart || null,
       quiet_hours_end: quietEnd || null,
       prompt: prompt || "",
-    }).then((s) => setStatus(s as HeartbeatStatus)).catch(() => {});
+      blocked_ops: blockedOps,
+    };
+    onSave({ heartbeat: patch });
+    api.updateHeartbeat(patch)
+      .then((s) => setStatus(s as HeartbeatStatus))
+      .catch(() => {});
   };
 
   const formatInterval = (secs: number) => {
@@ -269,6 +320,68 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
                   placeholder="07:00"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Blocked operations */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-gray-400 flex items-center gap-1.5">
+                <ShieldOff className="w-3 h-3" />
+                Blocked operations during heartbeat
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setBlockedOps(ALL_OPS)}
+                  className="text-[10px] text-gray-500 hover:text-gray-300 px-2 py-0.5 rounded hover:bg-gray-800/50 transition-colors"
+                >
+                  Block all
+                </button>
+                <button
+                  onClick={() => setBlockedOps([])}
+                  className="text-[10px] text-gray-500 hover:text-gray-300 px-2 py-0.5 rounded hover:bg-gray-800/50 transition-colors"
+                >
+                  Allow all
+                </button>
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-600 mb-3 leading-relaxed">
+              Checked operations are <span className="text-amber-400/80">blocked</span> when the heartbeat runs unattended.
+              Uncheck any operation to let the heartbeat use it freely.
+            </p>
+            <div className="space-y-3">
+              {OP_GROUPS.map((group) => (
+                <div key={group.label} className="bg-gray-800/30 rounded-xl p-3">
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    {group.label}
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {group.ops.map((op) => {
+                      const isBlocked = blockedOps.includes(op.id);
+                      return (
+                        <label
+                          key={op.id}
+                          className="flex items-center gap-2 cursor-pointer group"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isBlocked}
+                            onChange={() => toggleOp(op.id)}
+                            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-amber-500 focus:ring-amber-500/30 focus:ring-1 cursor-pointer"
+                          />
+                          <span className={`text-[11px] transition-colors ${
+                            isBlocked
+                              ? "text-gray-400 group-hover:text-gray-300"
+                              : "text-gray-600 group-hover:text-gray-500"
+                          }`}>
+                            {op.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
