@@ -1,0 +1,231 @@
+##############################################################################
+# Plutus Cloud – Docker Compose (development)
+# Usage:
+#   docker compose up -d            # start all services
+#   docker compose logs -f backend  # tail backend logs
+#   docker compose down -v          # stop & remove volumes
+##############################################################################
+
+version: '3.8'
+
+# ── Networks ────────────────────────────────────────────────────────────────
+networks:
+  plutus-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ── Services ────────────────────────────────────────────────────────────────
+services:
+
+  # ── PostgreSQL 16 ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: plutus-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-plutus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plutus}
+      POSTGRES_DB: ${POSTGRES_DB:-plutus}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-plutus} -d ${POSTGRES_DB:-plutus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - plutus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # ── Redis 7 ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: plutus-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - plutus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # ── Backend (FastAPI + Uvicorn) ───────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+    container_name: plutus-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-plutus}:${POSTGRES_PASSWORD:-plutus}@postgres:5432/${POSTGRES_DB:-plutus}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - plutus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ── Frontend (Vite dev server) ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NODE_VERSION: "20"
+    container_name: plutus-frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-pk_test_REPLACE_ME}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - plutus-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # ── Celery Worker (async task processing) ─────────────────────────────────
+  # celery-worker:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: plutus-celery-worker
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #     - ./backend/.env
+  #   environment:
+  #     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-plutus}:${POSTGRES_PASSWORD:-plutus}@postgres:5432/${POSTGRES_DB:-plutus}
+  #     REDIS_URL: redis://redis:6379/0
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   command: celery -A app.worker worker --loglevel=info --concurrency=2
+  #   networks:
+  #     - plutus-net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1.0'
+  #         memory: 512M
+
+  # ── Bridge Service (local desktop ↔ cloud sync, development only) ────────
+  # Uncomment to enable the bridge relay for local Plutus desktop ↔ cloud
+  # bridge:
+  #   build:
+  #     context: ../bridge
+  #     dockerfile: Dockerfile
+  #   container_name: plutus-bridge
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     BRIDGE_MODE: relay
+  #     BACKEND_WS_URL: ws://backend:8000/ws/bridge
+  #     REDIS_URL: redis://redis:6379/1
+  #   ports:
+  #     - "${BRIDGE_PORT:-8080}:8080"
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - plutus-net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 256M
+  #       reservations:
+  #         cpus: '0.1'
+  #         memory: 64M
