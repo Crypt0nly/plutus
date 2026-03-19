@@ -539,6 +539,7 @@ class WebDeployTool(Tool):
         token: str,
         production: bool,
         output_dir: str,
+        framework: str,
         lines: list[str],
     ) -> str:
         # Ensure Vercel CLI is installed
