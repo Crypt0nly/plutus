@@ -361,6 +361,11 @@ jobs:
           name: frontend-dist
           path: cloud/frontend/dist
 
+      - name: Set up QEMU (for multi-arch builds)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -377,6 +382,7 @@ jobs:
           context: cloud/backend
           file: cloud/backend/Dockerfile
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ vars.CONTAINER_REGISTRY }}/plutus-backend:${{ github.sha }}
             ${{ vars.CONTAINER_REGISTRY }}/plutus-backend:staging
@@ -394,6 +400,7 @@ jobs:
           context: cloud/frontend
           file: cloud/frontend/Dockerfile
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:${{ github.sha }}
             ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:staging
