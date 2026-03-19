@@ -400,12 +400,40 @@ jobs:
             ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:${{ github.sha }}
             ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:staging
 
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.29.0'
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
       - name: Deploy to staging
         run: |
           echo "🚀 Deploying to staging..."
-          echo "   Backend:  ${{ vars.CONTAINER_REGISTRY }}/plutus-backend:${{ github.sha }}"
-          echo "   Frontend: ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:${{ github.sha }}"
-          # TODO: Replace with your actual deployment command, e.g.:
-          # ssh ${{ secrets.STAGING_HOST }} "cd /opt/plutus && docker compose pull && docker compose up -d"
-          # or: kubectl set image deployment/plutus-backend ...
-          echo "⚠️  Deployment command not yet configured – add your deploy step here"
+          REGISTRY="${{ vars.CONTAINER_REGISTRY }}"
+          SHA="${{ github.sha }}"
+          NAMESPACE="${{ vars.KUBE_NAMESPACE }}"
+
+          echo "   Backend:  ${REGISTRY}/plutus-backend:${SHA}"
+          echo "   Frontend: ${REGISTRY}/plutus-frontend:${SHA}"
+
+          # Update backend image and trigger rolling update
+          kubectl set image deployment/plutus-backend \
+            backend=${REGISTRY}/plutus-backend:${SHA} \
+            -n ${NAMESPACE}
+
+          # Update frontend image and trigger rolling update
+          kubectl set image deployment/plutus-frontend \
+            frontend=${REGISTRY}/plutus-frontend:${SHA} \
+            -n ${NAMESPACE}
+
+          # Wait for rollouts to complete
+          kubectl rollout status deployment/plutus-backend -n ${NAMESPACE} --timeout=120s
+          kubectl rollout status deployment/plutus-frontend -n ${NAMESPACE} --timeout=120s
+
+          echo "✅ Deployment complete!"
+          kubectl get pods -n ${NAMESPACE}
