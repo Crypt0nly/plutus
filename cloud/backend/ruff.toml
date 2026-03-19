@@ -1,0 +1,11 @@
+# Ruff configuration for cloud/backend
+# Excludes the shared/ directory (copied from repo root for Docker build context)
+target-version = "py312"
+line-length = 100
+
+exclude = [
+    "shared/",
+]
+
+[lint]
+select = ["E", "F", "I", "N", "W", "UP"]

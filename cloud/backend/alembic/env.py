@@ -7,6 +7,9 @@ can detect schema changes.
 import asyncio
 from logging.config import fileConfig
 
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
 from alembic import context
 from app.models.agent_state import AgentState, Memory, ScheduledTask, Skill  # noqa: F401
 
@@ -15,8 +18,6 @@ from app.models.base import Base
 from app.models.conversation import Conversation, Message  # noqa: F401
 from app.models.sync_log import SyncLog  # noqa: F401
 from app.models.user import User  # noqa: F401
-from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # ── Alembic Config object ───────────────────────────────────────────
 config = context.config
