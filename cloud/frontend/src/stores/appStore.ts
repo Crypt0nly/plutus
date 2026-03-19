@@ -120,6 +120,10 @@ interface AppState {
   theme: ThemeMode;
   setTheme: (t: ThemeMode) => void;
 
+  // WhatsApp pairing code (shown when WhatsApp is connecting)
+  whatsappPairingCode: string | null;
+  setWhatsappPairingCode: (code: string | null) => void;
+
   // Updates
   updateInfo: {
     available: boolean;
@@ -316,6 +320,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Theme
   theme: getStoredTheme(),
   setTheme: (theme) => set({ theme }),
+
+  // WhatsApp pairing code
+  whatsappPairingCode: null,
+  setWhatsappPairingCode: (whatsappPairingCode) => set({ whatsappPairingCode }),
 
   // Updates
   updateInfo: null,
