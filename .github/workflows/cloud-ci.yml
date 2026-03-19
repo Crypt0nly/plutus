@@ -346,9 +346,7 @@ jobs:
     # configured. Without the secrets check the login step fails immediately.
     if: |
       github.ref == 'refs/heads/main' &&
-      github.event_name == 'push' &&
-      secrets.REGISTRY_USERNAME != '' &&
-      secrets.REGISTRY_PASSWORD != ''
+      github.event_name == 'push'
     environment:
       name: staging
       url: ${{ vars.STAGING_URL }}
