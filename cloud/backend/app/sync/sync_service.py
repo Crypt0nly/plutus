@@ -235,7 +235,7 @@ class SyncService:
                             result.applied += 1
                         else:
                             result.skipped += 1
-                    except EntityNotFoundError, ConflictError:
+                    except (EntityNotFoundError, ConflictError):
                         # Already recorded in result.conflicts / logged
                         result.skipped += 1
                     except SQLAlchemyError as exc:
