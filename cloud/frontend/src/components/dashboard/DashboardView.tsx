@@ -80,7 +80,7 @@ export function DashboardView() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-5xl mx-auto p-6 space-y-5">
+      <div className="max-w-5xl mx-auto px-4 py-4 sm:p-6 space-y-4 sm:space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div>
@@ -118,7 +118,7 @@ export function DashboardView() {
         </div>
 
         {/* Primary Metrics */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatusCard icon={Activity} label="System Status" value={connected ? "Online" : "Offline"} color={connected ? "emerald" : "red"} />
           <StatusCard icon={Shield} label="Guardrail Tier" value={currentTier} color="plutus" capitalize />
           <StatusCard icon={Terminal} label="Tools Available" value={String(toolCount)} sublabel={`${totalActions} total actions`} color="blue" />
@@ -126,7 +126,7 @@ export function DashboardView() {
         </div>
 
         {/* Secondary Metrics */}
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {secondaryMetrics.map(({ icon: Icon, label, value, iconColor, bg, border }) => (
             <div key={label} className="dashboard-card rounded-2xl p-3.5 flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -143,7 +143,7 @@ export function DashboardView() {
         </div>
 
         {/* Middle Section */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Action Decisions */}
           <div className="col-span-2 dashboard-card rounded-2xl p-5">
             <div className="flex items-center gap-3 mb-5">

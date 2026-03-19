@@ -3,6 +3,9 @@ import { useAppStore } from "./stores/appStore";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Header } from "./components/layout/Header";
+import { MobileNav } from "./components/layout/MobileNav";
+import { MobileHeader } from "./components/layout/MobileHeader";
+import { useIsMobile } from "./hooks/useIsMobile";
 import { ChatView } from "./components/chat/ChatView";
 import { DashboardView } from "./components/dashboard/DashboardView";
 import { GuardrailsView } from "./components/guardrails/GuardrailsView";
@@ -19,6 +22,7 @@ import { UpdateBanner } from "./components/layout/UpdateBanner";
 import { ConnectionBanner } from "./components/layout/ConnectionBanner";
 import { ConversationPanel } from "./components/layout/ConversationPanel";
 import { PanelLeft } from "lucide-react";
+import { useState as _useState } from "react";
 import type { WSMessage } from "./lib/types";
 import { api } from "./lib/api";
 import { useTheme } from "./hooks/useTheme";
@@ -68,6 +72,8 @@ export default function App() {
   } = useAppStore();
 
   useTheme(theme);
+  const isMobile = useIsMobile();
+  const [mobileMenuOpen, setMobileMenuOpen] = _useState(false);
 
   const handleWSMessage = useCallback(
     (msg: any) => {
@@ -452,6 +458,60 @@ export default function App() {
     connectors: <ConnectorsView />,
   };
 
+  if (isMobile) {
+    return (
+      <div
+        className="flex flex-col"
+        style={{ height: "100dvh", overflow: "hidden" }}
+      >
+        {/* Mobile top header */}
+        <MobileHeader onMenuOpen={() => setMobileMenuOpen(true)} />
+        <ConnectionBanner />
+        <UpdateBanner />
+
+        {/* Main content — grows to fill space between header and bottom nav */}
+        <main
+          className={`flex-1 flex flex-col min-h-0 ${
+            view === "chat" || view === "sessions"
+              ? "overflow-hidden"
+              : "overflow-y-auto"
+          }`}
+          style={{ paddingBottom: view === "chat" || view === "sessions" ? 0 : "calc(64px + env(safe-area-inset-bottom))" }}
+        >
+          {view !== "chat" && view !== "sessions" && (
+            <div className="px-4 pt-4 pb-2">
+              {/* Mobile view padding wrapper for non-chat views */}
+            </div>
+          )}
+          {viewComponents[view] || viewComponents.chat}
+        </main>
+
+        {/* Mobile bottom navigation */}
+        <MobileNav send={send} />
+
+        {/* Mobile full nav drawer (triggered from header menu button) */}
+        {mobileMenuOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <div
+              className="fixed inset-y-0 left-0 z-50 w-72 flex flex-col"
+              style={{
+                background: "rgba(9,9,11,0.98)",
+                borderRight: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <Sidebar send={send} />
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Desktop layout (unchanged)
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar send={send} />

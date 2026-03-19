@@ -6,8 +6,9 @@
  * card at the bottom lets the user navigate to the Connectors settings page.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, Loader2, Wifi, WifiOff, Plus, Trash2 } from "lucide-react";
+import { MessageSquare, Loader2, Wifi, WifiOff, Plus, Trash2, ArrowLeft } from "lucide-react";
 import { useAppStore, DEFAULT_SESSION_ID } from "../../stores/appStore";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { ConnectorLogo, CONNECTOR_LOGO_MAP } from "../connectors/ConnectorLogos";
 import { MessageBubble } from "../chat/MessageBubble";
 import { ChatInput, type Attachment } from "../chat/ChatInput";
@@ -53,6 +54,8 @@ function getConnectorKey(session: { id: string; connector_name?: string | null }
 
 export default function SessionsView({ send }: Props) {
   const { sessions, sessionStates, setView } = useAppStore();
+  const isMobile = useIsMobile();
+  const [mobileShowChat, setMobileShowChat] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -163,7 +166,13 @@ export default function SessionsView({ send }: Props) {
     <div className="flex h-full min-h-0 overflow-hidden">
       {/* ── Left pane: connector list ──────────────────────────────────── */}
       <div
-        className="w-56 flex-shrink-0 flex flex-col border-r"
+        className={`flex-shrink-0 flex flex-col border-r ${
+          isMobile
+            ? mobileShowChat
+              ? "hidden"
+              : "w-full"
+            : "w-56"
+        }`}
         style={{ borderColor: "rgba(255,255,255,0.06)" }}
       >
         <div className="px-4 pt-5 pb-3">
@@ -200,7 +209,10 @@ export default function SessionsView({ send }: Props) {
               return (
                 <button
                   key={session.id}
-                  onClick={() => setSelectedSessionId(session.id)}
+                  onClick={() => {
+                    setSelectedSessionId(session.id);
+                    if (isMobile) setMobileShowChat(true);
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-150 ${
                     isSelected ? "bg-gray-800/80" : "hover:bg-gray-800/40"
                   }`}
@@ -300,6 +312,15 @@ export default function SessionsView({ send }: Props) {
                 };
                 return (
                   <>
+                    {isMobile && (
+                      <button
+                        onClick={() => setMobileShowChat(false)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 mr-1"
+                        style={{ background: "rgba(255,255,255,0.05)" }}
+                      >
+                        <ArrowLeft className="w-4 h-4 text-gray-400" />
+                      </button>
+                    )}
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0"
                       style={{ background: meta.bg, border: `1px solid ${meta.border}` }}

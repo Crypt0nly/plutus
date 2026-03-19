@@ -129,7 +129,9 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
   const hasInput = input.trim().length > 0 || attachments.length > 0;
 
   return (
-    <div className="flex-shrink-0 px-4 pt-2 pb-5 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent">
+    <div className="flex-shrink-0 px-4 pt-2 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent"
+      style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))" }}
+    >
       <div className="max-w-3xl mx-auto">
         <div
           className="relative rounded-2xl transition-all duration-200"
@@ -228,7 +230,7 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
               >
                 <Paperclip className="w-4 h-4" />
               </button>
-              <span className="text-[11px] text-gray-500 ml-1 select-none">
+              <span className="text-[11px] text-gray-500 ml-1 select-none hidden sm:inline">
                 {isProcessing ? "Working on your task" : "Enter to send · Shift+Enter for newline"}
               </span>
             </div>

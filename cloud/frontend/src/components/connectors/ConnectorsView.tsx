@@ -1270,7 +1270,7 @@ export default function ConnectorsView() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-5xl mx-auto p-6 space-y-10">
+      <div className="max-w-5xl mx-auto px-4 py-4 sm:p-6 space-y-8 sm:space-y-10">
         {/* Header */}
         <div>
           <h2 className="text-xl font-bold text-gray-100 mb-1">Connections</h2>
