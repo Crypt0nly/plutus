@@ -24,8 +24,18 @@ export function useWebSocket(onMessage: MessageHandler) {
     async function connect() {
       if (destroyed) return;
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      let url = `${protocol}//${window.location.host}/ws`;
+      // In production the backend is on a different origin (api.useplutus.ai)
+      // so we derive the WS URL from VITE_API_BASE_URL if available.
+      // Falls back to window.location.host for local dev.
+      let url: string;
+      const apiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+      if (apiBase) {
+        // Convert https://api.useplutus.ai → wss://api.useplutus.ai/ws
+        url = apiBase.replace(/^https:/, "wss:").replace(/^http:/, "ws:") + "/ws";
+      } else {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        url = `${protocol}//${window.location.host}/ws`;
+      }
 
       // Append Clerk JWT as query param if available
       if (_wsTokenGetter) {

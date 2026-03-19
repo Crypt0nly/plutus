@@ -1,6 +1,12 @@
 /** API client for the Plutus backend. */
 
-const BASE = "/api";
+// In production the frontend (app.useplutus.ai) and backend (api.useplutus.ai)
+// are on different origins, so we need the full backend URL.
+// VITE_API_BASE_URL is injected at build time by the CI workflow.
+// Falls back to "/api" for local dev (where vite proxies /api → localhost:8000).
+const BASE = (import.meta.env.VITE_API_BASE_URL
+  ? `${import.meta.env.VITE_API_BASE_URL}/api`
+  : "/api") as string;
 
 // Token getter — set by the Clerk-aware wrapper in main.tsx
 let _getToken: (() => Promise<string | null>) | null = null;
