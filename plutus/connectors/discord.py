@@ -30,6 +30,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from plutus.connectors.base import BaseConnector
+from plutus.utils.ssl_utils import make_aiohttp_connector
 
 logger = logging.getLogger("plutus.connectors.discord")
 
@@ -114,6 +115,7 @@ class DiscordConnector(BaseConnector):
         import aiohttp
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
+                connector=make_aiohttp_connector(),
                 headers={"Authorization": f"Bot {self._token}"},
                 timeout=aiohttp.ClientTimeout(total=30),
             )

@@ -29,6 +29,7 @@ from typing import Any
 import aiohttp
 
 from plutus.connectors.base import BaseConnector
+from plutus.utils.ssl_utils import make_aiohttp_connector
 
 logger = logging.getLogger("plutus.connectors.telegram")
 
@@ -96,15 +97,23 @@ class TelegramConnector(BaseConnector):
         """Get or create the session used for sending messages."""
         if self._send_session is None or self._send_session.closed:
             timeout = aiohttp.ClientTimeout(total=30)
-            self._send_session = aiohttp.ClientSession(timeout=timeout)
+            # Use certifi CA bundle so macOS Python can verify Telegram's TLS cert.
+            self._send_session = aiohttp.ClientSession(
+                connector=make_aiohttp_connector(),
+                timeout=timeout,
+            )
         return self._send_session
 
     async def _get_poll_session(self) -> aiohttp.ClientSession:
         """Get or create the session used for long-polling getUpdates."""
         if self._poll_session is None or self._poll_session.closed:
-            # Poll session needs a longer timeout since getUpdates blocks
+            # Poll session needs a longer timeout since getUpdates blocks.
+            # Use certifi CA bundle so macOS Python can verify Telegram's TLS cert.
             timeout = aiohttp.ClientTimeout(total=60)
-            self._poll_session = aiohttp.ClientSession(timeout=timeout)
+            self._poll_session = aiohttp.ClientSession(
+                connector=make_aiohttp_connector(),
+                timeout=timeout,
+            )
         return self._poll_session
 
     async def _send_api_call(self, method: str, **params: Any) -> dict[str, Any]:

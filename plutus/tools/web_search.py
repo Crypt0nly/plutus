@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from plutus.tools.base import Tool
+from plutus.utils.ssl_utils import make_httpx_ssl_context
 
 logger = logging.getLogger("plutus.tools.web_search")
 
@@ -71,7 +72,7 @@ async def _search_duckduckgo(query: str, num_results: int) -> list[dict[str, str
     data = {"q": query}
     results: list[dict[str, str]] = []
 
-    async with httpx.AsyncClient(headers=_HEADERS, timeout=SEARCH_TIMEOUT) as client:
+    async with httpx.AsyncClient(headers=_HEADERS, timeout=SEARCH_TIMEOUT, verify=make_httpx_ssl_context()) as client:
         resp = await client.post(url, data=data, follow_redirects=True)
         resp.raise_for_status()
         page = resp.text
@@ -119,7 +120,7 @@ async def _search_tavily(query: str, num_results: int, api_key: str) -> list[dic
     }
     results: list[dict[str, str]] = []
 
-    async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=SEARCH_TIMEOUT, verify=make_httpx_ssl_context()) as client:
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
@@ -146,6 +147,7 @@ async def _fetch_url(url: str) -> str:
         timeout=FETCH_TIMEOUT,
         follow_redirects=True,
         max_redirects=5,
+        verify=make_httpx_ssl_context(),
     ) as client:
         resp = await client.get(url)
         resp.raise_for_status()

@@ -29,6 +29,7 @@ import logging
 from typing import Any
 
 from plutus.connectors.base import BaseConnector
+from plutus.utils.ssl_utils import make_aiohttp_connector
 
 logger = logging.getLogger("plutus.connectors.github")
 
@@ -111,6 +112,7 @@ class GitHubConnector(BaseConnector):
 
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
+                connector=make_aiohttp_connector(),
                 headers={
                     "Authorization": f"Bearer {self._token}",
                     "Accept": "application/vnd.github+json",
