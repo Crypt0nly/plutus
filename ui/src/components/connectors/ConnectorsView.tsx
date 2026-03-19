@@ -843,14 +843,24 @@ function ConfigureModal({
 
               {/* WhatsApp setup hint (not yet started) */}
               {connector.name === "whatsapp" && !listening && (
-                <div className="rounded-lg p-3 space-y-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                   <p className="text-[11px] font-semibold text-gray-400">How it works</p>
-                  <p className="text-[10px] text-gray-500 leading-relaxed">
-                    Plutus takes control of a <span className="text-gray-300 font-medium">second WhatsApp number</span> (a spare SIM or prepaid number).
-                    Once linked, you message that number from your personal phone and Plutus replies.
-                  </p>
-                  <p className="text-[10px] text-gray-600 mt-1">
-                    Enter the bot number above, click <span className="text-gray-400">Start</span>, then follow the pairing instructions.
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <span className="text-[10px] font-semibold text-blue-400 shrink-0 mt-0.5">Option A</span>
+                      <p className="text-[10px] text-gray-500 leading-relaxed">
+                        <span className="text-gray-300 font-medium">Your own number</span> — Plutus links as a secondary device (like WhatsApp Web on your laptop). Message yourself or use WhatsApp’s “Message yourself” feature to chat with Plutus.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="text-[10px] font-semibold text-green-400 shrink-0 mt-0.5">Option B</span>
+                      <p className="text-[10px] text-gray-500 leading-relaxed">
+                        <span className="text-gray-300 font-medium">A second/dedicated number</span> (spare SIM or prepaid) — Plutus controls that number. Message it from your personal phone and Plutus replies.
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-600">
+                    Enter the number above, click <span className="text-gray-400">Start</span>, then follow the pairing instructions.
                   </p>
                 </div>
               )}
