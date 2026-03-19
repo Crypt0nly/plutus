@@ -361,6 +361,11 @@ jobs:
           name: frontend-dist
           path: cloud/frontend/dist
 
+      - name: Set up QEMU (for multi-arch builds)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -377,10 +382,12 @@ jobs:
           context: cloud/backend
           file: cloud/backend/Dockerfile
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ vars.CONTAINER_REGISTRY }}/plutus-backend:${{ github.sha }}
             ${{ vars.CONTAINER_REGISTRY }}/plutus-backend:staging
+          cache-from: type=registry,ref=${{ vars.CONTAINER_REGISTRY }}/plutus-backend:buildcache
+          cache-to: type=registry,ref=${{ vars.CONTAINER_REGISTRY }}/plutus-backend:buildcache,mode=max
 
       # Write .env so Vite inlines VITE_* vars at build time
       # (avoids passing secrets as Docker ARG/ENV — Docker lint warning)
@@ -395,10 +402,12 @@ jobs:
           context: cloud/frontend
           file: cloud/frontend/Dockerfile
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:${{ github.sha }}
             ${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:staging
+          cache-from: type=registry,ref=${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:buildcache
+          cache-to: type=registry,ref=${{ vars.CONTAINER_REGISTRY }}/plutus-frontend:buildcache,mode=max
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
