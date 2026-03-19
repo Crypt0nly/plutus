@@ -1,12 +1,57 @@
 import json
+import os
+import zipfile
+import tempfile
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 
 from app.api.auth import get_clerk_jwks, get_current_user
 
 router = APIRouter()
 active_bridges: dict[str, WebSocket] = {}
+
+# Bridge source files are bundled alongside the backend image
+_BRIDGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "bridge")
+
+
+@router.get("/download")
+async def download_bridge(user=Depends(get_current_user)):
+    """Return a zip archive containing plutus_bridge.py and requirements.txt."""
+    bridge_script = os.path.join(_BRIDGE_DIR, "plutus_bridge.py")
+    requirements = os.path.join(_BRIDGE_DIR, "requirements.txt")
+
+    if not os.path.exists(bridge_script):
+        raise HTTPException(status_code=404, detail="Bridge files not found")
+
+    # Build zip in memory
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(bridge_script, "plutus_bridge.py")
+        if os.path.exists(requirements):
+            zf.write(requirements, "requirements.txt")
+        # Add a quick-start README
+        readme = (
+            "# Plutus Bridge\n\n"
+            "1. Install dependencies:\n"
+            "   pip install -r requirements.txt\n\n"
+            "2. Run the bridge (replace TOKEN with your Clerk session token):\n"
+            "   python plutus_bridge.py --server wss://api.useplutus.ai/api/bridge/ws/TOKEN\n"
+        )
+        zf.writestr("README.md", readme)
+    tmp.close()
+
+    def iter_file():
+        with open(tmp.name, "rb") as f:
+            yield from f
+        os.unlink(tmp.name)
+
+    return StreamingResponse(
+        iter_file(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=plutus_bridge.zip"},
+    )
 
 
 @router.get("/status")

@@ -1,0 +1,4 @@
+websockets>=12.0
+httpx>=0.25
+aiosqlite>=0.19
+pyjwt>=2.8

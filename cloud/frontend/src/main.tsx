@@ -1,34 +1,75 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { ClerkProvider } from '@clerk/clerk-react'
-import { BrowserRouter, useNavigate } from 'react-router-dom'
-import App from './App'
-import './index.css'
+import React, { useEffect } from "react";
+import ReactDOM from "react-dom/client";
+import {
+  ClerkProvider,
+  SignIn,
+  SignedIn,
+  SignedOut,
+  useAuth,
+} from "@clerk/clerk-react";
+import App from "./App";
+import "./index.css";
+import { setTokenGetter } from "./lib/api";
+import { setWsTokenGetter } from "./hooks/useWebSocket";
 
-// Clerk v5 + react-router: ClerkProvider must be inside BrowserRouter so it
-// can access useNavigate for programmatic redirects after sign-in/sign-out.
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 
-function ClerkWithRouter({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate()
-  return (
-    <ClerkProvider
-      publishableKey={PUBLISHABLE_KEY}
-      routerPush={(to) => navigate(to)}
-      routerReplace={(to) => navigate(to, { replace: true })}
-      afterSignOutUrl="/"
-    >
-      {children}
-    </ClerkProvider>
-  )
+/**
+ * Injects the Clerk JWT token into the API client and WebSocket hook
+ * so all requests are authenticated automatically.
+ */
+function ClerkTokenInjector() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    const getter = () => getToken();
+    setTokenGetter(getter);
+    setWsTokenGetter(getter);
+  }, [getToken]);
+
+  return null;
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+/**
+ * Full-screen sign-in page shown to unauthenticated users.
+ */
+function SignInPage() {
+  return (
+    <div className="h-screen flex items-center justify-center bg-gray-950">
+      <SignIn
+        appearance={{
+          elements: {
+            rootBox: "mx-auto",
+            card: "bg-gray-900 border border-white/10 shadow-2xl",
+            headerTitle: "text-white",
+            headerSubtitle: "text-gray-400",
+            socialButtonsBlockButton:
+              "bg-gray-800 border border-white/10 text-white hover:bg-gray-700",
+            formFieldLabel: "text-gray-300",
+            formFieldInput:
+              "bg-gray-800 border-white/10 text-white placeholder-gray-500",
+            formButtonPrimary:
+              "bg-plutus-600 hover:bg-plutus-700 text-white",
+            footerActionLink: "text-plutus-400 hover:text-plutus-300",
+            identityPreviewText: "text-gray-300",
+            identityPreviewEditButton: "text-plutus-400",
+          },
+        }}
+      />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <ClerkWithRouter>
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
+      <ClerkTokenInjector />
+      <SignedOut>
+        <SignInPage />
+      </SignedOut>
+      <SignedIn>
         <App />
-      </ClerkWithRouter>
-    </BrowserRouter>
-  </React.StrictMode>,
-)
+      </SignedIn>
+    </ClerkProvider>
+  </React.StrictMode>
+);
