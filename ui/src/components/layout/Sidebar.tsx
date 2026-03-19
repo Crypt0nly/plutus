@@ -13,7 +13,7 @@ import {
   ChevronDown,
   Layers,
 } from "lucide-react";
-import { useAppStore, type View } from "../../stores/appStore";
+import { useAppStore, PENDING_NEW_SESSION_ID, type View } from "../../stores/appStore";
 
 interface NavSection {
   label: string;
@@ -57,7 +57,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ send }: SidebarProps) {
-  const { view, setView, connected, currentTier, setPendingNewSession } = useAppStore();
+  const { view, setView, connected, currentTier, setPendingNewSession, setActiveSessionId } = useAppStore();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const toggleSection = (label: string) => {
@@ -70,10 +70,12 @@ export function Sidebar({ send }: SidebarProps) {
   };
 
   const handleNewChat = () => {
-    // Mark that the next message should open a new session.
+    // Switch immediately to the pending-new-session sentinel so the chat
+    // view shows the empty state right away (messages.length === 0).
     // The actual backend session is created lazily when the user sends
     // their first message — this avoids creating empty sessions.
     setPendingNewSession(true);
+    setActiveSessionId(PENDING_NEW_SESSION_ID);
     setView("chat");
   };
 

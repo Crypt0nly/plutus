@@ -43,6 +43,11 @@ interface SessionState {
 }
 
 export const DEFAULT_SESSION_ID = "session_main";
+// Sentinel used while the user has clicked "New Chat" but hasn't sent a
+// message yet. The active session is switched to this ID immediately so
+// the chat view shows the empty state. It is replaced by the real session
+// ID once the backend confirms session_created.
+export const PENDING_NEW_SESSION_ID = "__pending_new__";
 
 function emptySessionState(): SessionState {
   return { messages: [], isProcessing: false, conversationId: null };
