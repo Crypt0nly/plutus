@@ -65,6 +65,7 @@ export default function App() {
     addSession,
     removeSession,
     setActiveSessionId,
+    setWhatsappPairingCode,
   } = useAppStore();
 
   useTheme(theme);
@@ -367,9 +368,16 @@ export default function App() {
         case "worker_status":
           // These are handled by the workers panel, not chat
           break;
+        case "whatsapp_pairing_code":
+          setWhatsappPairingCode(msg.code || null);
+          break;
+        case "whatsapp_ready":
+          // WhatsApp connected — clear the pairing code
+          setWhatsappPairingCode(null);
+          break;
       }
     },
-    [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId]
+    [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId, setWhatsappPairingCode]
   );
 
   const { send, connected } = useWebSocket(handleWSMessage);

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { ConnectorLogo, CONNECTOR_LOGO_MAP } from "./ConnectorLogos";
+import { useAppStore } from "../../stores/appStore";
 
 interface ConnectorField {
   name: string;
@@ -504,13 +505,18 @@ function ConfigureModal({
   const [togglingAutoStart, setTogglingAutoStart] = useState(false);
 
   const [authorizing, setAuthorizing] = useState(false);
+  const [waPairingCode, setWaPairingCode] = useState<string | null>(null);
+  const [waReady, setWaReady] = useState(false);
+
+  // Read WhatsApp pairing code from global store (set by WebSocket event)
+  const whatsappPairingCode = useAppStore((s) => s.whatsappPairingCode);
 
   const Icon = ICON_MAP[connector.icon] || Plug;
   const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
   const isAI = connector.category === "ai";
   const isGoogle = connector.auth_type === "oauth";
   const isHosting = connector.category === "hosting";
-  const supportsTwoWay = connector.name === "telegram" || connector.name === "discord";
+  const supportsTwoWay = connector.name === "telegram" || connector.name === "discord" || connector.name === "whatsapp";
 
   // Initialize form data
   useEffect(() => {
@@ -532,6 +538,11 @@ function ConfigureModal({
         if (status.auto_start !== undefined) {
           setAutoStart(status.auto_start);
         }
+        // WhatsApp-specific fields
+        if (connector.name === "whatsapp") {
+          setWaPairingCode(status.pairing_code || null);
+          setWaReady(status.whatsapp_ready || false);
+        }
       } catch {
         // ignore
       }
@@ -541,6 +552,13 @@ function ConfigureModal({
     const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
   }, [connector.name, connector.configured, supportsTwoWay]);
+
+  // Sync WhatsApp pairing code from global WS store
+  useEffect(() => {
+    if (connector.name === "whatsapp" && whatsappPairingCode) {
+      setWaPairingCode(whatsappPairingCode);
+    }
+  }, [connector.name, whatsappPairingCode]);
 
   // Close on Escape
   useEffect(() => {
@@ -766,7 +784,7 @@ function ConfigureModal({
             </div>
           )}
 
-          {/* Two-Way Messaging (Telegram/Discord) */}
+          {/* Two-Way Messaging (Telegram/Discord/WhatsApp) */}
           {supportsTwoWay && connector.configured && (
               <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="flex items-center justify-between">
@@ -783,7 +801,13 @@ function ConfigureModal({
                     </h4>
                     <p className="text-[11px] text-gray-500 mt-0.5">
                       {listening
-                        ? "Listening for incoming messages"
+                        ? connector.name === "whatsapp" && !waReady
+                          ? "Waiting for phone pairing..."
+                          : "Listening for incoming messages"
+                        : connector.name === "whatsapp"
+                        ? "Chat with Plutus via WhatsApp"
+                        : connector.name === "discord"
+                        ? "Chat with Plutus from Discord"
                         : "Chat with Plutus from Telegram"}
                     </p>
                   </div>
@@ -808,10 +832,37 @@ function ConfigureModal({
                 </button>
               </div>
 
-              {listening && (
+              {listening && connector.name !== "whatsapp" && (
                 <div className="flex items-center gap-2 text-[11px] text-blue-400/70 pl-12">
                   <Radio className="w-3 h-3 animate-pulse" />
                   Messages sent to the bot will be processed automatically
+                </div>
+              )}
+
+              {/* WhatsApp pairing code banner */}
+              {connector.name === "whatsapp" && listening && !waReady && waPairingCode && (
+                <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(34, 197, 94, 0.06)", border: "1px solid rgba(34, 197, 94, 0.15)" }}>
+                  <p className="text-[11px] font-semibold text-green-400">Pairing Code</p>
+                  <p className="text-xl font-mono font-bold tracking-[0.3em] text-green-300">{waPairingCode}</p>
+                  <p className="text-[10px] text-gray-500">
+                    Open WhatsApp on your phone → Linked Devices → Link a Device → Link with phone number
+                  </p>
+                </div>
+              )}
+
+              {/* WhatsApp connected status */}
+              {connector.name === "whatsapp" && listening && waReady && (
+                <div className="flex items-center gap-2 text-[11px] text-green-400/80 pl-12">
+                  <Radio className="w-3 h-3 animate-pulse" />
+                  WhatsApp connected — messages will be processed automatically
+                </div>
+              )}
+
+              {/* WhatsApp waiting for pairing */}
+              {connector.name === "whatsapp" && listening && !waReady && !waPairingCode && (
+                <div className="flex items-center gap-2 text-[11px] text-yellow-400/70 pl-12">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Starting WhatsApp — pairing code will appear shortly...
                 </div>
               )}
 

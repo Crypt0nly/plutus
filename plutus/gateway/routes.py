@@ -1668,6 +1668,16 @@ def create_router() -> APIRouter:
                 "status": connector.status(),
                 "listening": True,
             }
+        elif name == "whatsapp":
+            # Use the bridge for two-way WhatsApp messaging
+            from plutus.connectors.whatsapp_bridge import get_whatsapp_bridge
+            bridge = get_whatsapp_bridge()
+            await bridge.start()
+            return {
+                "message": f"{connector.display_name} two-way messaging started — check your phone for the pairing code",
+                "status": connector.status(),
+                "listening": True,
+            }
         else:
             await connector.start()
             return {"message": f"{connector.display_name} started", "status": connector.status()}
@@ -1702,6 +1712,15 @@ def create_router() -> APIRouter:
                 "status": connector.status(),
                 "listening": False,
             }
+        elif name == "whatsapp":
+            from plutus.connectors.whatsapp_bridge import get_whatsapp_bridge
+            bridge = get_whatsapp_bridge()
+            await bridge.stop()
+            return {
+                "message": f"{connector.display_name} two-way messaging stopped",
+                "status": connector.status(),
+                "listening": False,
+            }
         else:
             await connector.stop()
             return {"message": f"{connector.display_name} stopped", "status": connector.status()}
@@ -1730,6 +1749,19 @@ def create_router() -> APIRouter:
                 "listening": bridge.is_running,
                 "processing": bridge._processing,
                 "auto_start": auto_start,
+            }
+        elif name == "whatsapp":
+            from plutus.connectors.whatsapp_bridge import get_whatsapp_bridge
+            bridge = get_whatsapp_bridge()
+            wa_connector = connector_mgr.get("whatsapp") if connector_mgr else None
+            pairing_code = getattr(wa_connector, "_pairing_code", None)
+            wa_ready = getattr(wa_connector, "_ready", False)
+            return {
+                "listening": bridge.is_running,
+                "processing": bridge._processing,
+                "auto_start": auto_start,
+                "pairing_code": pairing_code,
+                "whatsapp_ready": wa_ready,
             }
         return {"listening": False, "processing": False, "auto_start": auto_start}
 
