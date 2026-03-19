@@ -541,9 +541,7 @@ async def delete_skill(
     from app.models.agent_state import Skill
 
     await session.execute(
-        sql_delete(Skill).where(
-            Skill.name == skill_name, Skill.user_id == user["user_id"]
-        )
+        sql_delete(Skill).where(Skill.name == skill_name, Skill.user_id == user["user_id"])
     )
     await session.commit()
     return {"deleted": skill_name}

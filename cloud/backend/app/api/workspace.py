@@ -224,9 +224,7 @@ async def workspace_info(user=Depends(get_current_user)):
     """Return workspace metadata for the current user."""
     ws = _user_workspace(user["user_id"])
 
-    total_size = sum(
-        f.stat().st_size for f in ws.rglob("*") if f.is_file()
-    )
+    total_size = sum(f.stat().st_size for f in ws.rglob("*") if f.is_file())
     file_count = sum(1 for f in ws.rglob("*") if f.is_file())
 
     return {
