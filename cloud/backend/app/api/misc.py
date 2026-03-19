@@ -407,7 +407,7 @@ _CLOUD_CONNECTORS = [
     {
         "name": "whatsapp",
         "display_name": "WhatsApp",
-        "description": "Chat with Plutus via WhatsApp. Requires a dedicated second phone number — Plutus controls that number and you message it from your personal phone.",
+        "description": "Chat with Plutus via WhatsApp. Works with your existing number (Plutus links as a secondary device, like WhatsApp Web) or a dedicated second number.",
         "icon": "MessageCircle",
         "category": "messaging",
         "configured": False,
@@ -417,11 +417,11 @@ _CLOUD_CONNECTORS = [
         "config_schema": [
             {
                 "name": "phone_number",
-                "label": "Plutus Bot Number",
+                "label": "WhatsApp Phone Number",
                 "type": "text",
                 "required": True,
                 "placeholder": "+49 176 1234 5678",
-                "help": "The phone number of the dedicated WhatsApp account Plutus will control (your second SIM / prepaid number). This is NOT your personal number — you will message this number from your personal phone to talk to Plutus. Enter it in international format, e.g. +14155552671.",
+                "help": "The WhatsApp number Plutus will link to as a secondary device (like WhatsApp Web). Option A — Your own number: Plutus links to your account; message yourself or use ‘Message yourself’ in WhatsApp to talk to Plutus. Option B — A second/dedicated number: Plutus controls that number; message it from your personal phone. Enter in international format, e.g. +14155552671.",
             },
             {
                 "name": "default_contact",
