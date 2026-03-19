@@ -22,6 +22,7 @@ from typing import Any
 import aiohttp
 
 from plutus.connectors.base import BaseConnector, ConnectorConfig, CONNECTORS_DIR
+from plutus.utils.ssl_utils import make_aiohttp_connector
 
 logger = logging.getLogger("plutus.connectors.custom_api")
 
@@ -118,7 +119,7 @@ class CustomAPIConnector(BaseConnector):
 
         try:
             headers = self._build_headers()
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(connector=make_aiohttp_connector()) as session:
                 async with session.get(base_url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     return {
                         "success": resp.status < 500,
@@ -161,7 +162,7 @@ class CustomAPIConnector(BaseConnector):
             req_headers.update(headers)
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(connector=make_aiohttp_connector()) as session:
                 kwargs_req: dict[str, Any] = {
                     "headers": req_headers,
                     "timeout": aiohttp.ClientTimeout(total=30),
