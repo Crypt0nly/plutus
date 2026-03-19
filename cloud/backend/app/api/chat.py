@@ -46,7 +46,17 @@ async def get_history(
         .order_by(Conversation.updated_at.desc())
     )
     conversations = result.scalars().all()
-    return {"conversations": [c.__dict__ for c in conversations]}
+    return [
+        {
+            "id": c.id,
+            "title": c.title,
+            "created_at": c.created_at.timestamp() if c.created_at else 0,
+            "updated_at": c.updated_at.timestamp() if c.updated_at else 0,
+            "last_activity": c.updated_at.timestamp() if c.updated_at else 0,
+            "is_active": c.is_active,
+        }
+        for c in conversations
+    ]
 
 
 @router.get("/{conversation_id}")

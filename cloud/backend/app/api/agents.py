@@ -93,17 +93,15 @@ async def list_skills(
 ):
     svc = AgentService(session)
     skills = await svc.list_skills(user["sub"])
-    return {
-        "skills": [
-            {
-                "id": s.id,
-                "name": s.name,
-                "description": s.description,
-                "skill_type": s.skill_type,
-            }
-            for s in skills
-        ]
-    }
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "description": s.description,
+            "skill_type": s.skill_type,
+        }
+        for s in skills
+    ]
 
 
 @router.get("/scheduled-tasks")
