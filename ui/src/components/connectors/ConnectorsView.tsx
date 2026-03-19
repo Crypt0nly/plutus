@@ -803,9 +803,11 @@ function ConfigureModal({
                       {listening
                         ? connector.name === "whatsapp" && !waReady
                           ? "Waiting for phone pairing..."
+                          : connector.name === "whatsapp" && waReady
+                          ? "Plutus is online — message the bot number from your phone"
                           : "Listening for incoming messages"
                         : connector.name === "whatsapp"
-                        ? "Chat with Plutus via WhatsApp"
+                        ? "Start to link Plutus to your WhatsApp bot number"
                         : connector.name === "discord"
                         ? "Chat with Plutus from Discord"
                         : "Chat with Plutus from Telegram"}
@@ -839,13 +841,27 @@ function ConfigureModal({
                 </div>
               )}
 
+              {/* WhatsApp setup hint (not yet started) */}
+              {connector.name === "whatsapp" && !listening && (
+                <div className="rounded-lg p-3 space-y-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-[11px] font-semibold text-gray-400">How it works</p>
+                  <p className="text-[10px] text-gray-500 leading-relaxed">
+                    Plutus takes control of a <span className="text-gray-300 font-medium">second WhatsApp number</span> (a spare SIM or prepaid number).
+                    Once linked, you message that number from your personal phone and Plutus replies.
+                  </p>
+                  <p className="text-[10px] text-gray-600 mt-1">
+                    Enter the bot number above, click <span className="text-gray-400">Start</span>, then follow the pairing instructions.
+                  </p>
+                </div>
+              )}
+
               {/* WhatsApp pairing code banner */}
               {connector.name === "whatsapp" && listening && !waReady && waPairingCode && (
                 <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(34, 197, 94, 0.06)", border: "1px solid rgba(34, 197, 94, 0.15)" }}>
                   <p className="text-[11px] font-semibold text-green-400">Pairing Code</p>
                   <p className="text-xl font-mono font-bold tracking-[0.3em] text-green-300">{waPairingCode}</p>
                   <p className="text-[10px] text-gray-500">
-                    Open WhatsApp on your phone → Linked Devices → Link a Device → Link with phone number
+                    On the phone with the bot number: WhatsApp → Linked Devices → Link a Device → Link with phone number
                   </p>
                 </div>
               )}

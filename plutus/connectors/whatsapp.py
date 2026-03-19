@@ -83,7 +83,7 @@ class WhatsAppConnector(BaseConnector):
 
     name = "whatsapp"
     display_name = "WhatsApp"
-    description = "Send and receive WhatsApp messages using your phone number"
+    description = "Chat with Plutus via WhatsApp. Requires a dedicated second phone number — Plutus controls that number and you message it from your personal phone."
     icon = "MessageCircle"
     category = "messaging"
 
@@ -113,23 +113,27 @@ class WhatsAppConnector(BaseConnector):
         return [
             {
                 "name": "phone_number",
-                "label": "Your Phone Number",
+                "label": "Plutus Bot Number",
                 "type": "text",
                 "required": True,
                 "placeholder": "+49 176 1234 5678",
                 "help": (
-                    "Your WhatsApp phone number in international format "
-                    "(e.g. +14155552671).  Used for phone-number pairing — "
-                    "no QR scan needed."
+                    "The phone number of the dedicated WhatsApp account Plutus will control "
+                    "(your second SIM / prepaid number). This is NOT your personal number. "
+                    "You will message this number from your personal phone to talk to Plutus. "
+                    "Enter it in international format, e.g. +14155552671."
                 ),
             },
             {
                 "name": "default_contact",
-                "label": "Default Contact",
+                "label": "Your Personal Number (optional)",
                 "type": "text",
                 "required": False,
-                "placeholder": "e.g. +14155550100",
-                "help": "Default phone number to message (can be overridden per message).",
+                "placeholder": "e.g. +49 176 9876 5432",
+                "help": (
+                    "Your own personal WhatsApp number. If set, Plutus can proactively "
+                    "send you messages (e.g. alerts or task results) without you messaging first."
+                ),
             },
         ]
 
