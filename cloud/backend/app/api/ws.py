@@ -56,14 +56,14 @@ async def _authenticate_ws(token: str) -> dict | None:
 async def websocket_endpoint(websocket: WebSocket, token: str = ""):
     """
     Main WebSocket endpoint. The frontend passes the Clerk JWT as ?token=...
-    
+
     Supported incoming message types (matching local backend protocol):
       - ping
       - list_sessions
       - send_message  { session_id?, message, conversation_id? }
       - new_session
       - delete_session { session_id }
-    
+
     Outgoing message types (matching local backend protocol):
       - connected
       - thinking

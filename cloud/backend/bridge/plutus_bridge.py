@@ -26,7 +26,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Lazy dependency bootstrap – install missing packages automatically
@@ -56,7 +56,6 @@ _ensure_packages()
 
 import websockets  # noqa: E402
 import websockets.exceptions  # noqa: E402
-
 from sync_client import LocalSyncClient, SyncError  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -113,7 +112,7 @@ log = _setup_logging()
 # Configuration helpers
 # ---------------------------------------------------------------------------
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load bridge configuration from ~/.plutus/bridge_config.json."""
     if CONFIG_FILE.exists():
         try:
@@ -123,14 +122,14 @@ def load_config() -> Dict[str, Any]:
     return {}
 
 
-def save_config(config: Dict[str, Any]) -> None:
+def save_config(config: dict[str, Any]) -> None:
     """Persist bridge configuration."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2), encoding="utf-8")
     log.info("Config saved to %s", CONFIG_FILE)
 
 
-def run_setup() -> Dict[str, Any]:
+def run_setup() -> dict[str, Any]:
     """Interactive first-time setup wizard."""
     print("\n╔══════════════════════════════════════╗")
     print("║     Plutus Bridge – Initial Setup    ║")
@@ -167,7 +166,7 @@ def run_setup() -> Dict[str, Any]:
 # System info
 # ---------------------------------------------------------------------------
 
-def get_system_info() -> Dict[str, Any]:
+def get_system_info() -> dict[str, Any]:
     """Gather local system information for handshake."""
     return {
         "os": platform.system(),
@@ -184,14 +183,14 @@ def get_system_info() -> Dict[str, Any]:
 # Local task execution
 # ---------------------------------------------------------------------------
 
-async def execute_local_task(task: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_local_task(task: dict[str, Any]) -> dict[str, Any]:
     """Execute a task dispatched by the cloud agent.
 
     Supported task types:
         shell, open_app, read_file, write_file, list_files, ping
     """
     task_type: str = task.get("type", "")
-    payload: Dict[str, Any] = task.get("payload", {})
+    payload: dict[str, Any] = task.get("payload", {})
     task_id: str = task.get("task_id", "unknown")
 
     log.info("Executing task %s [%s]", task_id, task_type)
@@ -199,7 +198,7 @@ async def execute_local_task(task: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         result = await _dispatch_task(task_type, payload)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         result = {"success": False, "error": f"Task timed out: {task_type}"}
     except Exception as exc:
         log.exception("Task %s failed with unhandled error", task_id)
@@ -216,7 +215,7 @@ async def execute_local_task(task: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-async def _dispatch_task(task_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def _dispatch_task(task_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Route a task to the correct handler."""
 
     if task_type == "shell":
@@ -235,10 +234,10 @@ async def _dispatch_task(task_type: str, payload: Dict[str, Any]) -> Dict[str, A
     return {"success": False, "error": f"Unknown task type: {task_type}"}
 
 
-async def _task_shell(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def _task_shell(payload: dict[str, Any]) -> dict[str, Any]:
     cmd: str = payload.get("command", "")
     timeout: int = min(payload.get("timeout", 60), 300)  # cap at 5 min
-    cwd: Optional[str] = payload.get("cwd")
+    cwd: str | None = payload.get("cwd")
 
     if not cmd:
         return {"success": False, "error": "Empty command"}
@@ -258,7 +257,7 @@ async def _task_shell(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _task_open_app(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_open_app(payload: dict[str, Any]) -> dict[str, Any]:
     app_name: str = payload.get("app_name", "")
     if not app_name:
         return {"success": False, "error": "No app_name provided"}
@@ -276,7 +275,7 @@ def _task_open_app(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Failed to open {app_name}: {exc}"}
 
 
-def _task_read_file(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_read_file(payload: dict[str, Any]) -> dict[str, Any]:
     raw_path: str = payload.get("path", "")
     if not raw_path:
         return {"success": False, "error": "No path provided"}
@@ -295,7 +294,7 @@ def _task_read_file(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Read failed: {exc}"}
 
 
-def _task_write_file(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_write_file(payload: dict[str, Any]) -> dict[str, Any]:
     raw_path: str = payload.get("path", "")
     content: str = payload.get("content", "")
     if not raw_path:
@@ -310,7 +309,7 @@ def _task_write_file(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Write failed: {exc}"}
 
 
-def _task_list_files(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_list_files(payload: dict[str, Any]) -> dict[str, Any]:
     raw_path: str = payload.get("path", ".")
     pattern: str = payload.get("pattern", "*")
     limit: int = min(payload.get("limit", 500), 2000)
@@ -375,7 +374,7 @@ class PlutusBridge:
             token=token,
         )
         self.shutdown = ShutdownCoordinator()
-        self._ws: Optional[websockets.WebSocketClientProtocol] = None
+        self._ws: websockets.WebSocketClientProtocol | None = None
         self._tasks: list[asyncio.Task] = []
 
     # ---- Main entry point ------------------------------------------------
@@ -496,7 +495,12 @@ class PlutusBridge:
             except asyncio.CancelledError:
                 return
             except Exception as exc:
-                log.error("Unexpected WS error: %s. Retrying in %ds…", exc, reconnect_delay, exc_info=True)
+                log.error(
+                    "Unexpected WS error: %s. Retrying in %ds…",
+                    exc,
+                    reconnect_delay,
+                    exc_info=True,
+                )
 
             if self.shutdown.is_shutting_down:
                 return
@@ -533,7 +537,7 @@ class PlutusBridge:
                 if self.shutdown.is_shutting_down:
                     return
                 try:
-                    data: Dict[str, Any] = json.loads(raw)
+                    data: dict[str, Any] = json.loads(raw)
                 except json.JSONDecodeError:
                     log.warning("Received non-JSON message, ignoring.")
                     continue
@@ -576,7 +580,7 @@ class PlutusBridge:
     # ---- Task handler ----------------------------------------------------
 
     async def _handle_task(
-        self, ws: websockets.WebSocketClientProtocol, data: Dict[str, Any]
+        self, ws: websockets.WebSocketClientProtocol, data: dict[str, Any]
     ) -> None:
         task_id = data.get("task_id", "unknown")
         try:
@@ -594,7 +598,7 @@ class PlutusBridge:
     # ---- Sync request handler (cloud-initiated) --------------------------
 
     async def _handle_sync_request(
-        self, ws: websockets.WebSocketClientProtocol, data: Dict[str, Any]
+        self, ws: websockets.WebSocketClientProtocol, data: dict[str, Any]
     ) -> None:
         try:
             version = await self.sync_client.full_sync()
@@ -638,7 +642,7 @@ class PlutusBridge:
 
     @staticmethod
     async def _send(
-        ws: websockets.WebSocketClientProtocol, data: Dict[str, Any]
+        ws: websockets.WebSocketClientProtocol, data: dict[str, Any]
     ) -> None:
         await ws.send(json.dumps(data))
 
@@ -646,7 +650,7 @@ class PlutusBridge:
         """Sleep that can be interrupted by shutdown."""
         try:
             await asyncio.wait_for(self.shutdown.wait(), timeout=seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass  # Normal – timeout means we slept the full duration
 
 
