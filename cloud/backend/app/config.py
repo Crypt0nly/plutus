@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
 
+    # Workspace — per-user file storage
+    workspace_root: str = "/data/workspaces"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

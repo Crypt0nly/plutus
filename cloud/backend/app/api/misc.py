@@ -7,8 +7,10 @@ after sign-in without hitting 401/404 errors.
 """
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.database import get_session
 
 router = APIRouter()
 
@@ -35,7 +37,11 @@ async def dismiss_update(_body: dict | None = None, _user=Depends(get_current_us
 
 @router.post("/updates/apply")
 async def apply_update(_user=Depends(get_current_user)):
-    return {"success": False, "previous_version": "cloud", "error": "Not applicable in cloud mode"}
+    return {
+        "success": False,
+        "previous_version": "cloud",
+        "error": "Not applicable in cloud mode",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -138,11 +144,220 @@ async def update_config(_body: dict | None = None, _user=Depends(get_current_use
 
 
 # ---------------------------------------------------------------------------
-# Connectors  (cloud uses the bridge — no local connectors)
+# Connectors — full catalogue for cloud
 # ---------------------------------------------------------------------------
 
 _CLOUD_CONNECTORS = [
-    # ── Messaging connectors ──────────────────────────────────────────────
+    # ── AI Providers ──────────────────────────────────────────────────────────
+    {
+        "name": "openai",
+        "display_name": "OpenAI",
+        "description": "Connect your own OpenAI API key to use GPT-4o and other models.",
+        "icon": "Brain",
+        "category": "ai",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "api_key",
+                "label": "API Key",
+                "type": "password",
+                "required": True,
+                "placeholder": "sk-...",
+                "help": "Find your key at platform.openai.com/api-keys",
+            }
+        ],
+        "features": [],
+        "docs_url": "https://platform.openai.com/docs",
+    },
+    {
+        "name": "anthropic",
+        "display_name": "Anthropic",
+        "description": "Connect your own Anthropic API key to use Claude models.",
+        "icon": "Sparkles",
+        "category": "ai",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "api_key",
+                "label": "API Key",
+                "type": "password",
+                "required": True,
+                "placeholder": "sk-ant-...",
+                "help": "Find your key at console.anthropic.com/settings/keys",
+            }
+        ],
+        "features": [],
+        "docs_url": "https://docs.anthropic.com",
+    },
+    {
+        "name": "gemini",
+        "display_name": "Google Gemini",
+        "description": "Connect your own Google Gemini API key for Gemini Pro and Flash.",
+        "icon": "Wand2",
+        "category": "ai",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "api_key",
+                "label": "API Key",
+                "type": "password",
+                "required": True,
+                "placeholder": "AIza...",
+                "help": "Get your key at aistudio.google.com/app/apikey",
+            }
+        ],
+        "features": [],
+        "docs_url": "https://ai.google.dev/docs",
+    },
+    {
+        "name": "ollama",
+        "display_name": "Ollama (Local)",
+        "description": "Connect to a local Ollama instance to use open-source models.",
+        "icon": "Server",
+        "category": "ai",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "base_url",
+                "label": "Ollama URL",
+                "type": "text",
+                "required": True,
+                "placeholder": "http://localhost:11434",
+                "help": "The URL where your Ollama server is running.",
+            }
+        ],
+        "features": [],
+        "docs_url": "https://ollama.com",
+    },
+    # ── Google Workspace ──────────────────────────────────────────────────────
+    {
+        "name": "gmail",
+        "display_name": "Gmail",
+        "description": "Read, send and manage your Gmail messages.",
+        "icon": "Mail",
+        "category": "google",
+        "auth_type": "oauth",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [],
+        "features": [],
+        "docs_url": "https://developers.google.com/gmail/api",
+    },
+    {
+        "name": "google_calendar",
+        "display_name": "Google Calendar",
+        "description": "Create, read and manage your Google Calendar events.",
+        "icon": "Calendar",
+        "category": "google",
+        "auth_type": "oauth",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [],
+        "features": [],
+        "docs_url": "https://developers.google.com/calendar",
+    },
+    {
+        "name": "google_drive",
+        "display_name": "Google Drive",
+        "description": "Read, upload and manage files in your Google Drive.",
+        "icon": "HardDrive",
+        "category": "google",
+        "auth_type": "oauth",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [],
+        "features": [],
+        "docs_url": "https://developers.google.com/drive",
+    },
+    # ── Web Hosting / Deployments ─────────────────────────────────────────────
+    {
+        "name": "vercel",
+        "display_name": "Vercel",
+        "description": "Deploy and manage websites on Vercel.",
+        "icon": "Rocket",
+        "category": "hosting",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "api_token",
+                "label": "API Token",
+                "type": "password",
+                "required": True,
+                "placeholder": "vercel_...",
+                "help": "Create a token at vercel.com/account/tokens",
+            }
+        ],
+        "features": [],
+        "docs_url": "https://vercel.com/docs/rest-api",
+    },
+    {
+        "name": "netlify",
+        "display_name": "Netlify",
+        "description": "Deploy and manage sites on Netlify.",
+        "icon": "Globe",
+        "category": "hosting",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "api_token",
+                "label": "Personal Access Token",
+                "type": "password",
+                "required": True,
+                "placeholder": "nfp_...",
+                "help": "Create a token at app.netlify.com/user/applications",
+            }
+        ],
+        "features": [],
+        "docs_url": "https://docs.netlify.com/api/get-started/",
+    },
+    {
+        "name": "github_pages",
+        "display_name": "GitHub Pages",
+        "description": "Deploy static sites via GitHub Pages.",
+        "icon": "Upload",
+        "category": "hosting",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "token",
+                "label": "GitHub Token",
+                "type": "password",
+                "required": True,
+                "placeholder": "ghp_...",
+                "help": "Create a token at github.com/settings/tokens",
+            }
+        ],
+        "features": [],
+        "docs_url": "https://docs.github.com/en/pages",
+    },
+    # ── Messaging connectors ──────────────────────────────────────────────────
     {
         "name": "telegram",
         "display_name": "Telegram",
@@ -259,26 +474,104 @@ _CLOUD_CONNECTORS = [
         "features": [],
         "docs_url": None,
     },
+    # ── GitHub ────────────────────────────────────────────────────────────────
+    {
+        "name": "github",
+        "display_name": "GitHub",
+        "description": "Clone repos, create PRs, manage issues and push code via GitHub.",
+        "icon": "Globe",
+        "category": "messaging",
+        "configured": False,
+        "connected": False,
+        "auto_start": False,
+        "config": {},
+        "config_schema": [
+            {
+                "name": "token",
+                "label": "Personal Access Token",
+                "type": "password",
+                "required": True,
+                "placeholder": "ghp_...",
+                "help": "Create a fine-grained token at github.com/settings/tokens",
+            },
+            {
+                "name": "username",
+                "label": "GitHub Username",
+                "type": "text",
+                "required": True,
+                "placeholder": "your-username",
+                "help": "Your GitHub username.",
+            },
+        ],
+        "features": [],
+        "docs_url": "https://docs.github.com/en/rest",
+    },
 ]
 
 
 @router.get("/connectors")
-async def list_connectors(_user=Depends(get_current_user)):
-    return {"connectors": _CLOUD_CONNECTORS}
+async def list_connectors(
+    _user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Return connectors with per-user configured state from DB."""
+    from app.models.user import User
+
+    user_row = await db.get(User, _user["user_id"])
+    creds: dict = (user_row.connector_credentials or {}) if user_row else {}
+
+    result = []
+    for c in _CLOUD_CONNECTORS:
+        entry = dict(c)
+        if c["name"] in creds:
+            entry["configured"] = True
+            # Don't leak secrets — mask the config values
+            entry["config"] = {k: "••••••••" for k in creds[c["name"]]}
+        result.append(entry)
+    return {"connectors": result}
 
 
 @router.get("/connectors/{name}")
-async def get_connector(name: str, _user=Depends(get_current_user)):
+async def get_connector(
+    name: str,
+    _user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    from app.models.user import User
+
+    user_row = await db.get(User, _user["user_id"])
+    creds: dict = (user_row.connector_credentials or {}) if user_row else {}
+
     for c in _CLOUD_CONNECTORS:
         if c["name"] == name:
-            return c
+            entry = dict(c)
+            if name in creds:
+                entry["configured"] = True
+                entry["config"] = {k: "••••••••" for k in creds[name]}
+            return entry
     return {}
 
 
 @router.put("/connectors/{name}/config")
 async def update_connector_config(
-    name: str, _body: dict | None = None, _user=Depends(get_current_user)
+    name: str,
+    body: dict | None = None,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
 ):
+    """Persist connector credentials in the user's encrypted JSON column."""
+    from app.models.user import User
+
+    user_row = await db.get(User, user["user_id"])
+    if not user_row:
+        return {"message": "ok"}
+    creds = dict(user_row.connector_credentials or {})
+    if body:
+        creds[name] = body
+    else:
+        creds.pop(name, None)
+    user_row.connector_credentials = creds
+    await db.commit()
     return {"message": "ok"}
 
 
@@ -298,7 +591,19 @@ async def stop_connector(name: str, _user=Depends(get_current_user)):
 
 
 @router.delete("/connectors/{name}")
-async def disconnect_connector(name: str, _user=Depends(get_current_user)):
+async def disconnect_connector(
+    name: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    from app.models.user import User
+
+    user_row = await db.get(User, user["user_id"])
+    if user_row:
+        creds = dict(user_row.connector_credentials or {})
+        creds.pop(name, None)
+        user_row.connector_credentials = creds
+        await db.commit()
     return {"message": "disconnected"}
 
 
@@ -327,10 +632,22 @@ async def create_custom_connector(_body: dict | None = None, _user=Depends(get_c
 
 
 # ---------------------------------------------------------------------------
-# Setup / Onboarding — always complete in cloud
+# Setup / Onboarding — per-user tracking
 # ---------------------------------------------------------------------------
 
 
 @router.post("/setup/complete")
-async def complete_setup(_user=Depends(get_current_user)):
+async def complete_setup(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Mark onboarding as completed for this user."""
+    from app.models.user import User
+
+    user_row = await db.get(User, user["user_id"])
+    if user_row:
+        settings = dict(user_row.settings or {})
+        settings["onboarding_completed"] = True
+        user_row.settings = settings
+        await db.commit()
     return {"message": "ok"}

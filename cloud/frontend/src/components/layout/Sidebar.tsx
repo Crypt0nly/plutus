@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   MessageSquare,
   LayoutDashboard,
-  Shield,
   Settings,
   Plus,
   Wrench,
@@ -46,7 +45,6 @@ const navSections: NavSection[] = [
     collapsible: true,
     items: [
       { id: "connectors", label: "Connectors", icon: Plug, badge: "New" },
-      { id: "guardrails", label: "Guardrails", icon: Shield },
       { id: "settings", label: "Settings", icon: Settings },
     ],
   },

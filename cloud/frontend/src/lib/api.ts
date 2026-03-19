@@ -93,8 +93,11 @@ export const api = {
     safeRequest<Record<string, any>>("/chat/cleanup", { message: "ok" }, { method: "POST" }),
 
   // Tools — mapped to cloud backend /agents/skills
-  getTools: () => safeRequest<Record<string, unknown>[]>("/agents/skills", []),
-  getToolsDetails: () => safeRequest<Record<string, any>>("/agents/skills", {}),
+  getTools: () =>
+    safeRequest<Record<string, unknown>[]>("/agents/skills", []).then(
+      (d: any) => d?.skills ?? d ?? []
+    ),
+  getToolsDetails: () => safeRequest<Record<string, any>>("/agents/skills/details", {}),
 
   // Workers — not available in cloud
   getWorkers: () => safeRequest<Record<string, any>>("/workers", { tasks: [] }),
