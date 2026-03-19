@@ -335,7 +335,9 @@ export const api = {
     safeRequest<{
       needed: boolean;
       steps: { id: string; title: string; description: string; command: string | null; note: string }[];
-    }>("/wsl/setup-guide", { needed: false, steps: [] }),
+      prerequisites?: { id: string; label: string; detail: string }[];
+      troubleshooting?: { id: string; problem: string; solution: string }[];
+    }>("/wsl/setup-guide", { needed: false, steps: [], prerequisites: [], troubleshooting: [] }),
 
   // Updates — not available in cloud
   checkForUpdate: () =>
@@ -343,6 +345,12 @@ export const api = {
       update_available: boolean;
       current_version: string;
       latest_version: string;
+      error?: string;
+      dismissed?: boolean;
+      release_name?: string;
+      release_notes?: string;
+      release_url?: string;
+      published_at?: string;
     }>("/updates/check", {
       update_available: false,
       current_version: "cloud",
@@ -354,7 +362,13 @@ export const api = {
       body: JSON.stringify({ version }),
     }),
   applyUpdate: () =>
-    safeRequest<{ success: boolean; previous_version: string }>("/updates/apply", {
+    safeRequest<{
+      success: boolean;
+      previous_version: string;
+      new_version?: string;
+      restart_required?: boolean;
+      error?: string;
+    }>("/updates/apply", {
       success: false,
       previous_version: "cloud",
     }, { method: "POST" }),
