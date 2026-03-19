@@ -47,9 +47,7 @@ def _ensure_packages() -> None:
             missing.append(spec)
     if missing:
         print(f"Installing missing packages: {', '.join(missing)}")
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "--quiet", *missing]
-        )
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", *missing])
 
 
 _ensure_packages()
@@ -67,16 +65,17 @@ CONFIG_DIR = Path.home() / ".plutus"
 CONFIG_FILE = CONFIG_DIR / "bridge_config.json"
 LOG_FILE = CONFIG_DIR / "bridge.log"
 
-HEARTBEAT_INTERVAL = 30       # seconds between heartbeats
-SYNC_INTERVAL = 60            # seconds between sync cycles
-RECONNECT_DELAY_INIT = 5      # initial reconnect back-off
-RECONNECT_DELAY_MAX = 300     # cap at 5 minutes
-TASK_OUTPUT_LIMIT = 10_000    # max chars for stdout in task results
-TASK_STDERR_LIMIT = 5_000     # max chars for stderr in task results
+HEARTBEAT_INTERVAL = 30  # seconds between heartbeats
+SYNC_INTERVAL = 60  # seconds between sync cycles
+RECONNECT_DELAY_INIT = 5  # initial reconnect back-off
+RECONNECT_DELAY_MAX = 300  # cap at 5 minutes
+TASK_OUTPUT_LIMIT = 10_000  # max chars for stdout in task results
+TASK_STDERR_LIMIT = 5_000  # max chars for stderr in task results
 
 # ---------------------------------------------------------------------------
 # Logging  – dual handler: console (INFO) + rotating file (DEBUG)
 # ---------------------------------------------------------------------------
+
 
 def _setup_logging() -> logging.Logger:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -112,6 +111,7 @@ log = _setup_logging()
 # Configuration helpers
 # ---------------------------------------------------------------------------
 
+
 def load_config() -> dict[str, Any]:
     """Load bridge configuration from ~/.plutus/bridge_config.json."""
     if CONFIG_FILE.exists():
@@ -141,9 +141,7 @@ def run_setup() -> dict[str, Any]:
     if token:
         config["token"] = token
 
-    server = input(
-        f"  Server URL [{config.get('server', DEFAULT_SERVER)}]: "
-    ).strip()
+    server = input(f"  Server URL [{config.get('server', DEFAULT_SERVER)}]: ").strip()
     if server:
         config["server"] = server
     elif "server" not in config:
@@ -166,6 +164,7 @@ def run_setup() -> dict[str, Any]:
 # System info
 # ---------------------------------------------------------------------------
 
+
 def get_system_info() -> dict[str, Any]:
     """Gather local system information for handshake."""
     return {
@@ -182,6 +181,7 @@ def get_system_info() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Local task execution
 # ---------------------------------------------------------------------------
+
 
 async def execute_local_task(task: dict[str, Any]) -> dict[str, Any]:
     """Execute a task dispatched by the cloud agent.
@@ -329,6 +329,7 @@ def _task_list_files(payload: dict[str, Any]) -> dict[str, Any]:
 # Graceful shutdown coordinator
 # ---------------------------------------------------------------------------
 
+
 class ShutdownCoordinator:
     """Manages graceful shutdown across all async tasks."""
 
@@ -350,6 +351,7 @@ class ShutdownCoordinator:
 # ---------------------------------------------------------------------------
 # Bridge daemon
 # ---------------------------------------------------------------------------
+
 
 class PlutusBridge:
     """Main bridge daemon – manages WS connection, heartbeat, sync, tasks."""
@@ -388,15 +390,9 @@ class PlutusBridge:
         log.info("Log    : %s", LOG_FILE)
 
         # Run connection loop and sync loop concurrently
-        connection_task = asyncio.create_task(
-            self._connection_loop(), name="connection_loop"
-        )
-        sync_task = asyncio.create_task(
-            self._sync_loop(), name="sync_loop"
-        )
-        shutdown_task = asyncio.create_task(
-            self.shutdown.wait(), name="shutdown_wait"
-        )
+        connection_task = asyncio.create_task(self._connection_loop(), name="connection_loop")
+        sync_task = asyncio.create_task(self._sync_loop(), name="sync_loop")
+        shutdown_task = asyncio.create_task(self.shutdown.wait(), name="shutdown_wait")
 
         self._tasks = [connection_task, sync_task]
 
@@ -458,19 +454,18 @@ class PlutusBridge:
                     reconnect_delay = RECONNECT_DELAY_INIT
 
                     # Handshake
-                    await self._send(ws, {
-                        "type": "handshake",
-                        "system": get_system_info(),
-                        "version": VERSION,
-                    })
+                    await self._send(
+                        ws,
+                        {
+                            "type": "handshake",
+                            "system": get_system_info(),
+                            "version": VERSION,
+                        },
+                    )
 
                     # Run heartbeat + message receiver concurrently
-                    hb = asyncio.create_task(
-                        self._heartbeat_loop(ws), name="heartbeat"
-                    )
-                    recv = asyncio.create_task(
-                        self._receive_loop(ws), name="receiver"
-                    )
+                    hb = asyncio.create_task(self._heartbeat_loop(ws), name="heartbeat")
+                    recv = asyncio.create_task(self._receive_loop(ws), name="receiver")
 
                     shutdown_wait = asyncio.create_task(self.shutdown.wait())
 
@@ -552,9 +547,7 @@ class PlutusBridge:
                     )
 
                 elif msg_type == "sync_request":
-                    asyncio.create_task(
-                        self._handle_sync_request(ws, data), name="sync_request"
-                    )
+                    asyncio.create_task(self._handle_sync_request(ws, data), name="sync_request")
 
                 elif msg_type == "heartbeat_ack":
                     log.debug("Heartbeat ACK received.")
@@ -585,11 +578,14 @@ class PlutusBridge:
         task_id = data.get("task_id", "unknown")
         try:
             result = await execute_local_task(data)
-            await self._send(ws, {
-                "type": "task_result",
-                "task_id": task_id,
-                "result": result,
-            })
+            await self._send(
+                ws,
+                {
+                    "type": "task_result",
+                    "task_id": task_id,
+                    "result": result,
+                },
+            )
         except websockets.exceptions.ConnectionClosed:
             log.warning("Cannot send result for task %s – connection closed.", task_id)
         except Exception as exc:
@@ -602,18 +598,24 @@ class PlutusBridge:
     ) -> None:
         try:
             version = await self.sync_client.full_sync()
-            await self._send(ws, {
-                "type": "sync_response",
-                "success": True,
-                "server_version": version,
-            })
+            await self._send(
+                ws,
+                {
+                    "type": "sync_response",
+                    "success": True,
+                    "server_version": version,
+                },
+            )
         except SyncError as exc:
             log.error("Cloud-initiated sync failed: %s", exc)
-            await self._send(ws, {
-                "type": "sync_response",
-                "success": False,
-                "error": str(exc),
-            })
+            await self._send(
+                ws,
+                {
+                    "type": "sync_response",
+                    "success": False,
+                    "error": str(exc),
+                },
+            )
         except websockets.exceptions.ConnectionClosed:
             pass
 
@@ -641,9 +643,7 @@ class PlutusBridge:
     # ---- Helpers ---------------------------------------------------------
 
     @staticmethod
-    async def _send(
-        ws: websockets.WebSocketClientProtocol, data: dict[str, Any]
-    ) -> None:
+    async def _send(ws: websockets.WebSocketClientProtocol, data: dict[str, Any]) -> None:
         await ws.send(json.dumps(data))
 
     async def _interruptible_sleep(self, seconds: float) -> None:
@@ -657,6 +657,7 @@ class PlutusBridge:
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
