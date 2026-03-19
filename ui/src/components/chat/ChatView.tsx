@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { useAppStore } from "../../stores/appStore";
+import { useAppStore, PENDING_NEW_SESSION_ID, DEFAULT_SESSION_ID } from "../../stores/appStore";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput, Attachment } from "./ChatInput";
 import { Globe, MousePointer, AppWindow, KeyRound, Brain, ArrowRight, Sparkles } from "lucide-react";
@@ -29,14 +29,20 @@ export function ChatView({ send }: Props) {
 
     // Determine whether this message starts a brand-new conversation.
     // A new session is needed when:
-    //   (a) the user explicitly clicked "New Chat" (pendingNewSession), OR
+    //   (a) the user explicitly clicked "New Chat" (pendingNewSession / PENDING_NEW_SESSION_ID), OR
     //   (b) the current view has no messages yet (first message ever in this session)
     // In all other cases the message continues in the existing active session.
     const currentMessages = useAppStore.getState().sessionStates[activeSessionId]?.messages ?? [];
-    const needsNewSession = pendingNewSession || currentMessages.length === 0;
+    const isPendingSentinel = activeSessionId === PENDING_NEW_SESSION_ID;
+    const needsNewSession = pendingNewSession || isPendingSentinel || currentMessages.length === 0;
 
     if (needsNewSession) {
       if (pendingNewSession) setPendingNewSession(false);
+      // If we were on the sentinel session, fall back to main while the real
+      // session is being created so the tab bar doesn't show a ghost entry.
+      if (isPendingSentinel) {
+        useAppStore.getState().setActiveSessionId(DEFAULT_SESSION_ID);
+      }
 
       const pendingContent = content;
       const pendingAttachments = attachments;

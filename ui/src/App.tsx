@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { useAppStore } from "./stores/appStore";
+import { useAppStore, PENDING_NEW_SESSION_ID } from "./stores/appStore";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Header } from "./components/layout/Header";
@@ -272,6 +272,13 @@ export default function App() {
             // hijack the user's active chat.
             if (!s.is_connector) {
               setActiveSessionId(newId);
+              // Clean up the pending-new-session sentinel from sessionStates
+              // so it doesn't linger as a ghost entry.
+              const currentStates = useAppStore.getState().sessionStates;
+              if (currentStates[PENDING_NEW_SESSION_ID]) {
+                const { [PENDING_NEW_SESSION_ID]: _removed, ...rest } = currentStates;
+                useAppStore.setState({ sessionStates: rest });
+              }
             }
             // Fire the one-shot callback registered by ChatView so the first
             // message is sent to the correct session even if the user switched

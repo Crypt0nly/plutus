@@ -9,7 +9,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { api } from "../../lib/api";
-import { useAppStore } from "../../stores/appStore";
+import { useAppStore, PENDING_NEW_SESSION_ID, DEFAULT_SESSION_ID } from "../../stores/appStore";
 import type { Conversation } from "../../lib/types";
 
 interface Props {
@@ -108,13 +108,23 @@ export function ConversationHistory({ send }: Props) {
 
   const handleLoadConversation = (conv: Conversation) => {
     if (conv.id === conversationId) return;
+    // If we're on the pending-new-session sentinel, route to the main session
+    // since no real session has been created yet.
+    const targetSession = activeSessionId === PENDING_NEW_SESSION_ID
+      ? DEFAULT_SESSION_ID
+      : activeSessionId;
     // Always include session_id so the backend routes to the correct session
     // and the frontend receives conversation_resumed tagged with the right sid.
     send({
       type: "resume_conversation",
       conversation_id: conv.id,
-      session_id: activeSessionId,
+      session_id: targetSession,
     });
+    // Clear the pending-new-session state since the user chose an existing chat
+    if (activeSessionId === PENDING_NEW_SESSION_ID) {
+      useAppStore.getState().setPendingNewSession(false);
+      useAppStore.getState().setActiveSessionId(DEFAULT_SESSION_ID);
+    }
     setView("chat");
   };
 
