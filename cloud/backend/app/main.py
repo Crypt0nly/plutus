@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import agents, auth, bridge, chat, health
+from app.api import agents, auth, bridge, chat, health, misc
 from app.api.sync import router as sync_router
 from app.api.ws import router as ws_router
 from app.config import settings
@@ -44,3 +44,4 @@ app.include_router(bridge.router, prefix="/api/bridge", tags=["bridge"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(sync_router, prefix="/api/sync", tags=["sync"])
 app.include_router(ws_router, tags=["websocket"])
+app.include_router(misc.router, prefix="/api", tags=["misc"])
