@@ -503,7 +503,7 @@ export function MessageBubble({ message, send }: Props) {
     return (
       <div className="flex justify-end py-2 animate-slide-up">
         <div className="max-w-xl">
-          <div className="px-4 py-3 rounded-2xl rounded-br-lg text-sm leading-relaxed text-white"
+          <div className="px-4 py-3 rounded-2xl rounded-br-lg text-sm leading-relaxed text-white whitespace-pre-wrap"
             style={{
               background: "linear-gradient(135deg, #6366f1, #4f46e5)",
               boxShadow: "0 4px 16px rgba(99, 102, 241, 0.25)"
