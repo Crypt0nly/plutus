@@ -23,6 +23,9 @@ Supported tools (mirroring the local Plutus tool set):
   - file_list         list directory
   - web_search        DuckDuckGo search
   - web_browse        fetch a URL and return text content
+  - connector         send messages / interact with configured connectors
+                      (Telegram, Discord, Email, Gmail, GitHub, Google Calendar,
+                       Google Drive, custom APIs)
 """
 
 from __future__ import annotations
@@ -71,12 +74,21 @@ class HybridExecutor:
         user_id: str,
         tool_name: str,
         tool_args: dict[str, Any],
+        *,
+        db_session=None,
     ) -> dict[str, Any]:
         """
         Execute a tool call.  Tries the local bridge first; falls back to E2B.
 
+        The ``connector`` tool is always handled cloud-side (no E2B / bridge
+        needed) because it talks to external APIs using the user's stored
+        credentials.  Pass ``db_session`` so the executor can load them.
+
         Returns a dict with at least ``success: bool`` and tool-specific fields.
         """
+        if tool_name == "connector":
+            return await self._execute_connector(user_id, tool_args, db_session=db_session)
+
         if self.is_bridge_connected(user_id):
             try:
                 result = await asyncio.wait_for(
@@ -98,6 +110,37 @@ class HybridExecutor:
                 logger.warning(f"[Hybrid] Bridge error for {tool_name}: {e}, falling back to E2B")
 
         return await self._execute_via_e2b(user_id, tool_name, tool_args)
+
+    # ── Connector tool ────────────────────────────────────────────────────────
+
+    async def _execute_connector(
+        self,
+        user_id: str,
+        tool_args: dict[str, Any],
+        *,
+        db_session=None,
+    ) -> dict[str, Any]:
+        """Execute a connector tool call using the user's stored credentials."""
+        from app.services.cloud_connector_executor import CloudConnectorExecutor
+
+        credentials: dict = {}
+
+        if db_session is not None:
+            try:
+                from app.models.user import User
+
+                user_row = await db_session.get(User, user_id)
+                if user_row:
+                    credentials = dict(user_row.connector_credentials or {})
+            except Exception as exc:
+                logger.warning(f"[Connector] Could not load credentials for {user_id}: {exc}")
+
+        executor = CloudConnectorExecutor(user_id, credentials)
+        try:
+            result_text = await executor.execute(**tool_args)
+            return {"success": True, "output": result_text}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
 
     # ── Bridge delegation ─────────────────────────────────────────────────────
 
@@ -196,6 +239,10 @@ class HybridExecutor:
 
         if tool_name == "web_browse":
             return await self._web_browse(user_id, tool_args.get("url", ""))
+
+        if tool_name == "connector":
+            # Should not reach here (handled above), but guard anyway
+            return {"success": False, "error": "connector tool requires db_session"}
 
         return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
@@ -329,6 +376,101 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "connector",
+        "description": (
+            "Interact with the user's configured external connectors. "
+            "Supports: Telegram (send messages), Discord (send messages, manage server), "
+            "Email / Gmail (send emails), GitHub (repos, issues, PRs, branches, files, "
+            "releases, workflows), Google Calendar (list/create/update/delete events), "
+            "Google Drive (list/read/upload files), custom API connectors. "
+            "Use action='list' to see what is configured. "
+            "Always check connector status before attempting to send."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "status", "send", "manage", "google", "github", "custom"],
+                    "description": (
+                        "Action to perform. "
+                        "'list' — list all configured connectors. "
+                        "'status' — check if a specific connector is configured. "
+                        "'send' — send a message via Telegram/Discord/Email/Gmail/GitHub. "
+                        "'manage' — manage a Discord server (channels, members, roles). "
+                        "'google' — interact with Gmail, Google Calendar, or Google Drive. "
+                        "'github' — interact with GitHub (repos, issues, PRs, files, etc.). "
+                        "'custom' — call a user-configured custom API connector."
+                    ),
+                },
+                "service": {
+                    "type": "string",
+                    "description": (
+                        "Connector to use. For 'send': telegram, discord, email, gmail, github. "
+                        "For 'google': gmail, google_calendar, google_drive. "
+                        "For 'github': not needed (uses the github connector). "
+                        "For 'custom': the name of your custom connector."
+                    ),
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Message text to send (required for action='send').",
+                },
+                "to": {
+                    "type": "string",
+                    "description": "Recipient email address (required for email/gmail send).",
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject line.",
+                },
+                "channel_id": {
+                    "type": "string",
+                    "description": "Discord channel ID for send or manage actions.",
+                },
+                "google_action": {
+                    "type": "string",
+                    "description": (
+                        "Google-specific action. "
+                        "Gmail: list_messages, get_message, list_labels, send_message. "
+                        "Calendar: list_events, create_event, update_event, delete_event. "
+                        "Drive: list_files, get_file, get_file_metadata, upload_file, read_doc."
+                    ),
+                },
+                "github_action": {
+                    "type": "string",
+                    "description": (
+                        "GitHub-specific action: list_repos, get_repo, create_repo, "
+                        "delete_repo, fork_repo, list_issues, get_issue, create_issue, "
+                        "update_issue, comment_on_issue, list_pull_requests, get_pull_request, "
+                        "create_pull_request, merge_pull_request, list_branches, create_branch, "
+                        "delete_branch, get_file, create_or_update_file, delete_file, "
+                        "list_commits, list_releases, create_release, list_workflows, "
+                        "list_workflow_runs, trigger_workflow, list_collaborators, "
+                        "add_collaborator, remove_collaborator, search_repos, search_code."
+                    ),
+                },
+                "owner": {
+                    "type": "string",
+                    "description": "GitHub repository owner (username or org).",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "GitHub repository name.",
+                },
+                "discord_action": {
+                    "type": "string",
+                    "description": (
+                        "Discord management action: guild_info, list_channels, create_channel, "
+                        "delete_channel, list_members, kick_member, ban_member, list_roles, "
+                        "create_role, assign_role, remove_role, delete_message."
+                    ),
+                },
+            },
+            "required": ["action"],
         },
     },
     {

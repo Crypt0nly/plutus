@@ -157,7 +157,12 @@ class CloudAgentRuntime:
                 logger.info(f"[Agent] Tool call: {tool_name}({tool_args}) for user {self.user_id}")
 
                 try:
-                    result = await self.executor.execute(self.user_id, tool_name, tool_args)
+                    result = await self.executor.execute(
+                        self.user_id,
+                        tool_name,
+                        tool_args,
+                        db_session=self.session,
+                    )
                     result_text = _format_tool_result(tool_name, result)
                 except Exception as e:
                     result_text = f"Error executing {tool_name}: {e}"
@@ -253,7 +258,12 @@ class CloudAgentRuntime:
                 logger.info(f"[Agent] Tool call: {tool_name}({tool_args}) for user {self.user_id}")
 
                 try:
-                    result = await self.executor.execute(self.user_id, tool_name, tool_args)
+                    result = await self.executor.execute(
+                        self.user_id,
+                        tool_name,
+                        tool_args,
+                        db_session=self.session,
+                    )
                     result_text = _format_tool_result(tool_name, result)
                 except Exception as e:
                     result_text = f"Error executing {tool_name}: {e}"
@@ -316,9 +326,14 @@ class CloudAgentRuntime:
             "You have access to a real execution environment with tools for:\n"
             "  - Running shell commands and Python code\n"
             "  - Reading and writing files\n"
-            "  - Searching the web and browsing URLs\n\n"
+            "  - Searching the web and browsing URLs\n"
+            "  - Interacting with the user's configured connectors (Telegram, Discord, "
+            "Email, Gmail, GitHub, Google Calendar, Google Drive, custom APIs)\n\n"
             "Always use tools to complete tasks rather than just describing what "
-            "you would do. Be proactive and get things done.\n\n"
+            "you would do. Be proactive and get things done.\n"
+            "When the user asks you to send a message, email, or interact with an "
+            "external service, use the connector tool. Start with action='list' if "
+            "you are unsure what is configured.\n\n"
             f"Execution environment: {bridge_status}\n\n"
             f"Memory facts about this user:\n{facts_block}"
         )
@@ -392,6 +407,9 @@ def _format_tool_result(tool_name: str, result: dict) -> str:
 
     if tool_name == "web_browse":
         return result.get("content", "(no content)")
+
+    if tool_name == "connector":
+        return result.get("output", "(no output)")
 
     # Generic fallback
     return json.dumps(result, indent=2)

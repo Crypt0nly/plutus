@@ -387,26 +387,124 @@ _TOOLS_CATEGORIES = {
     },
     "connectors": {
         "label": "Connectors",
-        "description": "Integrations with external services",
+        "description": (
+            "Integrations with external services. Configure connectors in Settings → Connectors,"
+            " then Plutus can send messages, manage emails, interact with GitHub, and more."
+        ),
         "icon": "puzzle",
         "tools": [
             {
-                "name": "email",
-                "description": "Send emails via configured email connector",
-                "enabled": False,
-                "status": "coming_soon",
-            },
-            {
-                "name": "calendar",
-                "description": "Manage Google Calendar events",
-                "enabled": False,
-                "status": "coming_soon",
-            },
-            {
                 "name": "telegram",
-                "description": "Send messages via Telegram bot",
-                "enabled": False,
-                "status": "coming_soon",
+                "description": "Send messages via your Telegram bot",
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "message": {"description": "Message text to send"},
+                    }
+                },
+            },
+            {
+                "name": "discord",
+                "description": (
+                    "Send messages and manage your Discord server (channels, members, roles)"
+                ),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "message": {"description": "Message text to send"},
+                        "channel_id": {"description": "Target channel ID"},
+                    }
+                },
+            },
+            {
+                "name": "email",
+                "description": "Send emails via SMTP (configure host/port/credentials)",
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "to": {"description": "Recipient email address"},
+                        "subject": {"description": "Email subject"},
+                        "message": {"description": "Email body"},
+                    }
+                },
+            },
+            {
+                "name": "gmail",
+                "description": (
+                    "Send emails and manage your Gmail inbox (list, read, label messages)"
+                ),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "google_action": {
+                            "description": ("list_messages, get_message, list_labels, send_message")
+                        },
+                    }
+                },
+            },
+            {
+                "name": "github",
+                "description": (
+                    "Full GitHub integration — repos, issues, PRs, branches,"
+                    " files, releases, workflows, collaborators"
+                ),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "github_action": {
+                            "description": (
+                                "list_repos, create_repo, list_issues, create_issue,"
+                                " create_pull_request, get_file, create_or_update_file, …"
+                            )
+                        },
+                        "owner": {"description": "Repository owner"},
+                        "repo": {"description": "Repository name"},
+                    }
+                },
+            },
+            {
+                "name": "google_calendar",
+                "description": ("List, create, update and delete Google Calendar events"),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "google_action": {
+                            "description": ("list_events, create_event, update_event, delete_event")
+                        },
+                    }
+                },
+            },
+            {
+                "name": "google_drive",
+                "description": ("List, read, upload and manage files in Google Drive"),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "google_action": {
+                            "description": (
+                                "list_files, get_file, get_file_metadata, upload_file, read_doc"
+                            )
+                        },
+                    }
+                },
+            },
+            {
+                "name": "custom",
+                "description": ("Call any user-configured custom API connector"),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "service": {"description": "Name of your custom connector"},
+                    }
+                },
             },
         ],
     },
