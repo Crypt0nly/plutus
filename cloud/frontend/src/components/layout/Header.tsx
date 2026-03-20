@@ -1,4 +1,5 @@
-import { Shield, Activity, Key, Loader2 } from "lucide-react";
+import { Shield, Key, Loader2 } from "lucide-react";
+import { UserButton } from "@clerk/clerk-react";
 import { useAppStore } from "../../stores/appStore";
 
 const viewTitles: Record<string, { title: string; subtitle: string }> = {
@@ -103,6 +104,21 @@ export function Header() {
           <div className={`w-1.5 h-1.5 rounded-full ${tierStyle.dot}`} />
           <span className="capitalize">{currentTier}</span>
         </div>
+
+        {/* Clerk user button — account management, sign out */}
+        <UserButton
+          appearance={{
+            elements: {
+              avatarBox: "w-7 h-7",
+              userButtonPopoverCard:
+                "bg-gray-900 border border-white/10 shadow-2xl",
+              userButtonPopoverActionButton:
+                "text-gray-300 hover:text-white hover:bg-white/5",
+              userButtonPopoverActionButtonText: "text-gray-300",
+              userButtonPopoverFooter: "hidden",
+            },
+          }}
+        />
       </div>
     </header>
   );

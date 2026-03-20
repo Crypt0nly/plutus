@@ -688,7 +688,11 @@ async def complete_setup(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """Mark onboarding as completed for this user."""
+    """Mark onboarding as completed for this user.
+
+    Creates the user row if it does not exist yet (first-time users complete
+    onboarding before sending their first message, so the row may not exist).
+    """
     from app.models.user import User
 
     user_row = await db.get(User, user["user_id"])
@@ -696,5 +700,15 @@ async def complete_setup(
         settings = dict(user_row.settings or {})
         settings["onboarding_completed"] = True
         user_row.settings = settings
-        await db.commit()
+    else:
+        # First-time user: create the row with onboarding already marked done
+        user_row = User(
+            id=user["user_id"],
+            email=user.get("email") or f"{user['user_id']}@clerk.local",
+            plan="free",
+            settings={"onboarding_completed": True},
+            connector_credentials={},
+        )
+        db.add(user_row)
+    await db.commit()
     return {"message": "ok"}
