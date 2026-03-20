@@ -91,12 +91,21 @@ function ToolCard({ tool, category }: ToolCardProps) {
   const textColor = statusTextColors[category] || "text-gray-400";
   const friendly = friendlyDescriptions[tool.name];
 
+  const statusBadge = (() => {
+    if (tool.status === "available") return { label: "Available", cls: "text-green-400 bg-green-500/10" };
+    if (tool.status === "local_only") return { label: "Local only", cls: "text-amber-400 bg-amber-500/10" };
+    if (tool.status === "coming_soon") return { label: "Coming soon", cls: "text-gray-500 bg-gray-800" };
+    return null;
+  })();
+
+  const isDisabled = tool.status === "local_only" || tool.status === "coming_soon";
+
   return (
     <div
-      className={`card hover:border-gray-700 transition-all duration-200 cursor-pointer ${
-        expanded ? "ring-1 ring-gray-700" : ""
-      }`}
-      onClick={() => setExpanded(!expanded)}
+      className={`card transition-all duration-200 ${
+        isDisabled ? "opacity-60" : "hover:border-gray-700 cursor-pointer"
+      } ${expanded && !isDisabled ? "ring-1 ring-gray-700" : ""}`}
+      onClick={() => !isDisabled && setExpanded(!expanded)}
     >
       <div className="flex items-start gap-3">
         <div
@@ -109,9 +118,11 @@ function ToolCard({ tool, category }: ToolCardProps) {
             <h3 className="text-sm font-semibold text-gray-200">
               {tool.name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}
             </h3>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${textColor} bg-gray-800`}>
-              {category}
-            </span>
+            {statusBadge && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${statusBadge.cls}`}>
+                {statusBadge.label}
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-400 mt-1 line-clamp-2">
             {friendly || tool.description}

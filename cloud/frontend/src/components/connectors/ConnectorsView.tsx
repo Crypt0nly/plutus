@@ -785,133 +785,37 @@ function ConfigureModal({
           )}
 
           {/* Two-Way Messaging (Telegram/Discord/WhatsApp) */}
+          {/* In the cloud version, bridge processes cannot run server-side.
+               Two-way messaging requires the local (self-hosted) version of Plutus. */}
           {supportsTwoWay && connector.configured && (
-              <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center"
-                    style={listening ? { background: "rgba(59, 130, 246, 0.12)", color: "#60a5fa" } : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }}
-                  >
-                    <Phone className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-200">
-                      Two-Way Messaging
-                    </h4>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
-                      {listening
-                        ? connector.name === "whatsapp" && !waReady
-                          ? "Waiting for phone pairing..."
-                          : connector.name === "whatsapp" && waReady
-                          ? "Plutus is online — message the bot number from your phone"
-                          : "Listening for incoming messages"
-                        : connector.name === "whatsapp"
-                        ? "Start to link Plutus to your WhatsApp bot number"
-                        : connector.name === "discord"
-                        ? "Chat with Plutus from Discord"
-                        : "Chat with Plutus from Telegram"}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={toggleListener}
-                  disabled={togglingListener}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 ${
-                    listening
-                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 ring-1 ring-red-500/20"
-                      : "bg-blue-600 hover:bg-blue-500 text-white"
-                  }`}
+            <div className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: "rgba(251, 191, 36, 0.1)", color: "#fbbf24" }}
                 >
-                  {togglingListener ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : listening ? (
-                    <Square className="w-3 h-3" />
-                  ) : (
-                    <Play className="w-3 h-3" />
-                  )}
-                  {listening ? "Stop" : "Start"}
-                </button>
-              </div>
-
-              {listening && connector.name !== "whatsapp" && (
-                <div className="flex items-center gap-2 text-[11px] text-blue-400/70 pl-12">
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  Messages sent to the bot will be processed automatically
+                  <Phone className="w-4 h-4" />
                 </div>
-              )}
-
-              {/* WhatsApp setup hint (not yet started) */}
-              {connector.name === "whatsapp" && !listening && (
-                <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-[11px] font-semibold text-gray-400">How it works</p>
-                  <div className="space-y-1.5">
-                    <div className="flex gap-2">
-                      <span className="text-[10px] font-semibold text-blue-400 shrink-0 mt-0.5">Option A</span>
-                      <p className="text-[10px] text-gray-500 leading-relaxed">
-                        <span className="text-gray-300 font-medium">Your own number</span> — Plutus links as a secondary device (like WhatsApp Web on your laptop). Message yourself or use WhatsApp’s “Message yourself” feature to chat with Plutus.
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="text-[10px] font-semibold text-green-400 shrink-0 mt-0.5">Option B</span>
-                      <p className="text-[10px] text-gray-500 leading-relaxed">
-                        <span className="text-gray-300 font-medium">A second/dedicated number</span> (spare SIM or prepaid) — Plutus controls that number. Message it from your personal phone and Plutus replies.
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-gray-600">
-                    Enter the number above, click <span className="text-gray-400">Start</span>, then follow the pairing instructions.
-                  </p>
-                </div>
-              )}
-
-              {/* WhatsApp pairing code banner */}
-              {connector.name === "whatsapp" && listening && !waReady && waPairingCode && (
-                <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(34, 197, 94, 0.06)", border: "1px solid rgba(34, 197, 94, 0.15)" }}>
-                  <p className="text-[11px] font-semibold text-green-400">Pairing Code</p>
-                  <p className="text-xl font-mono font-bold tracking-[0.3em] text-green-300">{waPairingCode}</p>
-                  <p className="text-[10px] text-gray-500">
-                    On the phone with the bot number: WhatsApp → Linked Devices → Link a Device → Link with phone number
-                  </p>
-                </div>
-              )}
-
-              {/* WhatsApp connected status */}
-              {connector.name === "whatsapp" && listening && waReady && (
-                <div className="flex items-center gap-2 text-[11px] text-green-400/80 pl-12">
-                  <Radio className="w-3 h-3 animate-pulse" />
-                  WhatsApp connected — messages will be processed automatically
-                </div>
-              )}
-
-              {/* WhatsApp waiting for pairing */}
-              {connector.name === "whatsapp" && listening && !waReady && !waPairingCode && (
-                <div className="flex items-center gap-2 text-[11px] text-yellow-400/70 pl-12">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Starting WhatsApp — pairing code will appear shortly...
-                </div>
-              )}
-
-              {/* Auto-start */}
-              <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}>
                 <div>
-                  <p className="text-xs font-medium text-gray-300">
-                    Start on launch
-                  </p>
-                  <p className="text-[10px] text-gray-600 mt-0.5">
-                    Auto-start when Plutus boots
+                  <h4 className="text-sm font-semibold text-gray-200">
+                    Two-Way Messaging
+                  </h4>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {connector.name === "whatsapp"
+                      ? "Chat with Plutus via WhatsApp"
+                      : connector.name === "discord"
+                      ? "Chat with Plutus from Discord"
+                      : "Chat with Plutus from Telegram"}
                   </p>
                 </div>
-                <button
-                  onClick={toggleAutoStart}
-                  disabled={togglingAutoStart}
-                  className={`toggle-switch ${togglingAutoStart ? 'opacity-50' : ''}`}
-                  data-state={autoStart ? 'on' : 'off'}
-                  role="switch"
-                  aria-checked={autoStart}
-                >
-                  <span className="toggle-thumb" />
-                </button>
+              </div>
+              <div className="rounded-lg p-3" style={{ background: "rgba(251, 191, 36, 0.05)", border: "1px solid rgba(251, 191, 36, 0.15)" }}>
+                <p className="text-[11px] font-semibold text-yellow-400 mb-1">Local version required</p>
+                <p className="text-[10px] text-gray-500 leading-relaxed">
+                  Two-way messaging requires a background bridge process running on your machine.
+                  This is only available in the <span className="text-gray-300 font-medium">local (self-hosted) version</span> of Plutus.
+                  Install it with <code className="text-yellow-300/80 bg-gray-800/60 px-1 rounded">pip install plutus-ai</code> and configure this connector there.
+                </p>
               </div>
             </div>
           )}

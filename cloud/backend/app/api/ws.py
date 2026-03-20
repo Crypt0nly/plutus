@@ -32,10 +32,12 @@ from uuid import uuid4
 
 import jwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 
 from app.agent.runtime import CloudAgentRuntime
 from app.api.auth import get_clerk_jwks
 from app.database import async_session_factory
+from app.models.conversation import Conversation, Message
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +229,65 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                         }
                     )
                 )
+
+            # ── Resume conversation (load previous chat history) ──────
+            elif msg_type in ("resume_conversation", "load_conversation"):
+                conv_id = msg.get("conversation_id")
+                sid = msg.get("session_id") or active_sid
+                if not conv_id:
+                    continue
+                try:
+                    async with async_session_factory() as db:
+                        conv = await db.get(Conversation, conv_id)
+                        if not conv or conv.user_id != user_id:
+                            await websocket.send_text(
+                                json.dumps(
+                                    {
+                                        "type": "error",
+                                        "message": "Conversation not found.",
+                                        "session_id": sid,
+                                    }
+                                )
+                            )
+                            continue
+                        result = await db.execute(
+                            select(Message)
+                            .where(Message.conversation_id == conv_id)
+                            .order_by(Message.created_at)
+                        )
+                        messages = result.scalars().all()
+                        # Link this session to the resumed conversation
+                        sessions[sid] = conv_id
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "conversation_resumed",
+                                    "conversation_id": conv_id,
+                                    "session_id": sid,
+                                    "messages": [
+                                        {
+                                            "role": m.role,
+                                            "content": m.content,
+                                            "created_at": (
+                                                m.created_at.timestamp() if m.created_at else 0
+                                            ),
+                                        }
+                                        for m in messages
+                                    ],
+                                }
+                            )
+                        )
+                except Exception as e:
+                    logger.error(f"resume_conversation error: {e}", exc_info=True)
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": f"Failed to load conversation: {e}",
+                                "session_id": sid,
+                            }
+                        )
+                    )
 
             # ── Delete session ───────────────────────────────────────
             elif msg_type == "delete_session":
