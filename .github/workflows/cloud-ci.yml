@@ -420,6 +420,26 @@ jobs:
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
           chmod 600 $HOME/.kube/config
 
+      - name: Patch backend secrets (E2B key, etc.)
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          NAMESPACE="${{ vars.KUBE_NAMESPACE }}"
+          if kubectl get secret plutus-backend-secrets -n ${NAMESPACE} &>/dev/null; then
+            kubectl patch secret plutus-backend-secrets -n ${NAMESPACE} \
+              --type='json' \
+              -p="[{\"op\":\"replace\",\"path\":\"/data/E2B_API_KEY\",\"value\":\"$(echo -n ${E2B_API_KEY} | base64 -w0)\"}]" \
+              2>/dev/null || \
+            kubectl patch secret plutus-backend-secrets -n ${NAMESPACE} \
+              --type='json' \
+              -p="[{\"op\":\"add\",\"path\":\"/data/E2B_API_KEY\",\"value\":\"$(echo -n ${E2B_API_KEY} | base64 -w0)\"}]"
+          else
+            kubectl create secret generic plutus-backend-secrets \
+              --from-literal=E2B_API_KEY=${E2B_API_KEY} \
+              -n ${NAMESPACE}
+          fi
+          echo "✅ Backend secrets patched"
+
       - name: Deploy to staging
         run: |
           echo "🚀 Deploying to staging..."
