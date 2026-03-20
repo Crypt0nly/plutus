@@ -163,9 +163,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                 conv_id = msg.get("conversation_id") or sessions.get(sid)
 
                 # Signal thinking
-                await websocket.send_text(
-                    json.dumps({"type": "thinking", "session_id": sid})
-                )
+                await websocket.send_text(json.dumps({"type": "thinking", "session_id": sid}))
 
                 try:
                     async with async_session_factory() as db:
