@@ -323,7 +323,39 @@ _CLOUD_CONNECTORS = [
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [],
+        "config_schema": [
+            {
+                "name": "client_id",
+                "label": "OAuth Client ID",
+                "type": "text",
+                "required": True,
+                "placeholder": "123456789-abc.apps.googleusercontent.com",
+                "help": (
+                    "Create OAuth 2.0 credentials at console.cloud.google.com. "
+                    "Enable the Gmail API and add your email as a test user."
+                ),
+            },
+            {
+                "name": "client_secret",
+                "label": "OAuth Client Secret",
+                "type": "password",
+                "required": True,
+                "placeholder": "GOCSPX-...",
+                "help": "Found in the same OAuth 2.0 credentials page.",
+            },
+            {
+                "name": "refresh_token",
+                "label": "Refresh Token",
+                "type": "password",
+                "required": True,
+                "placeholder": "1//0g...",
+                "help": (
+                    "Run the OAuth flow once to obtain a refresh token. "
+                    "Use the Google OAuth Playground (developers.google.com/oauthplayground) "
+                    "with your credentials to get one quickly."
+                ),
+            },
+        ],
         "features": [],
         "docs_url": "https://developers.google.com/gmail/api",
     },
@@ -338,7 +370,39 @@ _CLOUD_CONNECTORS = [
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [],
+        "config_schema": [
+            {
+                "name": "client_id",
+                "label": "OAuth Client ID",
+                "type": "text",
+                "required": True,
+                "placeholder": "123456789-abc.apps.googleusercontent.com",
+                "help": (
+                    "Create OAuth 2.0 credentials at console.cloud.google.com. "
+                    "Enable the Google Calendar API and add your email as a test user."
+                ),
+            },
+            {
+                "name": "client_secret",
+                "label": "OAuth Client Secret",
+                "type": "password",
+                "required": True,
+                "placeholder": "GOCSPX-...",
+                "help": "Found in the same OAuth 2.0 credentials page.",
+            },
+            {
+                "name": "refresh_token",
+                "label": "Refresh Token",
+                "type": "password",
+                "required": True,
+                "placeholder": "1//0g...",
+                "help": (
+                    "Run the OAuth flow once to obtain a refresh token. "
+                    "Use the Google OAuth Playground (developers.google.com/oauthplayground) "
+                    "with your credentials to get one quickly."
+                ),
+            },
+        ],
         "features": [],
         "docs_url": "https://developers.google.com/calendar",
     },
@@ -353,7 +417,39 @@ _CLOUD_CONNECTORS = [
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [],
+        "config_schema": [
+            {
+                "name": "client_id",
+                "label": "OAuth Client ID",
+                "type": "text",
+                "required": True,
+                "placeholder": "123456789-abc.apps.googleusercontent.com",
+                "help": (
+                    "Create OAuth 2.0 credentials at console.cloud.google.com. "
+                    "Enable the Google Drive API and add your email as a test user."
+                ),
+            },
+            {
+                "name": "client_secret",
+                "label": "OAuth Client Secret",
+                "type": "password",
+                "required": True,
+                "placeholder": "GOCSPX-...",
+                "help": "Found in the same OAuth 2.0 credentials page.",
+            },
+            {
+                "name": "refresh_token",
+                "label": "Refresh Token",
+                "type": "password",
+                "required": True,
+                "placeholder": "1//0g...",
+                "help": (
+                    "Run the OAuth flow once to obtain a refresh token. "
+                    "Use the Google OAuth Playground (developers.google.com/oauthplayground) "
+                    "with your credentials to get one quickly."
+                ),
+            },
+        ],
         "features": [],
         "docs_url": "https://developers.google.com/drive",
     },
