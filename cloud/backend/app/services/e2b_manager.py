@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Sandbox idle timeout in seconds (30 minutes)
 _IDLE_TIMEOUT = 30 * 60
-# Max sandbox lifetime in seconds (2 hours)
-_MAX_LIFETIME = 2 * 60 * 60
+# E2B hard-caps sandbox lifetime at 3600 s (1 hour); exceeding this causes a 400 error.
+_MAX_LIFETIME = 60 * 60
 
 
 class _UserSandbox:
