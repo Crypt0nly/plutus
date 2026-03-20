@@ -407,7 +407,11 @@ _CLOUD_CONNECTORS = [
     {
         "name": "whatsapp",
         "display_name": "WhatsApp",
-        "description": "Chat with Plutus via WhatsApp. Works with your existing number (Plutus links as a secondary device, like WhatsApp Web) or a dedicated second number.",
+        "description": (
+            "Chat with Plutus via WhatsApp. Works with your existing number "
+            "(Plutus links as a secondary device, like WhatsApp Web) "
+            "or a dedicated second number."
+        ),
         "icon": "MessageCircle",
         "category": "messaging",
         "configured": False,
@@ -421,7 +425,16 @@ _CLOUD_CONNECTORS = [
                 "type": "text",
                 "required": True,
                 "placeholder": "+49 176 1234 5678",
-                "help": "The WhatsApp number Plutus will link to as a secondary device (like WhatsApp Web). Option A — Your own number: Plutus links to your account; message yourself or use ‘Message yourself’ in WhatsApp to talk to Plutus. Option B — A second/dedicated number: Plutus controls that number; message it from your personal phone. Enter in international format, e.g. +14155552671.",
+                "help": (
+                    "The WhatsApp number Plutus will link to as a secondary device "
+                    "(like WhatsApp Web). "
+                    "Option A \u2014 Your own number: Plutus links to your account; "
+                    "message yourself or use \u2018Message yourself\u2019 in WhatsApp "
+                    "to talk to Plutus. "
+                    "Option B \u2014 A second/dedicated number: Plutus controls that number; "
+                    "message it from your personal phone. "
+                    "Enter in international format, e.g. +14155552671."
+                ),
             },
             {
                 "name": "default_contact",
@@ -429,7 +442,10 @@ _CLOUD_CONNECTORS = [
                 "type": "text",
                 "required": False,
                 "placeholder": "e.g. +49 176 9876 5432",
-                "help": "Your own personal WhatsApp number. If set, Plutus can proactively send you messages (e.g. alerts or task results) without you messaging first.",
+                "help": (
+                    "Your own personal WhatsApp number. If set, Plutus can proactively "
+                    "send you messages (e.g. alerts or task results) without you messaging first."
+                ),
             },
         ],
         "features": ["two_way"],
