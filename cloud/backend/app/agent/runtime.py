@@ -40,6 +40,7 @@ class CloudAgentRuntime:
     async def _load_user_config(self) -> dict:
         """Load persisted agent config from the user's settings row."""
         from app.models.user import User
+
         user_row = await self.session.get(User, self.user_id)
         if user_row:
             return (user_row.settings or {}).get("agent_config", {}).get("model", {})
@@ -72,9 +73,7 @@ class CloudAgentRuntime:
 
         # Run the agentic loop
         if provider == "openai":
-            response_text = await self._agentic_loop_openai(
-                messages, system_prompt, config=merged
-            )
+            response_text = await self._agentic_loop_openai(messages, system_prompt, config=merged)
         else:
             response_text = await self._agentic_loop_anthropic(
                 messages, system_prompt, config=merged
