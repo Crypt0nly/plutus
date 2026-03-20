@@ -650,20 +650,183 @@ async def update_connector_config(
 
     user_row = await db.get(User, user["user_id"])
     if not user_row:
-        return {"message": "ok"}
+        # Create user row on the fly
+        user_row = User(
+            id=user["user_id"],
+            email=user.get("email", ""),
+            connector_credentials={},
+        )
+        db.add(user_row)
+
     creds = dict(user_row.connector_credentials or {})
     if body:
-        creds[name] = body
+        # The frontend wraps fields in a { "config": { ... } } envelope.
+        # Unwrap it so we store the flat field dict directly.
+        config_data = body.get("config", body)
+        creds[name] = config_data
     else:
         creds.pop(name, None)
     user_row.connector_credentials = creds
     await db.commit()
-    return {"message": "ok"}
+    return {"message": "Configuration saved", "configured": True}
 
 
 @router.post("/connectors/{name}/test")
-async def test_connector(name: str, _user=Depends(get_current_user)):
-    return {"success": False, "message": "Not yet implemented"}
+async def test_connector(
+    name: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Test a connector by validating its stored credentials."""
+    import httpx
+
+    from app.models.user import User
+
+    user_row = await db.get(User, user["user_id"])
+    creds: dict = (user_row.connector_credentials or {}) if user_row else {}
+    cfg: dict = creds.get(name, {})
+
+    if not cfg:
+        return {
+            "success": False,
+            "message": "No credentials saved. Please fill in the fields and click Save first.",
+        }
+
+    # ── Per-connector validation ──────────────────────────────────────────────
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            if name == "anthropic":
+                key = cfg.get("api_key", "")
+                if not key:
+                    return {"success": False, "message": "API key is required"}
+                resp = await client.get(
+                    "https://api.anthropic.com/v1/models",
+                    headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+                )
+                if resp.status_code == 200:
+                    return {"success": True, "message": "Anthropic API key is valid"}
+                return {"success": False, "message": f"Invalid API key (HTTP {resp.status_code})"}
+
+            elif name == "openai":
+                key = cfg.get("api_key", "")
+                if not key:
+                    return {"success": False, "message": "API key is required"}
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+                if resp.status_code == 200:
+                    return {"success": True, "message": "OpenAI API key is valid"}
+                return {"success": False, "message": f"Invalid API key (HTTP {resp.status_code})"}
+
+            elif name == "gemini":
+                key = cfg.get("api_key", "")
+                if not key:
+                    return {"success": False, "message": "API key is required"}
+                resp = await client.get(
+                    f"https://generativelanguage.googleapis.com/v1beta/models?key={key}",
+                )
+                if resp.status_code == 200:
+                    return {"success": True, "message": "Gemini API key is valid"}
+                return {"success": False, "message": f"Invalid API key (HTTP {resp.status_code})"}
+
+            elif name == "telegram":
+                token = cfg.get("bot_token", "")
+                if not token:
+                    return {"success": False, "message": "Bot token is required"}
+                resp = await client.get(f"https://api.telegram.org/bot{token}/getMe")
+                data = resp.json()
+                if data.get("ok"):
+                    bot = data["result"]
+                    return {
+                        "success": True,
+                        "message": (
+                            f"Connected to @{bot.get('username', '')} ({bot.get('first_name', '')})"
+                        ),
+                    }
+                return {"success": False, "message": data.get("description", "Invalid token")}
+
+            elif name == "discord":
+                token = cfg.get("bot_token", "")
+                if not token:
+                    return {"success": False, "message": "Bot token is required"}
+                resp = await client.get(
+                    "https://discord.com/api/v10/users/@me",
+                    headers={"Authorization": f"Bot {token}"},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    uname = data.get("username", "bot")
+                    disc = data.get("discriminator", "0")
+                    return {
+                        "success": True,
+                        "message": f"Connected as {uname}#{disc}",
+                    }
+                return {"success": False, "message": f"Invalid bot token (HTTP {resp.status_code})"}
+
+            elif name == "github_pages":
+                token = cfg.get("token", "")
+                if not token:
+                    return {"success": False, "message": "Personal access token is required"}
+                resp = await client.get(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    login = data.get("login", "user")
+                    return {"success": True, "message": f"Authenticated as {login}"}
+                return {"success": False, "message": f"Invalid token (HTTP {resp.status_code})"}
+
+            elif name in ("vercel", "netlify"):
+                token = cfg.get("api_token", "")
+                if not token:
+                    return {"success": False, "message": "API token is required"}
+                if name == "vercel":
+                    resp = await client.get(
+                        "https://api.vercel.com/v2/user",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return {
+                            "success": True,
+                            "message": (
+                                "Authenticated as " + data.get("user", {}).get("username", "user")
+                            ),
+                        }
+                    return {"success": False, "message": f"Invalid token (HTTP {resp.status_code})"}
+                else:  # netlify
+                    resp = await client.get(
+                        "https://api.netlify.com/api/v1/user",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return {
+                            "success": True,
+                            "message": f"Authenticated as {data.get('email', 'user')}",
+                        }
+                    return {"success": False, "message": f"Invalid token (HTTP {resp.status_code})"}
+
+            else:
+                # Generic: just confirm credentials are saved
+                return {
+                    "success": True,
+                    "message": (
+                        "Credentials saved. Connection test not available for this connector."
+                    ),
+                }
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "message": "Connection timed out. Check your internet connection.",
+        }
+    except Exception as exc:
+        return {"success": False, "message": f"Test failed: {exc}"}
 
 
 @router.post("/connectors/{name}/start")
