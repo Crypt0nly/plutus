@@ -292,7 +292,7 @@ export const api = {
       method: "DELETE",
     }),
   getBridgeStatus: (name: string) =>
-    safeRequest<Record<string, any>>(`/bridge/status`, { connected: false }),
+    safeRequest<Record<string, any>>(`/connectors/${name}/status`, { listening: false }),
   setConnectorAutoStart: (name: string, auto_start: boolean) =>
     safeRequest<Record<string, any>>(`/connectors/${name}/auto-start`, {}, {
       method: "PUT",

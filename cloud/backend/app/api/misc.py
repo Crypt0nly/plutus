@@ -829,14 +829,70 @@ async def test_connector(
         return {"success": False, "message": f"Test failed: {exc}"}
 
 
+@router.get("/connectors/{name}/status")
+async def connector_status(
+    name: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Return the current running state of a connector bridge."""
+    from app.models.user import User
+    from app.services.connector_service import is_running
+
+    user_id = user["user_id"]
+    listening = is_running(user_id, name)
+
+    # For WhatsApp, also return pairing_code and ready flag from DB
+    extra: dict = {}
+    if name == "whatsapp":
+        user_row = await db.get(User, user_id)
+        if user_row:
+            creds = (user_row.connector_credentials or {}).get(name, {})
+            extra["pairing_code"] = creds.get("pairing_code")
+            extra["whatsapp_ready"] = creds.get("ready", False)
+
+    return {"listening": listening, **extra}
+
+
 @router.post("/connectors/{name}/start")
-async def start_connector(name: str, _user=Depends(get_current_user)):
-    return {"status": "starting", "message": "Not yet implemented"}
+async def start_connector(
+    name: str,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Start a server-side bridge for a communication connector."""
+    from app.database import async_session_factory
+    from app.models.user import User
+    from app.services.connector_service import start_connector as svc_start
+
+    user_id = user["user_id"]
+    user_row = await db.get(User, user_id)
+    creds: dict = {}
+    if user_row:
+        all_creds = user_row.connector_credentials or {}
+        creds = all_creds.get(name, {})
+
+    if not creds:
+        return {
+            "status": "error",
+            "listening": False,
+            "message": (f"No credentials found for {name}. Please configure the connector first."),
+        }
+
+    result = await svc_start(user_id, name, creds, async_session_factory)
+    return result
 
 
 @router.post("/connectors/{name}/stop")
-async def stop_connector(name: str, _user=Depends(get_current_user)):
-    return {"status": "stopped"}
+async def stop_connector(
+    name: str,
+    user=Depends(get_current_user),
+):
+    """Stop the server-side bridge for a communication connector."""
+    from app.services.connector_service import stop_connector as svc_stop
+
+    result = await svc_stop(user["user_id"], name)
+    return result
 
 
 @router.delete("/connectors/{name}")

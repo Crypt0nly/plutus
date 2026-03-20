@@ -809,13 +809,57 @@ function ConfigureModal({
                   </p>
                 </div>
               </div>
-              <div className="rounded-lg p-3" style={{ background: "rgba(251, 191, 36, 0.05)", border: "1px solid rgba(251, 191, 36, 0.15)" }}>
-                <p className="text-[11px] font-semibold text-yellow-400 mb-1">Local version required</p>
-                <p className="text-[10px] text-gray-500 leading-relaxed">
-                  Two-way messaging requires a background bridge process running on your machine.
-                  This is only available in the <span className="text-gray-300 font-medium">local (self-hosted) version</span> of Plutus.
-                  Install it with <code className="text-yellow-300/80 bg-gray-800/60 px-1 rounded">pip install plutus-ai</code> and configure this connector there.
-                </p>
+              {/* WhatsApp how-it-works hint */}
+              {connector.name === "whatsapp" && !listening && !waPairingCode && (
+                <div className="rounded-lg p-3 mb-3" style={{ background: "rgba(74,222,128,0.04)", border: "1px solid rgba(74,222,128,0.12)" }}>
+                  <p className="text-[11px] font-semibold text-emerald-400 mb-1">How it works</p>
+                  <p className="text-[10px] text-gray-500 leading-relaxed">
+                    <strong className="text-gray-400">Option A — Your own number:</strong> Plutus links as a secondary device (like WhatsApp Web). Message yourself using WhatsApp&apos;s &quot;Message yourself&quot; feature to chat with Plutus.<br />
+                    <strong className="text-gray-400">Option B — A second number:</strong> Plutus controls a dedicated number. Message it from your personal phone.
+                  </p>
+                </div>
+              )}
+
+              {/* Pairing code banner */}
+              {connector.name === "whatsapp" && waPairingCode && !waReady && (
+                <div className="rounded-lg p-3 mb-3" style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)" }}>
+                  <p className="text-[11px] font-semibold text-indigo-400 mb-1">Pairing code</p>
+                  <p className="text-2xl font-mono font-bold text-white tracking-widest mb-2">{waPairingCode}</p>
+                  <p className="text-[10px] text-gray-500">
+                    On the phone with the WhatsApp number: <strong className="text-gray-400">WhatsApp → Linked Devices → Link a Device → Link with phone number</strong>, then enter this code.
+                  </p>
+                </div>
+              )}
+
+              {/* Connected status */}
+              {connector.name === "whatsapp" && waReady && (
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-xs text-emerald-400">WhatsApp connected</span>
+                </div>
+              )}
+
+              {/* Start / Stop */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    listening ? "bg-emerald-400 animate-pulse" : "bg-gray-600"
+                  }`} />
+                  <span className="text-xs text-gray-400">
+                    {listening ? "Listening for messages" : "Not listening"}
+                  </span>
+                </div>
+                <button
+                  onClick={toggleListener}
+                  disabled={isSaving}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    listening
+                      ? "bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
+                      : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20"
+                  } disabled:opacity-50`}
+                >
+                  {isSaving ? "..." : listening ? "Stop" : "Start"}
+                </button>
               </div>
             </div>
           )}
