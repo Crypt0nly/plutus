@@ -345,7 +345,18 @@ async def _whatsapp_bridge_loop(
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, "WA_SESSION_DIR": session_dir},
+        env={
+            **os.environ,
+            "WA_SESSION_DIR": session_dir,
+            "WA_PHONE_NUMBER": phone_number,
+            # Cloud Docker image sets WA_NODE_MODULES; local installs use
+            # node_modules next to the bridge script (auto-resolved by the JS).
+            **(
+                {"WA_NODE_MODULES": os.environ["WA_NODE_MODULES"]}
+                if "WA_NODE_MODULES" in os.environ
+                else {}
+            ),
+        },
     )
 
     conversations: dict[str, str] = {}
