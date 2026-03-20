@@ -195,6 +195,13 @@ class LLMClient:
         }
         if self._config.base_url:
             kwargs["api_base"] = self._config.base_url
+        # Explicitly pass the API key to litellm so it never falls back to a
+        # stale or wrong key that may be sitting in os.environ from a previous
+        # provider.  Only inject for providers that need a key.
+        if self._config.provider not in ("ollama", "local"):
+            api_key = self._secrets.get_key(self._config.provider)
+            if api_key:
+                kwargs["api_key"] = api_key
         kwargs.update(overrides)
         return kwargs
 

@@ -126,17 +126,20 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
     config = _state.get("config")
     model_router: ModelRouter | None = _state.get("model_router")
     tool_registry = _state.get("tool_registry")
+    secrets = _state.get("secrets")
 
     # Select model for this worker
     model_string = "anthropic/claude-sonnet-4-6"  # fallback
     model_display = "Claude Sonnet 4-6"
     _worker_is_openai = False
+    _worker_provider = "anthropic"  # track provider for key injection
 
     if model_router:
         spec = model_router.select_for_worker(task.prompt, model_key=task.model_key)
         model_string = model_router.get_litellm_model_string(spec)
         model_display = spec.display_name
         _worker_is_openai = (spec.provider == "openai")
+        _worker_provider = spec.provider
         logger.info(f"Worker {task.id} selected model: {model_string} (openai={_worker_is_openai})")
         # Record usage
         try:
@@ -284,6 +287,12 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
                 "messages": messages,
                 "max_tokens": 16384,  # Must be high — tool calls with file content can be 5000+ tokens
             }
+            # Explicitly inject the API key so the worker never uses a stale
+            # or wrong key from os.environ (e.g. left over from a provider switch).
+            if secrets and _worker_provider not in ("ollama", "local"):
+                _worker_api_key = secrets.get_key(_worker_provider)
+                if _worker_api_key:
+                    call_kwargs["api_key"] = _worker_api_key
             # OpenAI reasoning models (gpt-5.x) do NOT support the temperature
             # parameter — passing it causes a BadRequestError which previously
             # caused the worker to silently fall back to claude-haiku.

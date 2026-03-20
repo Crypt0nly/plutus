@@ -37,6 +37,14 @@ class CloudAgentRuntime:
         self.agent_service = AgentService(session)
         self.executor = HybridExecutor.get_instance()
 
+    async def _load_user_config(self) -> dict:
+        """Load persisted agent config from the user's settings row."""
+        from app.models.user import User
+        user_row = await self.session.get(User, self.user_id)
+        if user_row:
+            return (user_row.settings or {}).get("agent_config", {}).get("model", {})
+        return {}
+
     async def process_message(self, message: str, conversation_id: str = None) -> dict:
         """
         Main entry point.
@@ -55,13 +63,16 @@ class CloudAgentRuntime:
         messages = [{"role": m.role, "content": m.content} for m in history]
 
         system_prompt = await self._build_system_prompt()
-        provider = self.config.get("provider", settings.default_llm_provider)
+        # Merge explicit config with persisted user preferences (explicit wins)
+        user_model_cfg = await self._load_user_config()
+        merged = {**user_model_cfg, **self.config}
+        provider = merged.get("provider", self.config.get("provider", settings.default_llm_provider))
 
         # Run the agentic loop
         if provider == "openai":
-            response_text = await self._agentic_loop_openai(messages, system_prompt)
+            response_text = await self._agentic_loop_openai(messages, system_prompt, config=merged)
         else:
-            response_text = await self._agentic_loop_anthropic(messages, system_prompt)
+            response_text = await self._agentic_loop_anthropic(messages, system_prompt, config=merged)
 
         await self._save_message(conversation_id, "assistant", response_text)
 
@@ -72,20 +83,23 @@ class CloudAgentRuntime:
 
     # ── Agentic loops ─────────────────────────────────────────────────────────
 
-    async def _agentic_loop_anthropic(self, messages: list[dict], system_prompt: str) -> str:
+    async def _agentic_loop_anthropic(
+        self, messages: list[dict], system_prompt: str, config: dict = None
+    ) -> str:
         """
         Anthropic agentic loop with tool use.
 
         Keeps calling the API until the model returns a text-only response
         (stop_reason == "end_turn") or we hit _MAX_TOOL_ROUNDS.
         """
+        cfg = config or self.config
         api_key = await self._get_user_api_key("anthropic")
         if not api_key:
             raise ValueError(
                 "No Anthropic API key configured. "
                 "Please add your key in Settings → Connectors → Anthropic."
             )
-        model = self.config.get("model", "claude-opus-4-5")
+        model = cfg.get("model", "claude-opus-4-6")
 
         # Work on a copy so we don't mutate the caller's list
         msgs = list(messages)
@@ -180,17 +194,20 @@ class CloudAgentRuntime:
             data = resp.json()
         return _extract_text_anthropic(data)
 
-    async def _agentic_loop_openai(self, messages: list[dict], system_prompt: str) -> str:
+    async def _agentic_loop_openai(
+        self, messages: list[dict], system_prompt: str, config: dict = None
+    ) -> str:
         """
         OpenAI agentic loop with function calling.
         """
+        cfg = config or self.config
         api_key = await self._get_user_api_key("openai")
         if not api_key:
             raise ValueError(
                 "No OpenAI API key configured. "
                 "Please add your key in Settings → Connectors → OpenAI."
             )
-        model = self.config.get("model", "gpt-4o")
+        model = cfg.get("model", "gpt-4o")
 
         msgs = [{"role": "system", "content": system_prompt}] + list(messages)
 

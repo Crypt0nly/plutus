@@ -162,8 +162,15 @@ async def delete_key(provider: str, _user=Depends(get_current_user)):
 
 
 @router.get("/config")
-async def get_config(_user=Depends(get_current_user)):
-    """Return a minimal cloud config so the settings page renders correctly."""
+async def get_config(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Return cloud config including persisted user preferences (model, agent, etc.)."""
+    from app.models.user import User
+
+    user_row = await db.get(User, user["user_id"])
+    saved = (user_row.settings or {}).get("agent_config", {}) if user_row else {}
     return {
         "mode": "cloud",
         "version": "cloud",
@@ -174,11 +181,35 @@ async def get_config(_user=Depends(get_current_user)):
             "skills": True,
             "scheduled_tasks": True,
         },
+        # Merge in any user-saved preferences so the settings page pre-populates
+        **saved,
     }
 
 
 @router.patch("/config")
-async def update_config(_body: dict | None = None, _user=Depends(get_current_user)):
+async def update_config(
+    body: dict | None = None,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Persist user agent config preferences (model, provider, system prompt, etc.)."""
+    from app.models.user import User
+
+    if body:
+        patch = body.get("patch", body)  # frontend sends {patch: {...}} or bare dict
+        user_row = await db.get(User, user["user_id"])
+        if user_row:
+            existing = dict(user_row.settings or {})
+            existing_cfg = dict(existing.get("agent_config", {}))
+            # Deep-merge top-level keys (model, agent, heartbeat, etc.)
+            for k, v in patch.items():
+                if isinstance(v, dict) and isinstance(existing_cfg.get(k), dict):
+                    existing_cfg[k] = {**existing_cfg[k], **v}
+                else:
+                    existing_cfg[k] = v
+            existing["agent_config"] = existing_cfg
+            user_row.settings = existing
+            await db.commit()
     return {"message": "ok"}
 
 
