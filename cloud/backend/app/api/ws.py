@@ -25,6 +25,7 @@ Outgoing message types (expected by the frontend):
   - error                { message, session_id }
 """
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -116,6 +117,38 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
     sessions: dict[str, str | None] = {"session_main": None}
     active_sid = "session_main"
 
+    # Auto-start connectors that were previously configured and running.
+    # This ensures connector sessions survive page refreshes.
+    from app.services import connector_service
+
+    try:
+        async with async_session_factory() as db:
+            from app.models.user import User
+
+            user_row = await db.get(User, user_id)
+            if user_row and user_row.connector_credentials:
+                creds_map: dict = user_row.connector_credentials
+                for connector_name, creds in creds_map.items():
+                    if not isinstance(creds, dict):
+                        continue
+                    # Only auto-start connectors that were previously running
+                    # (indicated by a "listening" flag we persist on start).
+                    if not creds.get("listening"):
+                        continue
+                    if connector_service.is_running(user_id, connector_name):
+                        # Already running — just push the session object
+                        await connector_service._push_connector_session_created(
+                            user_id, connector_name
+                        )
+                    else:
+                        asyncio.create_task(
+                            connector_service.start_connector(
+                                user_id, connector_name, creds, async_session_factory
+                            )
+                        )
+    except Exception as _e:
+        logger.debug(f"Auto-start connectors error for {user_id}: {_e}")
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -136,6 +169,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                     _make_session_obj(sid, "Chat" if sid == "session_main" else sid)
                     for sid in sessions
                 ]
+                # Append any active connector sessions
+                session_list += connector_service.get_all_connector_sessions(user_id)
                 await websocket.send_text(
                     json.dumps({"type": "sessions_list", "sessions": session_list})
                 )

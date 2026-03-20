@@ -911,6 +911,17 @@ async def start_connector(
         }
 
     result = await svc_start(user_id, name, creds, async_session_factory)
+
+    # Persist the listening flag so the connector auto-restarts on reconnect.
+    if result.get("listening"):
+        if user_row:
+            all_creds = dict(user_row.connector_credentials or {})
+            connector_creds = dict(all_creds.get(name, {}))
+            connector_creds["listening"] = True
+            all_creds[name] = connector_creds
+            user_row.connector_credentials = all_creds
+            await db.commit()
+
     return result
 
 
@@ -918,11 +929,25 @@ async def start_connector(
 async def stop_connector(
     name: str,
     user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
 ):
     """Stop the server-side bridge for a communication connector."""
+    from app.models.user import User
     from app.services.connector_service import stop_connector as svc_stop
 
-    result = await svc_stop(user["user_id"], name)
+    user_id = user["user_id"]
+    result = await svc_stop(user_id, name)
+
+    # Clear the listening flag so the connector does not auto-restart.
+    user_row = await db.get(User, user_id)
+    if user_row:
+        all_creds = dict(user_row.connector_credentials or {})
+        connector_creds = dict(all_creds.get(name, {}))
+        connector_creds["listening"] = False
+        all_creds[name] = connector_creds
+        user_row.connector_credentials = all_creds
+        await db.commit()
+
     return result
 
 
