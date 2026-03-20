@@ -2427,18 +2427,25 @@ def create_router() -> APIRouter:
             except OSError:
                 pass
 
-        # Read new version from the freshly installed package
+        # Read new version from the freshly installed package.
+        # Use importlib.metadata (reads dist-info on disk) rather than
+        # importing the module, because on Windows the running process
+        # holds locks on .pyd files so pip stages the new files for a
+        # pending rename — the dist-info is updated immediately but the
+        # in-process import still returns the old version.
         new_version = __version__
         try:
             code, out, _err = await run(
-                [sys.executable, "-c",
-                 "import plutus; print(plutus.__version__)"],
+                [
+                    sys.executable, "-c",
+                    "import importlib.metadata; "
+                    "print(importlib.metadata.version('plutus-ai'))",
+                ],
             )
             if code == 0 and out.strip():
                 new_version = out.strip()
         except Exception:
             pass
-
         # If pip "succeeded" but the version didn't change, check whether
         # PyPI actually has a newer version.  If it does but the version
         # didn't change, it means pip couldn't find a compatible wheel for
