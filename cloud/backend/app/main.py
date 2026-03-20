@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Start E2B sandbox cleanup loop (reaps idle per-user sandboxes)
+    if settings.e2b_api_key:
+        from app.services.e2b_manager import E2BSandboxManager
+
+        await E2BSandboxManager.get_instance().start_cleanup_loop()
+        logger.info("E2B sandbox manager started")
     logger.info("Plutus Cloud API started")
     yield
     await close_db()

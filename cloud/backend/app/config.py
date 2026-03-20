@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
 
+    # E2B cloud sandbox (fallback when local bridge is not connected)
+    e2b_api_key: str = ""
+
     # Workspace — per-user file storage
     workspace_root: str = "/data/workspaces"
 
