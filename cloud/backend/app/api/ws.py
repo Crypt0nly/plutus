@@ -2,12 +2,32 @@
 WebSocket endpoint for real-time chat with the Plutus cloud agent.
 
 The frontend connects to /ws?token=<clerk_jwt> and exchanges JSON messages
-in the same format as the local Plutus backend, so the existing UI works
-without modification.
+in the same format as the local Plutus backend.
+
+Incoming message types (sent by the frontend):
+  - ping
+  - list_sessions
+  - new_session          { display_name?, icon? }
+  - chat                 { session_id, content, attachments? }
+  - send_message         { session_id?, message, conversation_id? }  (legacy alias)
+  - stop_task            { session_id }
+  - delete_session       { session_id }
+  - load_conversation    { session_id, conversation_id }
+
+Outgoing message types (expected by the frontend):
+  - connected
+  - pong
+  - sessions_list        { sessions: [...] }
+  - session_created      { session: { id, display_name, icon, ... } }
+  - thinking             { session_id }
+  - text                 { content, role, session_id }
+  - done                 { session_id }
+  - error                { message, session_id }
 """
 
 import json
 import logging
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import jwt
@@ -53,27 +73,26 @@ async def _authenticate_ws(token: str) -> dict | None:
         return None
 
 
+def _make_session_obj(sid: str, display_name: str = "Chat", icon: str = "💬") -> dict:
+    """Build a session object in the format the frontend expects."""
+    now = datetime.now(UTC).isoformat()
+    return {
+        "session_id": sid,
+        "id": sid,
+        "display_name": display_name,
+        "icon": icon,
+        "is_connector": False,
+        "connector_name": None,
+        "conversation_id": None,
+        "is_processing": False,
+        "created_at": now,
+        "last_active": now,
+    }
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = ""):
-    """
-    Main WebSocket endpoint. The frontend passes the Clerk JWT as ?token=...
-
-    Supported incoming message types (matching local backend protocol):
-      - ping
-      - list_sessions
-      - send_message  { session_id?, message, conversation_id? }
-      - new_session
-      - delete_session { session_id }
-
-    Outgoing message types (matching local backend protocol):
-      - connected
-      - thinking
-      - text { content, role }
-      - done
-      - error { message }
-      - sessions { sessions }
-      - pong
-    """
+    """Main WebSocket endpoint."""
     # Authenticate
     if not token:
         await websocket.close(code=4001)
@@ -91,9 +110,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
     # Send connected confirmation
     await websocket.send_text(json.dumps({"type": "connected"}))
 
-    # Default session state
-    session_id = "session_main"
-    conversation_id: str | None = None
+    # Per-connection session state: session_id -> conversation_id
+    sessions: dict[str, str | None] = {"session_main": None}
+    active_sid = "session_main"
 
     try:
         while True:
@@ -105,69 +124,47 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
 
             msg_type = msg.get("type", "")
 
+            # ── Ping / pong ──────────────────────────────────────
             if msg_type == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
 
+            # ── Session list ─────────────────────────────────────────
             elif msg_type == "list_sessions":
-                # Return a single default session for cloud users
+                session_list = [
+                    _make_session_obj(sid, "Chat" if sid == "session_main" else sid)
+                    for sid in sessions
+                ]
                 await websocket.send_text(
-                    json.dumps(
-                        {
-                            "type": "sessions",
-                            "sessions": [
-                                {
-                                    "id": "session_main",
-                                    "display_name": "Cloud Session",
-                                    "icon": "cloud",
-                                    "is_connector": False,
-                                    "is_processing": False,
-                                    "created_at": "",
-                                    "last_active": "",
-                                }
-                            ],
-                        }
-                    )
+                    json.dumps({"type": "sessions_list", "sessions": session_list})
                 )
 
+            # ── New session ──────────────────────────────────────────
             elif msg_type == "new_session":
-                # Create a new session (just a new conversation)
                 new_sid = f"session_{uuid4().hex[:8]}"
+                display_name = msg.get("display_name", "New Chat")
+                icon = msg.get("icon", "💬")
+                sessions[new_sid] = None
+                active_sid = new_sid
+                session_obj = _make_session_obj(new_sid, display_name, icon)
                 await websocket.send_text(
-                    json.dumps(
-                        {
-                            "type": "sessions",
-                            "sessions": [
-                                {
-                                    "id": new_sid,
-                                    "display_name": "New Session",
-                                    "icon": "cloud",
-                                    "is_connector": False,
-                                    "is_processing": False,
-                                    "created_at": "",
-                                    "last_active": "",
-                                }
-                            ],
-                        }
-                    )
+                    json.dumps({"type": "session_created", "session": session_obj})
                 )
 
-            elif msg_type == "send_message":
-                message_text = msg.get("message", "").strip()
+            # ── Chat message (primary frontend message type) ───────────
+            elif msg_type in ("chat", "send_message"):
+                # Normalise field names: frontend sends "content", legacy sends "message"
+                message_text = (msg.get("content") or msg.get("message") or "").strip()
                 if not message_text:
                     continue
 
-                # Use session_id and conversation_id from message if provided
-                sid = msg.get("session_id", session_id)
-                conv_id = msg.get("conversation_id") or conversation_id
+                sid = msg.get("session_id") or active_sid
+                if sid not in sessions:
+                    sessions[sid] = None
+                conv_id = msg.get("conversation_id") or sessions.get(sid)
 
-                # Indicate thinking
+                # Signal thinking
                 await websocket.send_text(
-                    json.dumps(
-                        {
-                            "type": "thinking",
-                            "session_id": sid,
-                        }
-                    )
+                    json.dumps({"type": "thinking", "session_id": sid})
                 )
 
                 try:
@@ -178,10 +175,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                             conversation_id=conv_id,
                         )
 
-                    conversation_id = result["conversation_id"]
+                    new_conv_id = result["conversation_id"]
+                    sessions[sid] = new_conv_id
                     response_text = result["response"]
 
-                    # Send the response as a text message
+                    # Send the assistant reply
                     await websocket.send_text(
                         json.dumps(
                             {
@@ -189,7 +187,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                                 "content": response_text,
                                 "role": "assistant",
                                 "session_id": sid,
-                                "conversation_id": conversation_id,
+                                "conversation_id": new_conv_id,
                             }
                         )
                     )
@@ -200,13 +198,13 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                             {
                                 "type": "done",
                                 "session_id": sid,
-                                "conversation_id": conversation_id,
+                                "conversation_id": new_conv_id,
                             }
                         )
                     )
 
                 except Exception as e:
-                    logger.error(f"Agent error for user {user_id}: {e}")
+                    logger.error(f"Agent error for user {user_id}: {e}", exc_info=True)
                     await websocket.send_text(
                         json.dumps(
                             {
@@ -217,13 +215,33 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                         )
                     )
 
+            # ── Stop task ────────────────────────────────────────────
+            elif msg_type == "stop_task":
+                sid = msg.get("session_id", active_sid)
+                # CloudAgentRuntime does not yet support mid-flight cancellation;
+                # acknowledge so the frontend spinner clears.
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "task_stopped",
+                            "message": "Task stopped.",
+                            "session_id": sid,
+                        }
+                    )
+                )
+
+            # ── Delete session ───────────────────────────────────────
             elif msg_type == "delete_session":
-                # Acknowledge deletion (no persistent sessions in basic cloud mode)
-                pass
+                sid = msg.get("session_id")
+                if sid and sid in sessions:
+                    del sessions[sid]
+                    await websocket.send_text(
+                        json.dumps({"type": "session_closed", "session_id": sid})
+                    )
 
     except WebSocketDisconnect:
         logger.info(f"WS disconnected: user {user_id}")
     except Exception as e:
-        logger.error(f"WS error for user {user_id}: {e}")
+        logger.error(f"WS error for user {user_id}: {e}", exc_info=True)
     finally:
         active_connections.pop(user_id, None)
