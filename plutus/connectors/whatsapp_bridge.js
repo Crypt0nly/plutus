@@ -28,12 +28,22 @@
 const path = require("path");
 const fs   = require("fs");
 
-// ── Resolve whatsapp-web.js from the same directory as this script ──────────
+// ── Resolve whatsapp-web.js ────────────────────────────────────────────────
+// Check multiple locations in order:
+//   1. WA_NODE_MODULES env var (set by cloud Docker image)
+//   2. node_modules/ next to this script (local install)
 const scriptDir = __dirname;
-const wwjsPath  = path.join(scriptDir, "node_modules", "whatsapp-web.js");
+const waNodeModules = process.env.WA_NODE_MODULES || path.join(scriptDir, "node_modules");
+const wwjsPath = path.join(waNodeModules, "whatsapp-web.js");
 
 if (!fs.existsSync(wwjsPath)) {
-  emit({ event: "error", message: "whatsapp-web.js not installed. Run: npm install in the connectors directory." });
+  process.stderr.write(
+    `[whatsapp_bridge] whatsapp-web.js not found at ${wwjsPath}.\n` +
+    `Run: npm install whatsapp-web.js  in ${scriptDir}\n`
+  );
+  process.stdout.write(JSON.stringify({ event: "error", message:
+    "whatsapp-web.js not installed. Run: npm install in the connectors directory."
+  }) + "\n");
   process.exit(1);
 }
 
@@ -42,7 +52,9 @@ const { Client, LocalAuth } = require(wwjsPath);
 // ── Configuration from env ──────────────────────────────────────────────────
 const SESSION_DIR   = process.env.WA_SESSION_DIR   || path.join(scriptDir, ".wwebjs_auth");
 const PHONE_NUMBER  = process.env.WA_PHONE_NUMBER  || "";  // e.g. "4917612345678"
-const CHROMIUM_PATH = process.env.WA_CHROMIUM_PATH || undefined;
+const CHROMIUM_PATH = process.env.WA_CHROMIUM_PATH
+  || process.env.PUPPETEER_EXECUTABLE_PATH
+  || undefined;
 
 // ── State ───────────────────────────────────────────────────────────────────
 let client = null;
