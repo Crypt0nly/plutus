@@ -440,6 +440,20 @@ jobs:
           fi
           echo "✅ Backend secrets patched"
 
+      - name: Inject backend env vars into deployment
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+        run: |
+          NAMESPACE="${{ vars.KUBE_NAMESPACE }}"
+          # Inject runtime env vars directly into the deployment so every new
+          # pod starts with the correct values regardless of whether a
+          # Kubernetes Secret is mounted via envFrom in the manifest.
+          kubectl set env deployment/plutus-backend \
+            E2B_API_KEY="${E2B_API_KEY}" \
+            -n ${NAMESPACE}
+          echo "✅ Backend env vars injected"
+
+
       - name: Deploy to staging
         run: |
           echo "🚀 Deploying to staging..."
