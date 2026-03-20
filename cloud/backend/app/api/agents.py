@@ -259,76 +259,127 @@ _BUILTIN_SKILLS = [
 # ── Tools/Details categories (for the ToolsView) ────────────────────────────
 
 _TOOLS_CATEGORIES = {
-    "core": {
-        "label": "Core Tools",
-        "description": "Essential cloud agent capabilities",
+    "sandbox": {
+        "label": "Sandbox Tools",
+        "description": (
+            "Run code and commands in a secure cloud sandbox (or your local machine if connected)"
+        ),
         "icon": "terminal",
         "tools": [
             {
-                "name": "memory",
-                "description": "Store and recall facts about you across conversations",
+                "name": "shell_exec",
+                "description": (
+                    "Run any shell command in a secure Linux environment"
+                    " — install packages, run scripts, manage files."
+                ),
                 "enabled": True,
                 "status": "available",
+                "parameters": {
+                    "properties": {
+                        "command": {"description": "The shell command to execute"},
+                        "timeout": {"description": "Timeout in seconds (default 30)"},
+                    }
+                },
             },
             {
-                "name": "web_search",
-                "description": "Search the web and retrieve up-to-date information",
-                "enabled": False,
-                "status": "coming_soon",
+                "name": "python_exec",
+                "description": (
+                    "Execute Python code in a persistent kernel."
+                    " Variables and imports persist across calls within the same conversation."
+                ),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "code": {"description": "Python code to execute"},
+                    }
+                },
             },
             {
-                "name": "file_manager",
-                "description": "Create, read, and manage files in your workspace",
-                "enabled": False,
-                "status": "coming_soon",
+                "name": "file_read",
+                "description": "Read the contents of any file in the sandbox.",
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "path": {"description": "Absolute path to the file"},
+                    }
+                },
+            },
+            {
+                "name": "file_write",
+                "description": "Write or overwrite a file in the sandbox.",
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "path": {"description": "Absolute path to the file"},
+                        "content": {"description": "Content to write"},
+                    }
+                },
+            },
+            {
+                "name": "file_list",
+                "description": "List files and directories at a given path in the sandbox.",
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "path": {"description": "Directory path to list (default: /home/user)"},
+                    }
+                },
             },
         ],
     },
-    "code": {
-        "label": "Code & Dev Tools",
-        "description": "Code execution and development",
+    "web": {
+        "label": "Web Tools",
+        "description": "Search the web and read web pages",
         "icon": "code",
         "tools": [
             {
-                "name": "python_runner",
-                "description": "Execute Python code in a sandboxed environment",
-                "enabled": False,
-                "status": "coming_soon",
+                "name": "web_search",
+                "description": (
+                    "Search the web using DuckDuckGo and return the top results."
+                    " Use for finding current information, news, or documentation."
+                ),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "query": {"description": "Search query"},
+                        "num_results": {
+                            "description": "Number of results to return (default 5, max 10)"
+                        },
+                    }
+                },
             },
             {
-                "name": "shell_runner",
-                "description": "Run shell commands on your machine",
-                "enabled": False,
-                "status": "local_only",
-            },
-            {
-                "name": "github",
-                "description": "Clone repos, commit and push code via GitHub",
-                "enabled": False,
-                "status": "coming_soon",
+                "name": "web_browse",
+                "description": (
+                    "Fetch the full text content of any web page."
+                    " Use after web_search to read the complete content of a result."
+                ),
+                "enabled": True,
+                "status": "available",
+                "parameters": {
+                    "properties": {
+                        "url": {"description": "URL to fetch"},
+                    }
+                },
             },
         ],
     },
-    "productivity": {
-        "label": "Productivity",
-        "description": "AI-powered writing, translation and summarisation",
+    "memory": {
+        "label": "Memory",
+        "description": "Persistent memory across conversations",
         "icon": "cpu",
         "tools": [
             {
-                "name": "summarize",
-                "description": "Summarise long documents or conversations",
-                "enabled": True,
-                "status": "available",
-            },
-            {
-                "name": "translate",
-                "description": "Translate text between languages",
-                "enabled": True,
-                "status": "available",
-            },
-            {
-                "name": "draft",
-                "description": "Draft documents, emails and reports",
+                "name": "memory",
+                "description": (
+                    "Store and recall facts about you across conversations"
+                    " so Plutus remembers your preferences and context."
+                ),
                 "enabled": True,
                 "status": "available",
             },
@@ -361,18 +412,24 @@ _TOOLS_CATEGORIES = {
     },
     "local_only": {
         "label": "Local-Only Tools",
-        "description": "These tools run on your machine and require the self-hosted version",
+        "description": (
+            "These tools require the self-hosted version with your local machine connected"
+        ),
         "icon": "monitor",
         "tools": [
             {
                 "name": "browser",
-                "description": "Control a real browser — open pages, click, fill forms",
+                "description": (
+                    "Control a real browser — open pages, click, fill forms, take screenshots"
+                ),
                 "enabled": False,
                 "status": "local_only",
             },
             {
                 "name": "desktop",
-                "description": "Control your desktop — move mouse, type, take screenshots",
+                "description": (
+                    "Control your desktop — move mouse, type, interact with any application"
+                ),
                 "enabled": False,
                 "status": "local_only",
             },
@@ -385,12 +442,6 @@ _TOOLS_CATEGORIES = {
             {
                 "name": "scheduler",
                 "description": "Schedule tasks and cron jobs to run automatically",
-                "enabled": False,
-                "status": "local_only",
-            },
-            {
-                "name": "image_gen",
-                "description": "Generate images using AI models",
                 "enabled": False,
                 "status": "local_only",
             },
