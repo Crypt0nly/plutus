@@ -66,13 +66,19 @@ class CloudAgentRuntime:
         # Merge explicit config with persisted user preferences (explicit wins)
         user_model_cfg = await self._load_user_config()
         merged = {**user_model_cfg, **self.config}
-        provider = merged.get("provider", self.config.get("provider", settings.default_llm_provider))
+        provider = merged.get(
+            "provider", self.config.get("provider", settings.default_llm_provider)
+        )
 
         # Run the agentic loop
         if provider == "openai":
-            response_text = await self._agentic_loop_openai(messages, system_prompt, config=merged)
+            response_text = await self._agentic_loop_openai(
+                messages, system_prompt, config=merged
+            )
         else:
-            response_text = await self._agentic_loop_anthropic(messages, system_prompt, config=merged)
+            response_text = await self._agentic_loop_anthropic(
+                messages, system_prompt, config=merged
+            )
 
         await self._save_message(conversation_id, "assistant", response_text)
 
