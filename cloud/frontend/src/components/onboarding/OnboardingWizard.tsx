@@ -126,22 +126,15 @@ export function OnboardingWizard() {
   const [savingKey, setSavingKey] = useState(false);
   const [keySaved, setKeySaved] = useState(false);
   const [keyError, setKeyError] = useState("");
-  const [tier, setTier] = useState("assistant");
   const [finishing, setFinishing] = useState(false);
   const [baseUrl, setBaseUrl] = useState("");
-
-  // Platform detection for WSL step
-  const [isWindows, setIsWindows] = useState<boolean | null>(null);
-  const [wslDetected, setWslDetected] = useState(false);
-  const [wslSetupDone, setWslSetupDone] = useState(false);
 
   const selectedProvider = providers.find((p) => p.id === provider)!;
   const needsKey = provider !== "ollama";
 
-  // Steps: 0=Welcome, 1=Provider, 2=ApiKey, 3=Tier, 4=WSL (Windows only)
-  // On non-Windows, step 4 is skipped — the "Launch" button appears on step 3.
-  const totalSteps = isWindows ? 5 : 4;
-  const lastStep = totalSteps - 1;
+  // Cloud steps: 0=Welcome, 1=Provider, 2=ApiKey — no guardrail/WSL steps
+  const totalSteps = 3;
+  const lastStep = 2;
 
   // Check if key is already configured for selected provider
   const [existingKey, setExistingKey] = useState(false);
@@ -150,17 +143,6 @@ export function OnboardingWizard() {
       setExistingKey(data.providers?.[provider] ?? false);
     }).catch(() => {});
   }, [provider]);
-
-  // Detect platform on mount
-  useEffect(() => {
-    api.getWSLStatus().then((status) => {
-      setIsWindows(status.is_windows);
-      setWslDetected(status.wsl_installed);
-      setWslSetupDone(status.setup_completed);
-    }).catch(() => {
-      setIsWindows(false); // default to non-Windows on error
-    });
-  }, []);
 
   const canAdvance = () => {
     if (step === 1) return true;
@@ -203,7 +185,6 @@ export function OnboardingWizard() {
           model: defaultModels[provider] || "claude-sonnet-4-6",
           base_url: baseUrl || null,
         },
-        guardrails: { tier },
       });
       await api.completeSetup();
       useAppStore.getState().setOnboardingCompleted(true);
@@ -216,20 +197,6 @@ export function OnboardingWizard() {
 
   const next = () => setStep((s) => Math.min(s + 1, lastStep));
   const prev = () => setStep((s) => Math.max(s - 1, 0));
-
-  // Still loading platform detection
-  if (isWindows === null) {
-    return (
-      <div className="fixed inset-0 bg-gray-950 z-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-plutus-500 to-plutus-700 flex items-center justify-center font-bold text-lg shadow-lg shadow-plutus-600/20 ring-1 ring-white/10">
-            P
-          </div>
-          <div className="w-6 h-6 border-2 border-plutus-500/30 border-t-plutus-500 rounded-full animate-spin" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 bg-gray-950 z-50 flex items-center justify-center overflow-y-auto">
@@ -282,19 +249,7 @@ export function OnboardingWizard() {
               onSaveKey={handleSaveKey}
             />
           )}
-          {step === 3 && !isWindows && (
-            <StepTier tier={tier} setTier={setTier} />
-          )}
-          {step === 3 && isWindows && (
-            <StepTier tier={tier} setTier={setTier} />
-          )}
-          {step === 4 && isWindows && (
-            <StepWSL
-              wslDetected={wslDetected}
-              wslSetupDone={wslSetupDone}
-              onSetupComplete={() => setWslSetupDone(true)}
-            />
-          )}
+
         </div>
 
         {/* Navigation */}
@@ -515,7 +470,7 @@ function StepApiKey({
         <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           <p className="text-sm text-emerald-300">
-            You're all set! Click Continue to pick your safety tier.
+            You're all set! Click Launch Plutus to get started.
           </p>
         </div>
       </div>

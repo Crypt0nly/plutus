@@ -92,24 +92,63 @@ async def stop_heartbeat(_user=Depends(get_current_user)):
 
 
 @router.get("/keys/status")
-async def get_keys_status(_user=Depends(get_current_user)):
-    """
-    In cloud mode, API keys are managed server-side.
-    Report all providers as configured so the UI doesn't show a setup prompt.
-    """
+async def get_keys_status(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Return which providers the user has configured an API key for."""
+    from app.models.user import User
+
+    user_row = await db.get(User, user["user_id"])
+    creds: dict = (user_row.connector_credentials or {}) if user_row else {}
+
+    has_anthropic = bool(creds.get("anthropic", {}).get("api_key"))
+    has_openai = bool(creds.get("openai", {}).get("api_key"))
+    has_gemini = bool(creds.get("gemini", {}).get("api_key"))
+
+    current = "anthropic" if has_anthropic else ("openai" if has_openai else "")
     return {
         "providers": {
-            "anthropic": True,
-            "openai": True,
+            "anthropic": has_anthropic,
+            "openai": has_openai,
+            "gemini": has_gemini,
         },
-        "current_provider": "anthropic",
-        "current_provider_configured": True,
+        "current_provider": current,
+        "current_provider_configured": bool(current),
     }
 
 
 @router.post("/keys")
-async def set_key(_body: dict | None = None, _user=Depends(get_current_user)):
-    return {"message": "Keys are managed server-side in cloud mode", "key_configured": True}
+async def set_key(
+    body: dict | None = None,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Save a provider API key to the user's connector_credentials."""
+    from app.models.user import User
+
+    if not body:
+        return {"message": "ok", "key_configured": False}
+
+    provider = body.get("provider", "")
+    key = body.get("key", "")
+    if not provider or not key:
+        return {"message": "ok", "key_configured": False}
+
+    user_row = await db.get(User, user["user_id"])
+    if not user_row:
+        user_row = User(
+            id=user["user_id"],
+            email=user.get("email", ""),
+            connector_credentials={},
+        )
+        db.add(user_row)
+
+    creds = dict(user_row.connector_credentials or {})
+    creds[provider] = {"api_key": key}
+    user_row.connector_credentials = creds
+    await db.commit()
+    return {"message": "ok", "key_configured": True}
 
 
 @router.delete("/keys/{provider}")

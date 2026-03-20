@@ -1,3 +1,11 @@
+"""
+Cloud agent runtime.
+
+Calls the LLM using the API key stored in the user's connector_credentials
+column (set during onboarding via PUT /connectors/{name}/config).
+Falls back to the server-level settings key only if no per-user key is found.
+"""
+
 from uuid import uuid4
 
 import httpx
@@ -43,8 +51,35 @@ class CloudAgentRuntime:
             return await self._call_openai(messages, system_prompt)
         return await self._call_anthropic(messages, system_prompt)
 
+    async def _get_user_api_key(self, provider: str) -> str:
+        """
+        Return the API key for *provider* from the user's connector_credentials.
+        Falls back to the server-level settings key if none is stored.
+        """
+        from app.models.user import User
+
+        user_row = await self.session.get(User, self.user_id)
+        if user_row:
+            creds: dict = user_row.connector_credentials or {}
+            # Stored as: { "anthropic": { "api_key": "sk-ant-..." }, ... }
+            key = creds.get(provider, {}).get("api_key", "")
+            if key:
+                return key
+
+        # Fall back to server-level env var (useful for dev / self-hosted)
+        if provider == "anthropic":
+            return settings.anthropic_api_key
+        if provider == "openai":
+            return settings.openai_api_key
+        return ""
+
     async def _call_anthropic(self, messages: list[dict], system_prompt: str) -> str:
-        api_key = settings.anthropic_api_key
+        api_key = await self._get_user_api_key("anthropic")
+        if not api_key:
+            raise ValueError(
+                "No Anthropic API key configured. "
+                "Please add your key in Settings \u2192 Connectors \u2192 Anthropic."
+            )
         model = self.config.get("model", "claude-sonnet-4-20250514")
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
@@ -62,7 +97,12 @@ class CloudAgentRuntime:
             return data["content"][0]["text"]
 
     async def _call_openai(self, messages: list[dict], system_prompt: str) -> str:
-        api_key = settings.openai_api_key
+        api_key = await self._get_user_api_key("openai")
+        if not api_key:
+            raise ValueError(
+                "No OpenAI API key configured. "
+                "Please add your key in Settings \u2192 Connectors \u2192 OpenAI."
+            )
         model = self.config.get("model", "gpt-4o")
         all_messages = [{"role": "system", "content": system_prompt}] + messages
         async with httpx.AsyncClient(timeout=60) as client:
