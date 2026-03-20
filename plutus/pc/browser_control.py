@@ -297,23 +297,30 @@ class BrowserControl:
             title = await page.title()
             url = page.url
 
-            # Use Playwright's native accessibility tree
-            # This calls Chrome's Accessibility API via CDP — same as OpenClaw
-            ax_tree = await page.accessibility.snapshot()
+            ax_tree = None
 
+            # Primary: use page.accessibility.snapshot() if available.
+            # NOTE: page.accessibility was deprecated in Playwright 1.46 and removed
+            # in some builds. Guard with hasattr so we never crash on newer versions.
+            if hasattr(page, "accessibility"):
+                try:
+                    ax_tree = await page.accessibility.snapshot()
+                except Exception as acc_err:
+                    logger.debug(f"page.accessibility.snapshot() failed: {acc_err}")
+
+            # Fallback / primary for newer Playwright: use CDP directly.
+            # This is the most reliable cross-version approach.
             if not ax_tree:
-                # Fallback: try via CDP session directly (like OpenClaw's snapshotAriaViaPlaywright)
                 try:
                     session = await page.context.new_cdp_session(page)
                     await session.send("Accessibility.enable")
                     res = await session.send("Accessibility.getFullAXTree")
                     await session.detach()
-                    # Convert CDP format to our format
                     nodes = res.get("nodes", [])
                     if nodes:
                         ax_tree = self._cdp_nodes_to_tree(nodes)
                 except Exception as cdp_err:
-                    logger.warning(f"CDP fallback also failed: {cdp_err}")
+                    logger.warning(f"CDP accessibility tree failed: {cdp_err}")
 
             if not ax_tree:
                 return {
@@ -1554,8 +1561,26 @@ class BrowserControl:
                     return {"success": False, "error": f"Frame index {frame_index} out of range (found {len(inner_frames)} iframes)"}
                 frame = inner_frames[frame_index]
 
-            # Get accessibility tree of the frame
-            ax_tree = await frame.accessibility.snapshot()
+            # Get accessibility tree of the frame.
+            # Guard against page.accessibility being removed in newer Playwright builds.
+            ax_tree = None
+            if hasattr(frame, "accessibility"):
+                try:
+                    ax_tree = await frame.accessibility.snapshot()
+                except Exception as acc_err:
+                    logger.debug(f"frame.accessibility.snapshot() failed: {acc_err}")
+            # CDP fallback for frames
+            if not ax_tree:
+                try:
+                    session = await page.context.new_cdp_session(page)
+                    await session.send("Accessibility.enable")
+                    res = await session.send("Accessibility.getFullAXTree")
+                    await session.detach()
+                    nodes = res.get("nodes", [])
+                    if nodes:
+                        ax_tree = self._cdp_nodes_to_tree(nodes)
+                except Exception as cdp_err:
+                    logger.debug(f"iframe CDP fallback failed: {cdp_err}")
             if not ax_tree:
                 return {"success": False, "error": "Could not get accessibility tree from iframe"}
 
