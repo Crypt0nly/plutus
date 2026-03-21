@@ -394,26 +394,45 @@ function GoogleConnectorCard({
 }) {
   const Icon = ICON_MAP[connector.icon] || Globe;
   const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
+  const hasOAuthTokens = !!connector.config?._has_oauth_tokens;
+  const hasClientCreds = !!(connector.config?._has_google_client_id || connector.config?._server_credentials);
 
   return (
     <div
       className="group relative rounded-2xl transition-all duration-200"
-      style={connector.configured ? { background: "rgba(14, 165, 233, 0.04)", border: "1px solid rgba(14, 165, 233, 0.2)" } : { background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}
+      style={
+        hasOAuthTokens
+          ? { background: "rgba(14, 165, 233, 0.04)", border: "1px solid rgba(14, 165, 233, 0.2)" }
+          : hasClientCreds
+          ? { background: "rgba(245, 158, 11, 0.04)", border: "1px solid rgba(245, 158, 11, 0.2)" }
+          : { background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }
+      }
     >
       <div className="p-5 flex flex-col h-full">
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div
             className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors overflow-hidden"
-          style={connector.configured ? { background: hasBrandLogo ? "transparent" : "rgba(14, 165, 233, 0.12)", color: "#38bdf8" } : { background: hasBrandLogo ? "transparent" : "rgba(255,255,255,0.05)", color: "#6b7280" }}
+            style={
+              hasOAuthTokens
+                ? { background: hasBrandLogo ? "transparent" : "rgba(14, 165, 233, 0.12)", color: "#38bdf8" }
+                : hasClientCreds
+                ? { background: hasBrandLogo ? "transparent" : "rgba(245, 158, 11, 0.12)", color: "#fbbf24" }
+                : { background: hasBrandLogo ? "transparent" : "rgba(255,255,255,0.05)", color: "#6b7280" }
+            }
           >
             {hasBrandLogo ? <ConnectorLogo name={connector.name} size={36} /> : <Icon className="w-5 h-5" />}
           </div>
 
-          {connector.configured ? (
+          {hasOAuthTokens ? (
             <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-sky-400" style={{ background: "rgba(14, 165, 233, 0.1)", border: "1px solid rgba(14, 165, 233, 0.2)" }}>
               <Shield className="w-3 h-3" />
               Authorized
+            </span>
+          ) : hasClientCreds ? (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-amber-400" style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
+              <KeyRound className="w-3 h-3" />
+              Needs Auth
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-gray-500" style={{ background: "rgb(var(--gray-800) / 0.6)", border: "1px solid rgba(255,255,255,0.07)" }}>
@@ -450,16 +469,27 @@ function GoogleConnectorCard({
         <button
           onClick={() => onConfigure(connector)}
           className={`mt-auto w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-            connector.configured
+            hasOAuthTokens || hasClientCreds
               ? "text-gray-300 hover:text-gray-100"
               : "text-white active:scale-[0.98]"
           }`}
-          style={connector.configured ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" } : { background: "rgba(14, 165, 233, 0.8)", boxShadow: "0 4px 14px rgba(14, 165, 233, 0.2)" }}
+          style={
+            hasOAuthTokens
+              ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }
+              : hasClientCreds
+              ? { background: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.3)" }
+              : { background: "rgba(14, 165, 233, 0.8)", boxShadow: "0 4px 14px rgba(14, 165, 233, 0.2)" }
+          }
         >
-          {connector.configured ? (
+          {hasOAuthTokens ? (
             <>
               <Settings2 className="w-4 h-4" />
               Manage
+            </>
+          ) : hasClientCreds ? (
+            <>
+              <Shield className="w-4 h-4" style={{ color: "#fbbf24" }} />
+              <span style={{ color: "#fbbf24" }}>Authorize</span>
             </>
           ) : (
             <>
@@ -957,13 +987,20 @@ function ConfigureModal({
           )}
 
           {/* OAuth Authorize button for Google connectors */}
-          {isGoogle && (
+          {isGoogle && (() => {
+            const hasClientId = !!(connector.config?._has_google_client_id || connector.config?._server_credentials);
+            const hasClientSecret = !!(connector.config?._has_google_client_secret || connector.config?._server_credentials);
+            const hasOAuthTokens = !!connector.config?._has_oauth_tokens;
+            const credentialsSaved = hasClientId && hasClientSecret;
+            return (
             <div className="rounded-xl bg-gray-900/80 border border-gray-800/40 p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div
                   className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                    connector.configured
+                    hasOAuthTokens
                       ? "bg-sky-500/15 text-sky-400"
+                      : credentialsSaved
+                      ? "bg-amber-500/15 text-amber-400"
                       : "bg-gray-800 text-gray-500"
                   }`}
                 >
@@ -974,19 +1011,28 @@ function ConfigureModal({
                     Google Authorization
                   </h4>
                   <p className="text-[11px] text-gray-500 mt-0.5">
-                    {connector.configured
+                    {hasOAuthTokens
                       ? "Account is authorized via OAuth — click to re-authorize"
-                      : "Click below to authorize Plutus via Google's secure consent screen"}
+                      : credentialsSaved
+                      ? "Credentials saved — click below to authorize your Google account"
+                      : "Save your Google Client ID and Secret above, then connect"}
                   </p>
                 </div>
               </div>
+              {!credentialsSaved && (
+                <p className="text-[11px] text-amber-400/80 bg-amber-500/8 rounded-lg px-3 py-2 border border-amber-500/15">
+                  ⚠️ Enter your Google Client ID and Client Secret above and click <strong>Save</strong> before connecting.
+                </p>
+              )}
               <button
                 onClick={handleAuthorize}
-                disabled={authorizing}
+                disabled={authorizing || !credentialsSaved}
                 className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98] ${
-                  connector.configured
+                  hasOAuthTokens
                     ? "bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/20"
-                    : "bg-sky-600 hover:bg-sky-500 text-white"
+                    : credentialsSaved
+                    ? "bg-sky-600 hover:bg-sky-500 text-white"
+                    : "bg-gray-800/60 text-gray-600 cursor-not-allowed"
                 }`}
               >
                 {authorizing ? (
@@ -994,13 +1040,14 @@ function ConfigureModal({
                 ) : (
                   <Shield className="w-4 h-4" />
                 )}
-                {connector.configured ? "Re-authorize with Google" : "Connect with Google"}
+                {hasOAuthTokens ? "Re-authorize with Google" : "Connect with Google"}
               </button>
               <p className="text-[10px] text-gray-600 text-center">
-                You'll be redirected to Google's consent screen — no passwords stored
+                You’ll be redirected to Google’s consent screen — your credentials are stored securely
               </p>
             </div>
-          )}
+            );
+          })()}
 
           {/* Hosting: Test Token + docs link */}
           {isHosting && (
@@ -1142,36 +1189,35 @@ function ConfigureModal({
 
         {/* Modal footer */}
         <div className="flex items-center gap-2 px-6 py-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)" }}>
-          {/* Google connectors: no Save/Test — everything is handled by the OAuth button above */}
+          {/* Save button — shown for all connectors including Google (to save client credentials) */}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98] ${saveButtonClass}`}
+          >
+            {saving ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : isAI ? (
+              <KeyRound className="w-3.5 h-3.5" />
+            ) : (
+              <Plug className="w-3.5 h-3.5" />
+            )}
+            Save
+          </button>
+          {/* Test Connection — not applicable for Google OAuth connectors */}
           {!isGoogle && (
-            <>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98] ${saveButtonClass}`}
-              >
-                {saving ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : isAI ? (
-                  <KeyRound className="w-3.5 h-3.5" />
-                ) : (
-                  <Plug className="w-3.5 h-3.5" />
-                )}
-                Save
-              </button>
-              <button
-                onClick={handleTest}
-                disabled={testing}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-800/80 hover:bg-gray-800 text-gray-300 hover:text-gray-100 text-sm font-medium transition-all disabled:opacity-50"
-              >
-                {testing ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Zap className="w-3.5 h-3.5" />
-                )}
-                Test Connection
-              </button>
-            </>
+            <button
+              onClick={handleTest}
+              disabled={testing}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-800/80 hover:bg-gray-800 text-gray-300 hover:text-gray-100 text-sm font-medium transition-all disabled:opacity-50"
+            >
+              {testing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5" />
+              )}
+              Test Connection
+            </button>
           )}
           <div className="flex-1" />
           {connector.configured && (
@@ -1453,7 +1499,7 @@ export default function ConnectorsView() {
                   Google Workspace
                 </h3>
                 <p className="text-[11px] text-gray-500">
-                  Gmail, Calendar &amp; Drive — authorized via OAuth (no secrets stored)
+                  Gmail, Calendar &amp; Drive — connect with your own Google OAuth app credentials
                 </p>
               </div>
               {googleConfigured.length > 0 && (

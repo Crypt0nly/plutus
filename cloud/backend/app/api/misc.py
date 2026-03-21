@@ -331,7 +331,29 @@ _CLOUD_CONNECTORS = [
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [],
+        "config_schema": [
+            {
+                "name": "google_client_id",
+                "label": "Google Client ID",
+                "type": "text",
+                "required": True,
+                "placeholder": "123456789-abc...apps.googleusercontent.com",
+                "help": (
+                    "Create an OAuth 2.0 Client ID at console.cloud.google.com → APIs & Services → "
+                    "Credentials. Add "
+                    "https://your-plutus-domain/api/connectors/google/callback "
+                    "as an authorised redirect URI."
+                ),
+            },
+            {
+                "name": "google_client_secret",
+                "label": "Google Client Secret",
+                "type": "password",
+                "required": True,
+                "placeholder": "GOCSPX-...",
+                "help": "The client secret paired with your Client ID from Google Cloud Console.",
+            },
+        ],
         "features": [],
         "docs_url": "https://developers.google.com/gmail/api",
     },
@@ -347,7 +369,29 @@ _CLOUD_CONNECTORS = [
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [],
+        "config_schema": [
+            {
+                "name": "google_client_id",
+                "label": "Google Client ID",
+                "type": "text",
+                "required": True,
+                "placeholder": "123456789-abc...apps.googleusercontent.com",
+                "help": (
+                    "Create an OAuth 2.0 Client ID at console.cloud.google.com → APIs & Services → "
+                    "Credentials. Add "
+                    "https://your-plutus-domain/api/connectors/google/callback "
+                    "as an authorised redirect URI."
+                ),
+            },
+            {
+                "name": "google_client_secret",
+                "label": "Google Client Secret",
+                "type": "password",
+                "required": True,
+                "placeholder": "GOCSPX-...",
+                "help": "The client secret paired with your Client ID from Google Cloud Console.",
+            },
+        ],
         "features": [],
         "docs_url": "https://developers.google.com/calendar",
     },
@@ -363,7 +407,29 @@ _CLOUD_CONNECTORS = [
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [],
+        "config_schema": [
+            {
+                "name": "google_client_id",
+                "label": "Google Client ID",
+                "type": "text",
+                "required": True,
+                "placeholder": "123456789-abc...apps.googleusercontent.com",
+                "help": (
+                    "Create an OAuth 2.0 Client ID at console.cloud.google.com → APIs & Services → "
+                    "Credentials. Add "
+                    "https://your-plutus-domain/api/connectors/google/callback "
+                    "as an authorised redirect URI."
+                ),
+            },
+            {
+                "name": "google_client_secret",
+                "label": "Google Client Secret",
+                "type": "password",
+                "required": True,
+                "placeholder": "GOCSPX-...",
+                "help": "The client secret paired with your Client ID from Google Cloud Console.",
+            },
+        ],
         "features": [],
         "docs_url": "https://developers.google.com/drive",
     },
@@ -652,16 +718,37 @@ async def list_connectors(
         entry = dict(c)
         connector_creds = creds.get(c["name"], {})
         if connector_creds:
-            # For Google OAuth connectors, configured = True only if oauth_tokens are present
             if c.get("auth_type") == "oauth_button":
+                # For Google OAuth connectors:
+                # - configured = True when the user has saved their client credentials
+                #   (client ID + secret), regardless of whether they've completed OAuth yet.
+                # - _has_oauth_tokens indicates whether the full OAuth flow is done.
                 has_tokens = bool(connector_creds.get("oauth_tokens"))
-                entry["configured"] = has_tokens
-                # Expose a safe indicator so the frontend can show "Authorized" state
-                entry["config"] = {"_has_oauth_tokens": has_tokens}
+                has_client_creds = bool(
+                    connector_creds.get("google_client_id")
+                    and connector_creds.get("google_client_secret")
+                )
+                # Fall back to server-level credentials if user hasn't set their own
+                server_has_creds = bool(settings.google_client_id and settings.google_client_secret)
+                entry["configured"] = has_client_creds or server_has_creds
+                # Expose safe indicators so the frontend can show the right state.
+                # Mask the actual client_id/secret values but indicate they are saved.
+                safe_config: dict = {"_has_oauth_tokens": has_tokens}
+                if has_client_creds:
+                    safe_config["_has_google_client_id"] = True
+                    safe_config["_has_google_client_secret"] = True
+                entry["config"] = safe_config
             else:
                 entry["configured"] = True
                 # Don't leak secrets — mask the config values
                 entry["config"] = {k: "••••••••" for k in connector_creds}
+        else:
+            # No user-level creds — check if server provides them
+            if c.get("auth_type") == "oauth_button":
+                server_has_creds = bool(settings.google_client_id and settings.google_client_secret)
+                if server_has_creds:
+                    entry["configured"] = True
+                    entry["config"] = {"_has_oauth_tokens": False, "_server_credentials": True}
         result.append(entry)
     return {"connectors": result}
 
@@ -684,11 +771,30 @@ async def get_connector(
             if connector_creds:
                 if c.get("auth_type") == "oauth_button":
                     has_tokens = bool(connector_creds.get("oauth_tokens"))
-                    entry["configured"] = has_tokens
-                    entry["config"] = {"_has_oauth_tokens": has_tokens}
+                    has_client_creds = bool(
+                        connector_creds.get("google_client_id")
+                        and connector_creds.get("google_client_secret")
+                    )
+                    server_has_creds = bool(
+                        settings.google_client_id and settings.google_client_secret
+                    )
+                    entry["configured"] = has_client_creds or server_has_creds
+                    safe_config: dict = {"_has_oauth_tokens": has_tokens}
+                    if has_client_creds:
+                        safe_config["_has_google_client_id"] = True
+                        safe_config["_has_google_client_secret"] = True
+                    entry["config"] = safe_config
                 else:
                     entry["configured"] = True
                     entry["config"] = {k: "••••••••" for k in connector_creds}
+            else:
+                if c.get("auth_type") == "oauth_button":
+                    server_has_creds = bool(
+                        settings.google_client_id and settings.google_client_secret
+                    )
+                    if server_has_creds:
+                        entry["configured"] = True
+                        entry["config"] = {"_has_oauth_tokens": False, "_server_credentials": True}
             return entry
     return {}
 
@@ -1008,6 +1114,7 @@ async def set_connector_auto_start(
 async def google_authorize(
     service: str = Query(..., description="gmail | google_calendar | google_drive"),
     user_id: str = Query(..., description="Clerk user ID"),
+    db: AsyncSession = Depends(get_session),
 ):
     """Redirect the user to Google's OAuth consent screen.
 
@@ -1015,15 +1122,40 @@ async def google_authorize(
     it is reached via a plain browser redirect (window.location.href) which
     cannot carry an Authorization header.  The user_id is embedded in a
     signed HMAC state token so it cannot be tampered with.
+
+    Per-user Google OAuth credentials (stored in connector_credentials) take
+    precedence over server-level environment variables, allowing each user to
+    supply their own Google Cloud OAuth app credentials.
     """
     from app.services.google_oauth import build_authorize_url
 
-    if not settings.google_client_id:
+    # Look up per-user credentials first
+    user_client_id: str | None = None
+    user_row = await db.get(User, user_id)
+    if user_row:
+        all_creds = user_row.connector_credentials or {}
+        # All three Google services share the same client credentials; look in
+        # the service-specific bucket first, then fall back to any of the three.
+        for svc in (service, "gmail", "google_calendar", "google_drive"):
+            svc_creds = all_creds.get(svc, {})
+            if svc_creds.get("google_client_id"):
+                user_client_id = svc_creds["google_client_id"]
+                break
+
+    # If neither the user nor the server has a client ID, return a helpful error.
+    if not user_client_id and not settings.google_client_id:
         return {
-            "error": "Google OAuth is not configured on this server. "
-            "Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+            "error": (
+                "Google OAuth is not configured. "
+                "Please enter your Google Client ID and Client Secret in the "
+                "connector settings and click Save before connecting."
+            )
         }
-    url = build_authorize_url(user_id, service)
+
+    try:
+        url = build_authorize_url(user_id, service, client_id=user_client_id)
+    except ValueError as exc:
+        return {"error": str(exc)}
     return RedirectResponse(url)
 
 
@@ -1053,19 +1185,36 @@ async def google_callback(
     user_id = state_data["user_id"]
     service = state_data["service"]
 
-    try:
-        tokens = await exchange_code_for_tokens(code, service)
-    except Exception as exc:
-        logger.error("Google token exchange failed: %s", exc)
-        return RedirectResponse(f"{settings_url}&oauth_error=token_exchange_failed")
-
-    # Store tokens in user.connector_credentials
+    # Look up per-user client credentials before the token exchange
     result = await db.execute(select(User).where(User.id == user_id))
     user_row = result.scalar_one_or_none()
     if not user_row:
         return RedirectResponse(f"{settings_url}&oauth_error=user_not_found")
 
-    creds = dict(user_row.connector_credentials or {})
+    all_creds = user_row.connector_credentials or {}
+    user_client_id: str | None = None
+    user_client_secret: str | None = None
+    # Look for credentials in the service bucket or any Google service bucket
+    for svc in (service, "gmail", "google_calendar", "google_drive"):
+        svc_creds = all_creds.get(svc, {})
+        if svc_creds.get("google_client_id") and svc_creds.get("google_client_secret"):
+            user_client_id = svc_creds["google_client_id"]
+            user_client_secret = svc_creds["google_client_secret"]
+            break
+
+    try:
+        tokens = await exchange_code_for_tokens(
+            code,
+            service,
+            client_id=user_client_id,
+            client_secret=user_client_secret,
+        )
+    except Exception as exc:
+        logger.error("Google token exchange failed: %s", exc)
+        return RedirectResponse(f"{settings_url}&oauth_error=token_exchange_failed")
+
+    # Store tokens in user.connector_credentials
+    creds = dict(all_creds)
     if service not in creds:
         creds[service] = {}
     creds[service]["oauth_tokens"] = tokens

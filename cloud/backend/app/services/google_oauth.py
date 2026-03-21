@@ -98,17 +98,32 @@ def _verify_state(state: str) -> dict[str, str] | None:
 # ---------------------------------------------------------------------------
 
 
-def build_authorize_url(user_id: str, service: str) -> str:
-    """Build the Google OAuth authorization URL for a given service."""
+def build_authorize_url(
+    user_id: str,
+    service: str,
+    client_id: str | None = None,
+) -> str:
+    """Build the Google OAuth authorization URL for a given service.
+
+    ``client_id`` overrides the server-level ``settings.google_client_id`` so
+    that users who have stored their own OAuth app credentials can use them.
+    """
     scopes = SCOPES.get(service, [])
     if not scopes:
         raise ValueError(f"Unknown Google service: {service}")
+
+    effective_client_id = client_id or settings.google_client_id
+    if not effective_client_id:
+        raise ValueError(
+            "No Google Client ID available. "
+            "Please save your Google Client ID in the connector settings first."
+        )
 
     redirect_uri = f"{settings.server_base_url}/api/connectors/google/callback"
     state = _make_state(user_id, service)
 
     params = {
-        "client_id": settings.google_client_id,
+        "client_id": effective_client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": " ".join(scopes),
@@ -126,15 +141,33 @@ def build_authorize_url(user_id: str, service: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def exchange_code_for_tokens(code: str, service: str) -> dict[str, Any]:
-    """Exchange an authorization code for an access token (online flow, no refresh token)."""
+async def exchange_code_for_tokens(
+    code: str,
+    service: str,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+) -> dict[str, Any]:
+    """Exchange an authorization code for an access token (online flow, no refresh token).
+
+    ``client_id`` and ``client_secret`` override the server-level settings so
+    that users who have stored their own OAuth app credentials can use them.
+    """
+    effective_client_id = client_id or settings.google_client_id
+    effective_client_secret = client_secret or settings.google_client_secret
+
+    if not effective_client_id or not effective_client_secret:
+        raise RuntimeError(
+            "No Google OAuth credentials available for token exchange. "
+            "Please save your Google Client ID and Secret in the connector settings."
+        )
+
     redirect_uri = f"{settings.server_base_url}/api/connectors/google/callback"
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             TOKEN_URL,
             data={
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
+                "client_id": effective_client_id,
+                "client_secret": effective_client_secret,
                 "code": code,
                 "grant_type": "authorization_code",
                 "redirect_uri": redirect_uri,
