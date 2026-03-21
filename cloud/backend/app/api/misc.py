@@ -6,12 +6,18 @@ All endpoints require a valid Clerk JWT so the frontend can call them
 after sign-in without hitting 401/404 errors.
 """
 
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.auth import get_current_user
+from app.config import settings
 from app.database import get_session
+from app.models import User
 
+logger = logging.getLogger("plutus.misc")
 router = APIRouter()
 
 
@@ -318,44 +324,13 @@ _CLOUD_CONNECTORS = [
         "description": "Read, send and manage your Gmail messages.",
         "icon": "Mail",
         "category": "google",
-        "auth_type": "oauth",
+        "auth_type": "oauth_button",
+        "oauth_service": "gmail",
         "configured": False,
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [
-            {
-                "name": "client_id",
-                "label": "OAuth Client ID",
-                "type": "text",
-                "required": True,
-                "placeholder": "123456789-abc.apps.googleusercontent.com",
-                "help": (
-                    "Create OAuth 2.0 credentials at console.cloud.google.com. "
-                    "Enable the Gmail API and add your email as a test user."
-                ),
-            },
-            {
-                "name": "client_secret",
-                "label": "OAuth Client Secret",
-                "type": "password",
-                "required": True,
-                "placeholder": "GOCSPX-...",
-                "help": "Found in the same OAuth 2.0 credentials page.",
-            },
-            {
-                "name": "refresh_token",
-                "label": "Refresh Token",
-                "type": "password",
-                "required": True,
-                "placeholder": "1//0g...",
-                "help": (
-                    "Run the OAuth flow once to obtain a refresh token. "
-                    "Use the Google OAuth Playground (developers.google.com/oauthplayground) "
-                    "with your credentials to get one quickly."
-                ),
-            },
-        ],
+        "config_schema": [],
         "features": [],
         "docs_url": "https://developers.google.com/gmail/api",
     },
@@ -365,44 +340,13 @@ _CLOUD_CONNECTORS = [
         "description": "Create, read and manage your Google Calendar events.",
         "icon": "Calendar",
         "category": "google",
-        "auth_type": "oauth",
+        "auth_type": "oauth_button",
+        "oauth_service": "google_calendar",
         "configured": False,
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [
-            {
-                "name": "client_id",
-                "label": "OAuth Client ID",
-                "type": "text",
-                "required": True,
-                "placeholder": "123456789-abc.apps.googleusercontent.com",
-                "help": (
-                    "Create OAuth 2.0 credentials at console.cloud.google.com. "
-                    "Enable the Google Calendar API and add your email as a test user."
-                ),
-            },
-            {
-                "name": "client_secret",
-                "label": "OAuth Client Secret",
-                "type": "password",
-                "required": True,
-                "placeholder": "GOCSPX-...",
-                "help": "Found in the same OAuth 2.0 credentials page.",
-            },
-            {
-                "name": "refresh_token",
-                "label": "Refresh Token",
-                "type": "password",
-                "required": True,
-                "placeholder": "1//0g...",
-                "help": (
-                    "Run the OAuth flow once to obtain a refresh token. "
-                    "Use the Google OAuth Playground (developers.google.com/oauthplayground) "
-                    "with your credentials to get one quickly."
-                ),
-            },
-        ],
+        "config_schema": [],
         "features": [],
         "docs_url": "https://developers.google.com/calendar",
     },
@@ -412,44 +356,13 @@ _CLOUD_CONNECTORS = [
         "description": "Read, upload and manage files in your Google Drive.",
         "icon": "HardDrive",
         "category": "google",
-        "auth_type": "oauth",
+        "auth_type": "oauth_button",
+        "oauth_service": "google_drive",
         "configured": False,
         "connected": False,
         "auto_start": False,
         "config": {},
-        "config_schema": [
-            {
-                "name": "client_id",
-                "label": "OAuth Client ID",
-                "type": "text",
-                "required": True,
-                "placeholder": "123456789-abc.apps.googleusercontent.com",
-                "help": (
-                    "Create OAuth 2.0 credentials at console.cloud.google.com. "
-                    "Enable the Google Drive API and add your email as a test user."
-                ),
-            },
-            {
-                "name": "client_secret",
-                "label": "OAuth Client Secret",
-                "type": "password",
-                "required": True,
-                "placeholder": "GOCSPX-...",
-                "help": "Found in the same OAuth 2.0 credentials page.",
-            },
-            {
-                "name": "refresh_token",
-                "label": "Refresh Token",
-                "type": "password",
-                "required": True,
-                "placeholder": "1//0g...",
-                "help": (
-                    "Run the OAuth flow once to obtain a refresh token. "
-                    "Use the Google OAuth Playground (developers.google.com/oauthplayground) "
-                    "with your credentials to get one quickly."
-                ),
-            },
-        ],
+        "config_schema": [],
         "features": [],
         "docs_url": "https://developers.google.com/drive",
     },
@@ -736,10 +649,18 @@ async def list_connectors(
     result = []
     for c in _CLOUD_CONNECTORS:
         entry = dict(c)
-        if c["name"] in creds:
-            entry["configured"] = True
-            # Don't leak secrets — mask the config values
-            entry["config"] = {k: "••••••••" for k in creds[c["name"]]}
+        connector_creds = creds.get(c["name"], {})
+        if connector_creds:
+            # For Google OAuth connectors, configured = True only if oauth_tokens are present
+            if c.get("auth_type") == "oauth_button":
+                has_tokens = bool(connector_creds.get("oauth_tokens"))
+                entry["configured"] = has_tokens
+                # Expose a safe indicator so the frontend can show "Authorized" state
+                entry["config"] = {"_has_oauth_tokens": has_tokens}
+            else:
+                entry["configured"] = True
+                # Don't leak secrets — mask the config values
+                entry["config"] = {k: "••••••••" for k in connector_creds}
         result.append(entry)
     return {"connectors": result}
 
@@ -758,9 +679,15 @@ async def get_connector(
     for c in _CLOUD_CONNECTORS:
         if c["name"] == name:
             entry = dict(c)
-            if name in creds:
-                entry["configured"] = True
-                entry["config"] = {k: "••••••••" for k in creds[name]}
+            connector_creds = creds.get(name, {})
+            if connector_creds:
+                if c.get("auth_type") == "oauth_button":
+                    has_tokens = bool(connector_creds.get("oauth_tokens"))
+                    entry["configured"] = has_tokens
+                    entry["config"] = {"_has_oauth_tokens": has_tokens}
+                else:
+                    entry["configured"] = True
+                    entry["config"] = {k: "••••••••" for k in connector_creds}
             return entry
     return {}
 
@@ -1069,6 +996,77 @@ async def set_connector_auto_start(
     name: str, _body: dict | None = None, _user=Depends(get_current_user)
 ):
     return {"message": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Google OAuth — authorize + callback
+# ---------------------------------------------------------------------------
+
+
+@router.get("/connectors/google/authorize")
+async def google_authorize(
+    service: str = Query(..., description="gmail | google_calendar | google_drive"),
+    user=Depends(get_current_user),
+):
+    """Redirect the user to Google's OAuth consent screen."""
+    from app.services.google_oauth import build_authorize_url
+
+    if not settings.google_client_id:
+        return {
+            "error": "Google OAuth is not configured on this server. "
+            "Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+        }
+    url = build_authorize_url(user["user_id"], service)
+    return RedirectResponse(url)
+
+
+@router.get("/connectors/google/callback")
+async def google_callback(
+    code: str = Query(None),
+    state: str = Query(None),
+    error: str = Query(None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Handle Google's OAuth callback, exchange code for tokens, store them."""
+    from app.services.google_oauth import _verify_state, exchange_code_for_tokens
+
+    frontend_base = settings.cors_origins[0] if settings.cors_origins else "http://localhost:3000"
+    settings_url = f"{frontend_base}/settings?tab=connectors"
+
+    if error:
+        return RedirectResponse(f"{settings_url}&oauth_error={error}")
+
+    if not state or not code:
+        return RedirectResponse(f"{settings_url}&oauth_error=missing_params")
+
+    state_data = _verify_state(state)
+    if not state_data:
+        return RedirectResponse(f"{settings_url}&oauth_error=invalid_state")
+
+    user_id = state_data["user_id"]
+    service = state_data["service"]
+
+    try:
+        tokens = await exchange_code_for_tokens(code, service)
+    except Exception as exc:
+        logger.error("Google token exchange failed: %s", exc)
+        return RedirectResponse(f"{settings_url}&oauth_error=token_exchange_failed")
+
+    # Store tokens in user.connector_credentials
+    result = await db.execute(select(User).where(User.id == user_id))
+    user_row = result.scalar_one_or_none()
+    if not user_row:
+        return RedirectResponse(f"{settings_url}&oauth_error=user_not_found")
+
+    creds = dict(user_row.connector_credentials or {})
+    if service not in creds:
+        creds[service] = {}
+    creds[service]["oauth_tokens"] = tokens
+    creds[service]["configured"] = True
+    user_row.connector_credentials = creds
+    await db.commit()
+
+    return RedirectResponse(f"{settings_url}&oauth_success={service}")
 
 
 @router.post("/connectors/{name}/authorize")

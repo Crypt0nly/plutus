@@ -401,6 +401,18 @@ export default function App() {
     });
   }, [setCurrentTier, setKeyConfigured, setOnboardingCompleted]);
 
+  // Handle URL-based navigation (e.g., OAuth callback redirects back with ?tab=connectors)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    const validViews = ["connectors", "settings", "chat", "dashboard", "tools", "workers", "sessions", "memory", "skills", "guardrails"];
+    if (tab && validViews.includes(tab)) {
+      setView(tab as Parameters<typeof setView>[0]);
+      // Don't clean the URL here — the target view will handle its own params
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Check for updates on mount, then every 6 hours
   useEffect(() => {
     const check = () => {

@@ -302,6 +302,13 @@ export const api = {
     safeRequest<Record<string, any>>(`/connectors/${name}/authorize`, {}, {
       method: "POST",
     }),
+  /** Returns the Google OAuth redirect URL for the given service (gmail | google_calendar | google_drive). */
+  getGoogleOAuthUrl: (service: string): string => {
+    const base = (import.meta.env.VITE_API_BASE_URL
+      ? `${import.meta.env.VITE_API_BASE_URL}/api`
+      : "/api") as string;
+    return `${base}/connectors/google/authorize?service=${encodeURIComponent(service)}`;
+  },
   createCustomConnector: (data: {
     connector_id: string;
     display_name?: string;

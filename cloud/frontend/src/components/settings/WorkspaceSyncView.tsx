@@ -64,9 +64,10 @@ export default function WorkspaceSyncView() {
     try {
       const data = await api.getConfig();
       if (data.cloud_sync) {
-        setAutoSync(data.cloud_sync.auto_sync ?? false);
+        const cs = data.cloud_sync as { auto_sync?: boolean; auto_sync_interval?: number };
+        setAutoSync(cs.auto_sync ?? false);
         setAutoSyncInterval(
-          Math.round((data.cloud_sync.auto_sync_interval ?? 300) / 60)
+          Math.round((cs.auto_sync_interval ?? 300) / 60)
         );
       }
     } catch {

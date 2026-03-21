@@ -35,54 +35,28 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Google OAuth token refresh
+# Google OAuth access token helper
 # ---------------------------------------------------------------------------
-
-_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-
-
-async def _refresh_google_token(
-    refresh_token: str,
-    client_id: str,
-    client_secret: str,
-) -> str | None:
-    """Exchange a refresh token for a fresh access token."""
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                _GOOGLE_TOKEN_URL,
-                data={
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "refresh_token": refresh_token,
-                    "grant_type": "refresh_token",
-                },
-            )
-            if resp.status_code != 200:
-                logger.error(f"Google token refresh failed: {resp.status_code} {resp.text}")
-                return None
-            data = resp.json()
-            return data.get("access_token")
-    except Exception as exc:
-        logger.error(f"Google token refresh error: {exc}")
-        return None
 
 
 async def _get_google_access_token(creds: dict) -> str | None:
-    """Return a valid Google access token, refreshing if expired."""
-    access_token = creds.get("access_token")
-    expires_at = creds.get("expires_at", 0)
-    refresh_token = creds.get("refresh_token")
-    client_id = creds.get("client_id", "")
-    client_secret = creds.get("client_secret", "")
+    """Return a valid Google access token.
 
-    if access_token and time.time() < expires_at - 60:
-        return access_token
+    We use access_type=online (no refresh token), so we simply return the
+    stored access token.  If it has expired the Google API will return a 401
+    and the user should re-authorize via the Connectors tab.
 
-    if refresh_token and client_id:
-        return await _refresh_google_token(refresh_token, client_id, client_secret)
+    Supports two credential layouts:
+    1. OAuth flow (new): creds = {"oauth_tokens": {"access_token": ..., "expires_at": ...}, ...}
+    2. Legacy manual entry: creds = {"access_token": ..., ...}
+    """
+    # New layout: tokens stored under oauth_tokens by the server-side OAuth flow
+    oauth_tokens = creds.get("oauth_tokens")
+    if oauth_tokens:
+        return oauth_tokens.get("access_token")
 
-    return None
+    # Legacy layout: manually entered credentials
+    return creds.get("access_token")
 
 
 # ---------------------------------------------------------------------------

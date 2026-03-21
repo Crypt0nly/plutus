@@ -514,7 +514,7 @@ function ConfigureModal({
   const Icon = ICON_MAP[connector.icon] || Plug;
   const hasBrandLogo = !!CONNECTOR_LOGO_MAP[connector.name?.toLowerCase() ?? ""];
   const isAI = connector.category === "ai";
-  const isGoogle = connector.auth_type === "oauth";
+  const isGoogle = connector.auth_type === "oauth_button" || connector.category === "google";
   const isHosting = connector.category === "hosting";
   const supportsTwoWay = connector.name === "telegram" || connector.name === "discord" || connector.name === "whatsapp";
 
@@ -684,6 +684,16 @@ function ConfigureModal({
     setAuthorizing(true);
     setTestResult(null);
     try {
+      if (isGoogle) {
+        // Server-side OAuth flow: redirect the browser to Google's consent screen.
+        // The backend will redirect back to the frontend after the user authorizes.
+        const oauthService = (connector as any).oauth_service || connector.name;
+        const url = api.getGoogleOAuthUrl(oauthService);
+        // The backend uses a signed state token to identify the user — no JWT needed.
+        window.location.href = url;
+        // Don't reset authorizing — the page will navigate away
+        return;
+      }
       const result = await api.authorizeConnector(connector.name);
       setTestResult({ success: result.success, message: result.message });
       if (result.success) onRefresh();
@@ -864,7 +874,8 @@ function ConfigureModal({
             </div>
           )}
 
-          {/* Configuration Fields */}
+          {/* Configuration Fields — hidden for Google connectors (pure OAuth, no manual fields) */}
+          {(!isGoogle || (connector.config_schema ?? []).length > 0) && (
           <div>
             <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
               {isGoogle ? "OAuth Setup" : isAI ? "API Key" : isHosting ? "Deploy Token" : "Configuration"}
@@ -940,6 +951,7 @@ function ConfigureModal({
               })}
             </div>
           </div>
+          )}
 
           {/* OAuth Authorize button for Google connectors */}
           {isGoogle && (
@@ -960,17 +972,15 @@ function ConfigureModal({
                   </h4>
                   <p className="text-[11px] text-gray-500 mt-0.5">
                     {connector.configured
-                      ? "Account is authorized via OAuth"
-                      : connector.config._has_client_id
-                        ? "Credentials saved — click below to authorize"
-                        : "Save your Client ID first, then authorize"}
+                      ? "Account is authorized via OAuth — click to re-authorize"
+                      : "Click below to authorize Plutus via Google's secure consent screen"}
                   </p>
                 </div>
               </div>
               <button
                 onClick={handleAuthorize}
-                disabled={authorizing || !(formData.client_id?.trim() || connector.config._has_client_id)}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 ${
+                disabled={authorizing}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98] ${
                   connector.configured
                     ? "bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/20"
                     : "bg-sky-600 hover:bg-sky-500 text-white"
@@ -981,10 +991,10 @@ function ConfigureModal({
                 ) : (
                   <Shield className="w-4 h-4" />
                 )}
-                {connector.configured ? "Re-authorize" : "Authorize with Google"}
+                {connector.configured ? "Re-authorize with Google" : "Connect with Google"}
               </button>
               <p className="text-[10px] text-gray-600 text-center">
-                Opens Google's consent screen in your browser — tokens stay local
+                You'll be redirected to Google's consent screen — no passwords stored
               </p>
             </div>
           )}
@@ -1129,32 +1139,37 @@ function ConfigureModal({
 
         {/* Modal footer */}
         <div className="flex items-center gap-2 px-6 py-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)" }}>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98] ${saveButtonClass}`}
-          >
-            {saving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : isAI ? (
-              <KeyRound className="w-3.5 h-3.5" />
-            ) : (
-              <Plug className="w-3.5 h-3.5" />
-            )}
-            Save
-          </button>
-          <button
-            onClick={handleTest}
-            disabled={testing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-800/80 hover:bg-gray-800 text-gray-300 hover:text-gray-100 text-sm font-medium transition-all disabled:opacity-50"
-          >
-            {testing ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Zap className="w-3.5 h-3.5" />
-            )}
-            Test Connection
-          </button>
+          {/* Google connectors: no Save/Test — everything is handled by the OAuth button above */}
+          {!isGoogle && (
+            <>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98] ${saveButtonClass}`}
+              >
+                {saving ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isAI ? (
+                  <KeyRound className="w-3.5 h-3.5" />
+                ) : (
+                  <Plug className="w-3.5 h-3.5" />
+                )}
+                Save
+              </button>
+              <button
+                onClick={handleTest}
+                disabled={testing}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-800/80 hover:bg-gray-800 text-gray-300 hover:text-gray-100 text-sm font-medium transition-all disabled:opacity-50"
+              >
+                {testing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                Test Connection
+              </button>
+            </>
+          )}
           <div className="flex-1" />
           {connector.configured && (
             <button
@@ -1167,7 +1182,7 @@ function ConfigureModal({
               ) : (
                 <Trash2 className="w-3.5 h-3.5" />
               )}
-              {isAI ? "Remove Key" : "Disconnect"}
+              {isAI ? "Remove Key" : isGoogle ? "Revoke Access" : "Disconnect"}
             </button>
           )}
         </div>
@@ -1182,6 +1197,8 @@ export default function ConnectorsView() {
   const [loading, setLoading] = useState(true);
   const [configuring, setConfiguring] = useState<ConnectorData | null>(null);
   const [showAddCustom, setShowAddCustom] = useState(false);
+  // OAuth callback feedback (shown after Google redirects back to this page)
+  const [oauthBanner, setOauthBanner] = useState<{ success: boolean; message: string } | null>(null);
   const [customForm, setCustomForm] = useState({
     connector_id: "",
     display_name: "",
@@ -1250,6 +1267,51 @@ export default function ConnectorsView() {
     fetchConnectors();
   }, [fetchConnectors]);
 
+  // Handle Google OAuth callback — the backend redirects back to
+  // /settings?tab=connectors&oauth_success=gmail  (or oauth_error=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get("oauth_success");
+    const error = params.get("oauth_error");
+    if (success) {
+      const serviceLabel: Record<string, string> = {
+        gmail: "Gmail",
+        google_calendar: "Google Calendar",
+        google_drive: "Google Drive",
+      };
+      setOauthBanner({
+        success: true,
+        message: `${serviceLabel[success] || success} connected successfully!`,
+      });
+      // Refresh connector list so the card shows "Authorized"
+      fetchConnectors();
+      // Clean up the URL params without a full page reload
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("oauth_success");
+      clean.searchParams.delete("tab");
+      window.history.replaceState({}, "", clean.toString());
+      // Auto-dismiss after 6 s
+      setTimeout(() => setOauthBanner(null), 6000);
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        missing_params: "Missing OAuth parameters",
+        invalid_state: "Invalid OAuth state — please try again",
+        token_exchange_failed: "Failed to exchange authorization code",
+        user_not_found: "User account not found",
+      };
+      setOauthBanner({
+        success: false,
+        message: `Google authorization failed: ${errorMessages[error] || error}`,
+      });
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("oauth_error");
+      clean.searchParams.delete("tab");
+      window.history.replaceState({}, "", clean.toString());
+      setTimeout(() => setOauthBanner(null), 8000);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleRefresh = useCallback(() => {
     fetchConnectors();
     // Update the configuring connector if it's open
@@ -1303,6 +1365,30 @@ export default function ConnectorsView() {
             Manage AI provider keys and messaging integrations in one place
           </p>
         </div>
+
+        {/* OAuth callback banner */}
+        {oauthBanner && (
+          <div
+            className={`flex items-start gap-3 p-4 rounded-xl text-sm ${
+              oauthBanner.success
+                ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                : "bg-red-500/10 text-red-300 border border-red-500/20"
+            }`}
+          >
+            {oauthBanner.success ? (
+              <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-400" />
+            ) : (
+              <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-400" />
+            )}
+            <span className="flex-1">{oauthBanner.message}</span>
+            <button
+              onClick={() => setOauthBanner(null)}
+              className="text-current opacity-60 hover:opacity-100 transition-opacity"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* ═══════════════════════════════════════════════ */}
         {/* AI PROVIDERS SECTION                           */}

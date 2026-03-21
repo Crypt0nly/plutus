@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     # E2B cloud sandbox (fallback when local bridge is not connected)
     e2b_api_key: str = ""
 
+    # Google OAuth — shared app credentials for Gmail/Calendar/Drive connectors
+    # Users still need to authorize via the OAuth flow; these are the app credentials.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
+    # Public base URL of this server (used for OAuth redirect URIs)
+    server_base_url: str = "http://localhost:8000"
+
     # Workspace — per-user file storage
     workspace_root: str = "/data/workspaces"
 
