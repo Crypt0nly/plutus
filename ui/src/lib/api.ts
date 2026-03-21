@@ -422,6 +422,20 @@ export const api = {
           });
           uploaded++;
         }
+        // After uploading files to the cloud server workspace, trigger
+        // a cloud workspace → sandbox pull so the agent can see the files
+        // immediately without requiring a separate manual pull.
+        if (uploaded > 0) {
+          try {
+            await fetch(`${cloudUrl}/api/workspace/pull`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            });
+          } catch {
+            // Non-fatal — files are on the server, sandbox will pick them up
+            // on the next periodic sync or when a new sandbox is started.
+          }
+        }
         return { uploaded, total: toUpload.length };
       });
   },
