@@ -297,9 +297,7 @@ async def generate_sync_token(user=Depends(get_current_user)):
 
     raw = os.urandom(32).hex()
     # Encode the server URL into the token so the local client can extract it
-    url_b64 = base64.urlsafe_b64encode(
-        settings.server_base_url.encode()
-    ).decode().rstrip("=")
+    url_b64 = base64.urlsafe_b64encode(settings.server_base_url.encode()).decode().rstrip("=")
     token = f"plutus_{url_b64}.{raw}"
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     store = _token_store_path(user["user_id"])
