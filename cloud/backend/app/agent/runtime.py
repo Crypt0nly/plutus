@@ -336,7 +336,19 @@ class CloudAgentRuntime:
             from app.services.cloud_plan_manager import CloudPlanManager
 
             manager = CloudPlanManager(self.user_id, self.session)
-            active_plan = await manager.get_active_plan()
+            # Use a savepoint (nested transaction) so that if the plans table
+            # doesn't exist yet or any DB error occurs, only the savepoint is
+            # rolled back — the outer transaction stays usable for all
+            # subsequent queries (e.g. the user lookup that follows).
+            active_plan = None
+            try:
+                async with self.session.begin_nested():
+                    active_plan = await manager.get_active_plan()
+            except Exception as inner_exc:
+                logger.warning(
+                    "[Runtime] Could not load active plan (savepoint rolled back): %s",
+                    inner_exc,
+                )
             if active_plan:
                 plan_block = (
                     "\n\n"
