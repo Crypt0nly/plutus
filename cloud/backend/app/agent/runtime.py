@@ -60,6 +60,14 @@ class CloudAgentRuntime:
 
         await self._save_message(conversation_id, "user", message)
 
+        # Reset heartbeat consecutive counter when user sends a real message
+        try:
+            from app.services.cloud_heartbeat import CloudHeartbeatManager
+
+            CloudHeartbeatManager.get_instance().reset_consecutive(self.user_id)
+        except Exception:
+            pass
+
         history = await self.agent_service.get_messages(conversation_id)
         messages = [{"role": m.role, "content": m.content} for m in history]
 
@@ -310,8 +318,8 @@ class CloudAgentRuntime:
             return settings.openai_api_key
         return ""
 
-    async def _build_system_prompt(self) -> str:
-        """Build system prompt with user context and memory facts."""
+    async def _build_system_prompt(self, conversation_id: str | None = None) -> str:
+        """Build system prompt with user context, memory facts, and active plan."""
         facts = await self.agent_service.get_memory_facts(self.user_id)
         facts_block = "\n".join(f"- {f}" for f in facts) if facts else "None"
 
@@ -321,21 +329,62 @@ class CloudAgentRuntime:
             else "Running in cloud sandbox mode (E2B)."
         )
 
+        # Inject active plan so the agent always knows where it is in a
+        # multi-step task, especially important during heartbeat wake-ups.
+        plan_block = ""
+        try:
+            from app.services.cloud_plan_manager import CloudPlanManager
+
+            manager = CloudPlanManager(self.user_id, self.session)
+            active_plan = await manager.get_active_plan()
+            if active_plan:
+                plan_block = (
+                    "\n\n"
+                    + manager.format_plan(active_plan)
+                    + "\n\nYou have an active plan above. On each heartbeat or new message, "
+                    "check the plan, mark the current step in_progress, execute it, then "
+                    "mark it done before moving to the next. Never ask the user for "
+                    "permission to continue — just keep working autonomously."
+                )
+        except Exception as exc:
+            logger.warning("[Runtime] Could not load active plan: %s", exc)
+
         return (
-            "You are Plutus, a highly capable personal AI assistant.\n"
+            "You are Plutus, a highly capable autonomous AI agent and personal assistant.\n"
             "You have access to a real execution environment with tools for:\n"
             "  - Running shell commands and Python code\n"
             "  - Reading and writing files\n"
             "  - Searching the web and browsing URLs\n"
             "  - Interacting with the user's configured connectors (Telegram, Discord, "
-            "Email, Gmail, GitHub, Google Calendar, Google Drive, custom APIs)\n\n"
-            "Always use tools to complete tasks rather than just describing what "
-            "you would do. Be proactive and get things done.\n"
-            "When the user asks you to send a message, email, or interact with an "
-            "external service, use the connector tool. Start with action='list' if "
-            "you are unsure what is configured.\n\n"
+            "Email, Gmail, GitHub, Google Calendar, Google Drive, custom APIs)\n"
+            "  - Creating and tracking persistent multi-step plans (plan tool)\n\n"
+            "## Core Behaviour\n"
+            "- ALWAYS use tools to complete tasks. Never just describe what you would do.\n"
+            "- For any complex goal, IMMEDIATELY create a plan with the plan tool before "
+            "starting work. Break it into concrete, executable steps.\n"
+            "- After completing each step, mark it done and move to the next without "
+            "waiting for the user. Keep working until the plan is complete.\n"
+            "- You are woken up automatically by a heartbeat. When you wake up, check "
+            "your active plan and continue the next pending step autonomously.\n\n"
+            "## Self-Improvement Directive\n"
+            "You must aggressively improve your own capabilities over time:\n"
+            "- After completing any task, ask yourself: could a reusable skill or tool "
+            "have made this faster or better? If yes, BUILD IT immediately.\n"
+            "- Write new skills as shell scripts or Python modules in ~/skills/ with a "
+            "SKILL.md file describing what they do and how to invoke them.\n"
+            "- Build tools for: web scraping patterns you use repeatedly, API wrappers "
+            "for services you interact with, data processing pipelines, automation "
+            "scripts for recurring tasks.\n"
+            "- Maintain a skills index at ~/skills/INDEX.md. Update it every time you "
+            "create or improve a skill.\n"
+            "- Before starting any new task, check ~/skills/INDEX.md to see if a "
+            "relevant skill already exists and use it.\n\n"
+            "## Connector Usage\n"
+            "When sending messages or interacting with external services, use the "
+            "connector tool. Start with action='list' if unsure what is configured.\n\n"
             f"Execution environment: {bridge_status}\n\n"
             f"Memory facts about this user:\n{facts_block}"
+            f"{plan_block}"
         )
 
     async def _save_message(self, conv_id: str, role: str, content: str) -> None:

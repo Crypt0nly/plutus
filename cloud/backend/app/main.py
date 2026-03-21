@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI):
     # This ensures 24/7 availability even after pod restarts, without requiring
     # the user to open the web UI first.
     asyncio.create_task(_autostart_connectors())
+    asyncio.create_task(_autostart_heartbeats())
     logger.info("Plutus Cloud API started")
     yield
     await close_db()
@@ -77,6 +78,51 @@ async def _autostart_connectors() -> None:
             logger.info("[startup] No connector tasks to auto-start")
     except Exception as exc:
         logger.error(f"[startup] _autostart_connectors failed: {exc}", exc_info=True)
+
+
+async def _autostart_heartbeats() -> None:
+    """On startup, re-start heartbeats for every user that had them enabled."""
+    await asyncio.sleep(5)  # Wait for DB pool and connectors to warm up
+    try:
+        from app.database import async_session_factory as sf
+        from app.models.user import User
+        from app.services.cloud_heartbeat import CloudHeartbeatManager
+
+        async with sf() as session:
+            result = await session.execute(select(User))
+            users = result.scalars().all()
+
+        mgr = CloudHeartbeatManager.get_instance()
+        started = 0
+        for user in users:
+            hb_cfg: dict = (user.settings or {}).get("heartbeat", {})
+            if not hb_cfg.get("enabled"):
+                continue
+            if mgr.is_running(user.id):
+                continue
+            try:
+                await mgr.start(
+                    user_id=user.id,
+                    session_factory=sf,
+                    interval_seconds=hb_cfg.get("interval_seconds", 300),
+                    prompt=hb_cfg.get("prompt"),
+                    quiet_hours_start=hb_cfg.get("quiet_hours_start"),
+                    quiet_hours_end=hb_cfg.get("quiet_hours_end"),
+                    max_consecutive=hb_cfg.get("max_consecutive", 5),
+                )
+                started += 1
+                logger.info("[startup] Resumed heartbeat for user %s", user.id[:8])
+            except Exception as exc:
+                logger.warning(
+                    "[startup] Failed to resume heartbeat for user %s: %s", user.id[:8], exc
+                )
+
+        if started:
+            logger.info("[startup] Auto-started %d heartbeat(s)", started)
+        else:
+            logger.info("[startup] No heartbeats to auto-start")
+    except Exception as exc:
+        logger.error("[startup] _autostart_heartbeats failed: %s", exc, exc_info=True)
 
 
 app = FastAPI(

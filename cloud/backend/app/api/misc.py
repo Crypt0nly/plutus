@@ -68,29 +68,102 @@ async def set_keep_alive(_body: dict | None = None, _user=Depends(get_current_us
 
 
 # ---------------------------------------------------------------------------
-# Heartbeat
+# Heartbeat  (real implementation for cloud)
 # ---------------------------------------------------------------------------
 
 
 @router.get("/heartbeat")
-async def get_heartbeat(_user=Depends(get_current_user)):
-    """Heartbeat is not needed in cloud (always-on service)."""
-    return {"enabled": False, "interval_seconds": 0, "last_beat": None}
+async def get_heartbeat(
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the current heartbeat status for this user."""
+    from app.services.cloud_heartbeat import CloudHeartbeatManager
+
+    mgr = CloudHeartbeatManager.get_instance()
+    status = mgr.get_status(user.id)
+    # Also persist running state in user settings for auto-restart on pod restart
+    return status
 
 
 @router.put("/heartbeat")
-async def update_heartbeat(_body: dict | None = None, _user=Depends(get_current_user)):
-    return {"enabled": False, "message": "Not applicable in cloud mode"}
+async def update_heartbeat(
+    body: dict | None = None,
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Update heartbeat configuration (interval, prompt, quiet hours, etc.)."""
+    from app.database import async_session_factory
+    from app.services.cloud_heartbeat import CloudHeartbeatManager
+
+    body = body or {}
+    mgr = CloudHeartbeatManager.get_instance()
+    status = await mgr.update_config(
+        user_id=user.id,
+        session_factory=async_session_factory,
+        interval_seconds=body.get("interval_seconds"),
+        prompt=body.get("prompt"),
+        quiet_hours_start=body.get("quiet_hours_start"),
+        quiet_hours_end=body.get("quiet_hours_end"),
+        max_consecutive=body.get("max_consecutive"),
+    )
+    # Persist config in user settings
+    await _save_heartbeat_settings(user.id, body, session)
+    return status
 
 
 @router.post("/heartbeat/start")
-async def start_heartbeat(_user=Depends(get_current_user)):
-    return {"enabled": False, "message": "Not applicable in cloud mode"}
+async def start_heartbeat(
+    body: dict | None = None,
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Start the heartbeat for this user."""
+    from app.database import async_session_factory
+    from app.services.cloud_heartbeat import CloudHeartbeatManager
+
+    body = body or {}
+    mgr = CloudHeartbeatManager.get_instance()
+    await mgr.start(
+        user_id=user.id,
+        session_factory=async_session_factory,
+        interval_seconds=body.get("interval_seconds", 300),
+        prompt=body.get("prompt"),
+        quiet_hours_start=body.get("quiet_hours_start"),
+        quiet_hours_end=body.get("quiet_hours_end"),
+        max_consecutive=body.get("max_consecutive", 5),
+    )
+    await _save_heartbeat_settings(user.id, {**body, "enabled": True}, session)
+    return mgr.get_status(user.id)
 
 
 @router.post("/heartbeat/stop")
-async def stop_heartbeat(_user=Depends(get_current_user)):
-    return {"enabled": False, "message": "Not applicable in cloud mode"}
+async def stop_heartbeat(
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Stop the heartbeat for this user."""
+    from app.services.cloud_heartbeat import CloudHeartbeatManager
+
+    mgr = CloudHeartbeatManager.get_instance()
+    await mgr.stop(user.id)
+    await _save_heartbeat_settings(user.id, {"enabled": False}, session)
+    return {"enabled": False, "running": False}
+
+
+async def _save_heartbeat_settings(user_id: str, updates: dict, session: AsyncSession) -> None:
+    """Persist heartbeat settings in the user's settings JSON blob."""
+    from app.models.user import User
+
+    user_row = await session.get(User, user_id)
+    if not user_row:
+        return
+    settings_blob: dict = dict(user_row.settings or {})
+    hb = dict(settings_blob.get("heartbeat", {}))
+    hb.update({k: v for k, v in updates.items() if v is not None})
+    settings_blob["heartbeat"] = hb
+    user_row.settings = settings_blob
+    await session.commit()
 
 
 # ---------------------------------------------------------------------------

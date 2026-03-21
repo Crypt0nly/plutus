@@ -89,6 +89,11 @@ class HybridExecutor:
         if tool_name == "connector":
             return await self._execute_connector(user_id, tool_args, db_session=db_session)
 
+        # The plan tool is always handled cloud-side — it reads/writes the
+        # plans table in the cloud DB and must never be delegated to E2B/bridge.
+        if tool_name == "plan":
+            return await self._execute_plan(user_id, tool_args, db_session=db_session)
+
         if self.is_bridge_connected(user_id):
             try:
                 result = await asyncio.wait_for(
@@ -140,6 +145,68 @@ class HybridExecutor:
             result_text = await executor.execute(**tool_args)
             return {"success": True, "output": result_text}
         except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
+    # ── Plan tool ─────────────────────────────────────────────────────────────
+
+    async def _execute_plan(
+        self,
+        user_id: str,
+        tool_args: dict[str, Any],
+        *,
+        db_session=None,
+    ) -> dict[str, Any]:
+        """Execute a plan tool call using the cloud PlanManager."""
+        if db_session is None:
+            return {"success": False, "error": "No DB session available for plan tool"}
+
+        try:
+            from app.services.cloud_plan_manager import CloudPlanManager
+
+            manager = CloudPlanManager(user_id, db_session)
+            action = tool_args.get("action")
+
+            if action == "create":
+                title = tool_args.get("title", "Untitled Plan")
+                goal = tool_args.get("goal")
+                steps = tool_args.get("steps", [])
+                plan = await manager.create_plan(title=title, goal=goal, steps=steps)
+                return {"success": True, "output": manager.format_plan(plan)}
+
+            elif action == "update_step":
+                step_index = tool_args.get("step_index")
+                status = tool_args.get("status", "done")
+                result_note = tool_args.get("result")
+                if step_index is None:
+                    return {"success": False, "error": "step_index is required for update_step"}
+                plan = await manager.update_step(step_index, status, result_note)
+                if not plan:
+                    return {"success": False, "error": "No active plan found"}
+                return {"success": True, "output": manager.format_plan(plan)}
+
+            elif action == "get":
+                plan = await manager.get_active_plan()
+                if not plan:
+                    return {"success": True, "output": "No active plan."}
+                return {"success": True, "output": manager.format_plan(plan)}
+
+            elif action == "complete":
+                plan = await manager.set_plan_status("completed")
+                if not plan:
+                    return {"success": False, "error": "No active plan found"}
+                return {"success": True, "output": f"Plan '{plan['title']}' marked as completed."}
+
+            elif action == "cancel":
+                plan = await manager.set_plan_status("cancelled")
+                if not plan:
+                    return {"success": False, "error": "No active plan found"}
+                return {"success": True, "output": f"Plan '{plan['title']}' cancelled."}
+
+            else:
+                return {"success": False, "error": f"Unknown plan action: {action}"}
+
+        except Exception as exc:
+            logger.error(f"[Plan] Error executing plan tool for {user_id}: {exc}", exc_info=True)
             return {"success": False, "error": str(exc)}
 
     # ── Bridge delegation ─────────────────────────────────────────────────────
@@ -488,6 +555,61 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["url"],
+        },
+    },
+    {
+        "name": "plan",
+        "description": (
+            "Create and manage a persistent execution plan that survives across sessions. "
+            "Use this to break complex multi-step goals into trackable steps. "
+            "The active plan is automatically injected into your context on every heartbeat "
+            "so you can resume exactly where you left off without user intervention. "
+            "Actions: "
+            "'create' — create a new plan with a title, goal, and list of steps. "
+            "'update_step' — mark a step as in_progress, done, failed, or skipped, with an optional result note. "
+            "'get' — retrieve the current active plan and its step statuses. "
+            "'complete' — mark the entire plan as completed. "
+            "'cancel' — cancel the active plan."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "update_step", "get", "complete", "cancel"],
+                    "description": "Plan action to perform.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Plan title (required for 'create').",
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "One-sentence goal statement (used for 'create').",
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "List of step objects for 'create'. "
+                        'Each step: {"description": "...", "details": "..." (optional)}.'
+                    ),
+                },
+                "step_index": {
+                    "type": "integer",
+                    "description": "Zero-based step index (required for 'update_step').",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["in_progress", "done", "failed", "skipped"],
+                    "description": "New status for the step (required for 'update_step').",
+                },
+                "result": {
+                    "type": "string",
+                    "description": "Optional result note or summary for the step.",
+                },
+            },
+            "required": ["action"],
         },
     },
 ]
