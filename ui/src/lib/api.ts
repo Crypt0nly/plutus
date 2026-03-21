@@ -380,7 +380,15 @@ export const api = {
     ),
   workspacePush: (token: string) => {
     const cloudUrl = extractCloudUrlFromToken(token);
-    if (!cloudUrl) return Promise.reject(new Error("Invalid token — cannot determine server URL"));
+    if (!cloudUrl) {
+      const raw = extractRawUrlFromToken(token);
+      if (raw && (raw.includes("localhost") || raw.includes("127.0.0.1"))) {
+        return Promise.reject(new Error(
+          "Token embeds localhost — please regenerate the token in cloud Settings → Workspace after setting SERVER_BASE_URL on the cloud server"
+        ));
+      }
+      return Promise.reject(new Error("Invalid or legacy token — please regenerate a new token from cloud Settings → Workspace"));
+    }
     return fetch(`${cloudUrl}/api/workspace/manifest`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -412,7 +420,15 @@ export const api = {
   },
   workspacePull: (token: string) => {
     const cloudUrl = extractCloudUrlFromToken(token);
-    if (!cloudUrl) return Promise.reject(new Error("Invalid token — cannot determine server URL"));
+    if (!cloudUrl) {
+      const raw = extractRawUrlFromToken(token);
+      if (raw && (raw.includes("localhost") || raw.includes("127.0.0.1"))) {
+        return Promise.reject(new Error(
+          "Token embeds localhost — please regenerate the token in cloud Settings → Workspace after setting SERVER_BASE_URL on the cloud server"
+        ));
+      }
+      return Promise.reject(new Error("Invalid or legacy token — please regenerate a new token from cloud Settings → Workspace"));
+    }
     return fetch(`${cloudUrl}/api/workspace/manifest`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -444,7 +460,15 @@ export const api = {
   },
   getWorkspaceSyncStatus: (token: string) => {
     const cloudUrl = extractCloudUrlFromToken(token);
-    if (!cloudUrl) return Promise.reject(new Error("Invalid token — cannot determine server URL"));
+    if (!cloudUrl) {
+      const raw = extractRawUrlFromToken(token);
+      if (raw && (raw.includes("localhost") || raw.includes("127.0.0.1"))) {
+        return Promise.reject(new Error(
+          "Token embeds localhost — please regenerate the token in cloud Settings → Workspace"
+        ));
+      }
+      return Promise.reject(new Error("Invalid or legacy token — please regenerate a new token from cloud Settings → Workspace"));
+    }
     return Promise.all([
       request<{ files: { path: string; mtime: number }[] }>("/workspace/manifest"),
       fetch(`${cloudUrl}/api/workspace/manifest`, {
@@ -476,6 +500,9 @@ export const api = {
  *
  * New token format:  plutus_<base64url(server_url)>.<hex_secret>
  * Legacy format:     plutus_<hex>  (no embedded URL — returns null)
+ *
+ * Returns null if the token is legacy, malformed, or embeds a localhost URL
+ * (which means the token was generated before SERVER_BASE_URL was configured).
  */
 export function extractCloudUrlFromToken(token: string): string | null {
   if (!token.startsWith("plutus_")) return null;
@@ -485,6 +512,34 @@ export function extractCloudUrlFromToken(token: string): string | null {
   const b64 = rest.slice(0, dotIdx);
   try {
     // Re-add stripped padding
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const url = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+    // Reject tokens that embed a loopback address — they were generated before
+    // SERVER_BASE_URL was properly configured on the cloud server.
+    if (
+      url.includes("localhost") ||
+      url.includes("127.0.0.1") ||
+      url.includes("0.0.0.0")
+    ) {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Like extractCloudUrlFromToken but also returns the raw decoded URL even
+ * when it is a loopback address — used only for diagnostic display.
+ */
+export function extractRawUrlFromToken(token: string): string | null {
+  if (!token.startsWith("plutus_")) return null;
+  const rest = token.slice(7);
+  const dotIdx = rest.indexOf(".");
+  if (dotIdx === -1) return null;
+  const b64 = rest.slice(0, dotIdx);
+  try {
     const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
     return atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
   } catch {

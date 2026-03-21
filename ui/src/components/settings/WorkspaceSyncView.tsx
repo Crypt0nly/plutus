@@ -16,7 +16,7 @@ import {
   AlertTriangle,
   Link2,
 } from "lucide-react";
-import { api, extractCloudUrlFromToken } from "../../lib/api";
+import { api, extractCloudUrlFromToken, extractRawUrlFromToken } from "../../lib/api";
 
 interface SyncConfig {
   url: string;
@@ -239,12 +239,18 @@ export default function WorkspaceSyncView() {
               {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          {config.token && !extractCloudUrlFromToken(config.token) && (
-            <p className="text-[11px] text-amber-400/80 mt-2 flex items-center gap-1.5">
-              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-              Legacy token — please regenerate a new one from the cloud to remove the URL field
-            </p>
-          )}
+          {config.token && !extractCloudUrlFromToken(config.token) && (() => {
+            const raw = extractRawUrlFromToken(config.token);
+            const isLocalhost = raw && (raw.includes("localhost") || raw.includes("127.0.0.1"));
+            return (
+              <p className="text-[11px] text-amber-400/80 mt-2 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                {isLocalhost
+                  ? "Token embeds localhost — the cloud server's SERVER_BASE_URL is not set. Regenerate the token after configuring it."
+                  : "Legacy token — please regenerate a new one from cloud Settings → Workspace"}
+              </p>
+            );
+          })()}
           {config.token && extractCloudUrlFromToken(config.token) && (
             <p className="text-[11px] text-cyan-400/70 mt-2 flex items-center gap-1.5">
               <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
