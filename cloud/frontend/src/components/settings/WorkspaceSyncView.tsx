@@ -16,6 +16,10 @@ import {
   Link2,
   ShieldCheck,
   Server,
+  FolderOpen,
+  File,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -30,6 +34,18 @@ interface SyncStatus {
 interface TokenStatus {
   has_token: boolean;
   created_at: number | null;
+}
+
+interface WorkspaceFile {
+  path: string;
+  size: number;
+  mtime: number;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatRelative(ts: number | null): string {
@@ -56,6 +72,10 @@ export default function WorkspaceSyncView() {
   const [pulling, setPulling] = useState(false);
   const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [pullMsg, setPullMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[] | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesExpanded, setFilesExpanded] = useState(false);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
   const loadTokenStatus = useCallback(async () => {
     try {
@@ -153,6 +173,31 @@ export default function WorkspaceSyncView() {
       setTimeout(() => setPushMsg(null), 5000);
     } finally {
       setPushing(false);
+    }
+  };
+
+  const loadWorkspaceFiles = async () => {
+    setFilesLoading(true);
+    try {
+      const data = await api.getWorkspaceFiles();
+      setWorkspaceFiles(data.files || []);
+    } catch {
+      setWorkspaceFiles([]);
+    } finally {
+      setFilesLoading(false);
+    }
+  };
+
+  const handleDeleteFile = async (path: string) => {
+    if (!confirm(`Delete "${path}" from the server workspace?`)) return;
+    setDeletingFile(path);
+    try {
+      await api.deleteWorkspaceFile(path);
+      setWorkspaceFiles((prev) => prev?.filter((f) => f.path !== path) ?? null);
+    } catch (e: any) {
+      alert(`Delete failed: ${e.message}`);
+    } finally {
+      setDeletingFile(null);
     }
   };
 
@@ -475,6 +520,94 @@ export default function WorkspaceSyncView() {
             <Zap className="w-3.5 h-3.5" />
             Click to compare sandbox and workspace
           </button>
+        )}
+      </div>
+
+      {/* ── Server Workspace Files ── */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
+        <button
+          className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+          onClick={() => {
+            const next = !filesExpanded;
+            setFilesExpanded(next);
+            if (next && workspaceFiles === null) loadWorkspaceFiles();
+          }}
+        >
+          <FolderOpen className="w-3.5 h-3.5 text-gray-400" />
+          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex-1">Server Workspace Files</h4>
+          {workspaceFiles !== null && (
+            <span className="text-[10px] text-gray-600 mr-2">
+              {workspaceFiles.length} file{workspaceFiles.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          {filesExpanded ? (
+            <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
+          )}
+        </button>
+
+        {filesExpanded && (
+          <div className="px-4 pb-4 space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] text-gray-600">Files stored on the server — available to pull into the sandbox</p>
+              <button
+                onClick={loadWorkspaceFiles}
+                disabled={filesLoading}
+                className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <RefreshCw className={`w-3 h-3 ${filesLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            </div>
+
+            {filesLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="w-5 h-5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+              </div>
+            ) : workspaceFiles && workspaceFiles.length > 0 ? (
+              <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                {workspaceFiles
+                  .sort((a, b) => b.mtime - a.mtime)
+                  .map((f) => (
+                    <div
+                      key={f.path}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg group"
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+                    >
+                      <File className="w-3 h-3 text-gray-600 flex-shrink-0" />
+                      <span className="flex-1 text-xs text-gray-400 font-mono truncate" title={f.path}>
+                        {f.path}
+                      </span>
+                      <span className="text-[10px] text-gray-600 flex-shrink-0">{formatBytes(f.size)}</span>
+                      <span className="text-[10px] text-gray-700 flex-shrink-0 ml-1">{formatRelative(f.mtime)}</span>
+                      <button
+                        onClick={() => handleDeleteFile(f.path)}
+                        disabled={deletingFile === f.path}
+                        className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-1 rounded transition-all hover:bg-red-500/10"
+                        style={{ color: "#f87171" }}
+                        title="Delete from server workspace"
+                      >
+                        {deletingFile === f.path ? (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 gap-2">
+                <FolderOpen className="w-8 h-8 text-gray-700" />
+                <p className="text-xs text-gray-600">No files on the server workspace yet</p>
+                <p className="text-[10px] text-gray-700">Push from local or from the sandbox to add files</p>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

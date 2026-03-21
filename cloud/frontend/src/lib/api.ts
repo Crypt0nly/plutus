@@ -434,4 +434,11 @@ export const api = {
     request<{ token: string; note: string }>("/workspace/token", { method: "POST" }),
   revokeSyncToken: () =>
     request<{ revoked: boolean }>("/workspace/token", { method: "DELETE" }),
+  getWorkspaceFiles: () =>
+    safeRequest<{ files: { path: string; size: number; mtime: number }[]; total: number }>(
+      "/workspace/manifest",
+      { files: [], total: 0 }
+    ),
+  deleteWorkspaceFile: (path: string) =>
+    request<{ deleted: string }>(`/workspace/files/${encodeURIComponent(path)}`, { method: "DELETE" }),
 };
