@@ -243,43 +243,29 @@ jobs:
         with:
           ref: main
 
-      - name: Check if version already exists on PyPI
+      - name: Get version to publish
         id: version_check
         run: |
           VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/plutus-ai/${VERSION}/json")
-          if [ "$HTTP_STATUS" = "200" ]; then
-            echo "::warning::Version ${VERSION} already exists on PyPI — skipping upload."
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Version ${VERSION} not on PyPI — proceeding with upload."
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "Publishing version: ${VERSION}"
 
       - uses: actions/download-artifact@v4
-        if: steps.version_check.outputs.exists == 'false'
         with:
           path: dist/
           pattern: wheels-*
           merge-multiple: true
 
       - name: List artifacts
-        if: steps.version_check.outputs.exists == 'false'
         run: ls -la dist/
 
       - name: Publish to PyPI
-        if: steps.version_check.outputs.exists == 'false'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          # Skip wheels already uploaded by a previous partial run so that
-          # retries don't fail with 400 on duplicate filenames.
           skip-existing: true
           verbose: true
-          # Disable attestations — the action now defaults attestations:true
-          # but PyPI returns 400 if the trusted publisher config doesn't match
-          # the attestation identity (environment, workflow path, etc.).
           attestations: false
+
 
   # ── Create GitHub Release ───────────────────────────────────────
   post-release:
