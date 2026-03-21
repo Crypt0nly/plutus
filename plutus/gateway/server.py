@@ -32,7 +32,7 @@ from plutus.core.model_router import ModelRouter, ModelRoutingConfig
 from plutus.core.scheduler import Scheduler, ScheduledJob
 from plutus.core.session_registry import SessionRegistry, get_registry, CONNECTOR_SESSIONS, SESSION_DISPLAY_NAMES, SESSION_ICONS
 from plutus.core.worker_pool import WorkerPool, WorkerTask, WorkerStatus, WorkerState
-from plutus.gateway.routes import create_router
+from plutus.gateway.routes import create_router, create_workspace_router
 from plutus.gateway.ws import create_ws_router, manager as ws_manager
 from plutus.guardrails.engine import GuardrailEngine
 from plutus.tools.registry import create_default_registry
@@ -1061,6 +1061,7 @@ def create_app(config: PlutusConfig | None = None) -> FastAPI:
 
     # API routes
     app.include_router(create_router(), prefix="/api")
+    app.include_router(create_workspace_router(), prefix="/api")
     app.include_router(create_ws_router())
 
     # Silence Chrome DevTools probe (prevents noisy 404s in the log)

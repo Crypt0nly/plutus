@@ -13,7 +13,11 @@ Endpoints:
   GET    /api/workspace/download/{path} — download a file
 """
 
+import hashlib
+import hmac
+import os
 import shutil
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -233,3 +237,95 @@ async def workspace_info(user=Depends(get_current_user)):
         "total_size_bytes": total_size,
         "file_count": file_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# Manifest — list all files with mtime for sync diff
+# ---------------------------------------------------------------------------
+
+_SKIP_PATTERNS = {"__pycache__", ".git", "node_modules", ".DS_Store"}
+
+
+@router.get("/manifest")
+async def workspace_manifest(user=Depends(get_current_user)):
+    """
+    Return a flat list of all files in the workspace with their modification
+    timestamps. Used by the local Plutus client to compute push/pull diffs.
+    """
+    ws = _user_workspace(user["user_id"])
+    files = []
+    for f in ws.rglob("*"):
+        if not f.is_file():
+            continue
+        rel = str(f.relative_to(ws))
+        if any(skip in rel for skip in _SKIP_PATTERNS):
+            continue
+        files.append(
+            {
+                "path": rel,
+                "size": f.stat().st_size,
+                "mtime": f.stat().st_mtime,
+            }
+        )
+    return {"files": files, "total": len(files)}
+
+
+# ---------------------------------------------------------------------------
+# API token management — for local ↔ cloud sync authentication
+# ---------------------------------------------------------------------------
+
+
+def _token_store_path(user_id: str) -> Path:
+    """Path to the file storing the user's sync token hash."""
+    return WORKSPACE_ROOT / user_id / ".sync_token"
+
+
+@router.post("/token")
+async def generate_sync_token(user=Depends(get_current_user)):
+    """
+    Generate (or regenerate) a long-lived API token for workspace sync.
+    The token is returned once — only the hash is stored server-side.
+    """
+    raw = os.urandom(32).hex()
+    token = f"plutus_{raw}"
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    store = _token_store_path(user["user_id"])
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(f"{token_hash}:{time.time()}", encoding="utf-8")
+    return {
+        "token": token,
+        "note": (
+            "Copy this token now — it will not be shown again. "
+            "Paste it into local Plutus Settings → Cloud Sync → API Token."
+        ),
+    }
+
+
+@router.delete("/token")
+async def revoke_sync_token(user=Depends(get_current_user)):
+    """Revoke the current sync token."""
+    store = _token_store_path(user["user_id"])
+    if store.exists():
+        store.unlink()
+    return {"revoked": True}
+
+
+@router.get("/token/status")
+async def sync_token_status(user=Depends(get_current_user)):
+    """Check whether a sync token exists for this user."""
+    store = _token_store_path(user["user_id"])
+    if not store.exists():
+        return {"has_token": False, "created_at": None}
+    parts = store.read_text().split(":")
+    created_at = float(parts[1]) if len(parts) > 1 else None
+    return {"has_token": True, "created_at": created_at}
+
+
+def verify_sync_token(user_id: str, token: str) -> bool:
+    """Verify a sync token against the stored hash. Used by sync endpoints."""
+    store = _token_store_path(user_id)
+    if not store.exists():
+        return False
+    stored_hash = store.read_text().split(":")[0]
+    candidate_hash = hashlib.sha256(token.encode()).hexdigest()
+    return hmac.compare_digest(stored_hash, candidate_hash)

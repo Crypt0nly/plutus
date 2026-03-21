@@ -21,6 +21,12 @@ import logging
 import time
 from typing import Any
 
+from app.services.workspace_sync import (
+    pull_workspace_to_sandbox,
+    push_sandbox_to_workspace,
+    run_periodic_sync,
+)
+
 logger = logging.getLogger(__name__)
 
 # Sandbox idle timeout in seconds (30 minutes)
@@ -109,6 +115,13 @@ class E2BSandboxManager:
             entry = _UserSandbox(sb, user_id)
             self._sandboxes[user_id] = entry
             logger.info(f"[E2B] Sandbox {sb.sandbox_id} ready for user {user_id}")
+
+            # Pull workspace files into sandbox (non-blocking)
+            asyncio.create_task(pull_workspace_to_sandbox(entry, user_id))
+
+            # Start periodic sync loop
+            asyncio.create_task(run_periodic_sync(entry, user_id))
+
             return entry
 
     async def kill_sandbox(self, user_id: str) -> None:
@@ -116,6 +129,11 @@ class E2BSandboxManager:
         async with self._lock:
             entry = self._sandboxes.pop(user_id, None)
         if entry:
+            # Final sync before killing
+            try:
+                await push_sandbox_to_workspace(entry, user_id)
+            except Exception as e:
+                logger.warning(f"[E2B] Final sync failed for user {user_id}: {e}")
             try:
                 await entry.sandbox.kill()
                 logger.info(f"[E2B] Killed sandbox for user {user_id}")
@@ -137,6 +155,11 @@ class E2BSandboxManager:
                         expired.append((uid, entry))
                         del self._sandboxes[uid]
             for uid, entry in expired:
+                # Final sync before reaping
+                try:
+                    await push_sandbox_to_workspace(entry, uid)
+                except Exception as e:
+                    logger.warning(f"[E2B] Final sync on reap failed for {uid}: {e}")
                 try:
                     await entry.sandbox.kill()
                     logger.info(f"[E2B] Reaped idle sandbox for user {uid}")

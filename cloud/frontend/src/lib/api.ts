@@ -396,4 +396,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ patch: opts }),
     }),
+
+  // Workspace sync
+  getWorkspaceSyncStatus: () =>
+    safeRequest<{
+      local_only: number;
+      cloud_only: number;
+      newer_local: number;
+      newer_cloud: number;
+      in_sync: number;
+    }>("/workspace/sync-status", {
+      local_only: 0,
+      cloud_only: 0,
+      newer_local: 0,
+      newer_cloud: 0,
+      in_sync: 0,
+    }),
+  getSyncTokenStatus: () =>
+    safeRequest<{ has_token: boolean; created_at: number | null }>(
+      "/workspace/token/status",
+      { has_token: false, created_at: null }
+    ),
+  generateSyncToken: () =>
+    request<{ token: string; note: string }>("/workspace/token", { method: "POST" }),
+  revokeSyncToken: () =>
+    request<{ revoked: boolean }>("/workspace/token", { method: "DELETE" }),
 };

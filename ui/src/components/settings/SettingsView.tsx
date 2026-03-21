@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X, Minus, Plus, Check, Globe } from "lucide-react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X, Minus, Plus, Check, Globe, Cloud } from "lucide-react";
+import WorkspaceSyncView from "./WorkspaceSyncView";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
 import { HeartbeatConfig } from "./HeartbeatConfig";
@@ -423,6 +424,20 @@ export function SettingsView() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Cloud Workspace Sync */}
+      <div className="rounded-2xl p-5" style={{ background: "rgb(var(--surface-alt))", border: "1px solid rgb(var(--gray-700) / 0.4)" }}>
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(6, 182, 212, 0.08)", border: "1px solid rgba(6, 182, 212, 0.12)" }}>
+            <Cloud className="w-4 h-4 text-cyan-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-200">Cloud Sync</h3>
+            <p className="text-xs text-gray-500">Sync your workspace with the cloud version</p>
+          </div>
+        </div>
+        <WorkspaceSyncView />
       </div>
     </div>
   );

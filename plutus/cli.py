@@ -916,3 +916,253 @@ def config_show() -> None:
     """Display the current configuration as JSON."""
     config = PlutusConfig.load()
     console.print_json(json.dumps(config.model_dump(), indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Workspace sync commands
+# ---------------------------------------------------------------------------
+
+def _get_sync_config() -> tuple[str, str]:
+    """Return (cloud_url, auth_token) from config, raising if not configured."""
+    config = PlutusConfig.load()
+    cloud = getattr(config, "cloud_sync", None)
+    if not cloud:
+        raise click.ClickException(
+            "Cloud sync is not configured.\n"
+            "  Run [bold]plutus setup[/bold] or set cloud_sync.url and "
+            "cloud_sync.token in your config."
+        )
+    url = getattr(cloud, "url", "").rstrip("/")
+    token = getattr(cloud, "token", "")
+    if not url or not token:
+        raise click.ClickException(
+            "cloud_sync.url or cloud_sync.token is missing in your config."
+        )
+    return url, token
+
+
+@main.command(name="push")
+@click.option("--dry-run", is_flag=True, help="Show what would be uploaded without uploading")
+@click.option("--force", is_flag=True, help="Upload all files, ignoring modification times")
+def workspace_push(dry_run: bool, force: bool) -> None:
+    """Push local workspace to the cloud (local → cloud)."""
+    import hashlib
+    import mimetypes
+    import time
+
+    import httpx
+
+    workspace = Path.home() / "plutus-workspace"
+    if not workspace.exists():
+        console.print("  [yellow]No plutus-workspace folder found — nothing to push.[/yellow]")
+        return
+
+    try:
+        url, token = _get_sync_config()
+    except click.ClickException as e:
+        console.print(f"  [red]{e.format_message()}[/red]")
+        return
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Fetch remote manifest to compute diff
+    with console.status("[cyan]Fetching remote manifest…[/cyan]"):
+        try:
+            resp = httpx.get(f"{url}/api/workspace/manifest", headers=headers, timeout=15)
+            resp.raise_for_status()
+            remote_files: dict[str, dict] = {
+                f["path"]: f for f in resp.json().get("files", [])
+            }
+        except Exception as e:
+            console.print(f"  [red]Could not fetch remote manifest: {e}[/red]")
+            return
+
+    all_local = [f for f in workspace.rglob("*") if f.is_file()]
+    to_upload = []
+    for local_path in all_local:
+        rel = str(local_path.relative_to(workspace))
+        if any(p in rel for p in ["__pycache__", ".git", "node_modules"]):
+            continue
+        remote = remote_files.get(rel)
+        if force or remote is None or local_path.stat().st_mtime > remote.get("mtime", 0):
+            to_upload.append((rel, local_path))
+
+    if not to_upload:
+        console.print("  [green]Already up to date — nothing to push.[/green]")
+        return
+
+    console.print(f"  [cyan]{len(to_upload)} file(s) to upload[/cyan]")
+    if dry_run:
+        for rel, _ in to_upload:
+            console.print(f"    [dim]would upload:[/dim] {rel}")
+        return
+
+    ok = 0
+    fail = 0
+    with console.status("[cyan]Uploading…[/cyan]") as status:
+        for rel, local_path in to_upload:
+            status.update(f"[cyan]Uploading {rel}…[/cyan]")
+            try:
+                content = local_path.read_bytes()
+                resp = httpx.post(
+                    f"{url}/api/workspace/files",
+                    headers={**headers, "Content-Type": "application/json"},
+                    json={"path": rel, "content": content.decode("utf-8", errors="replace")},
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                ok += 1
+            except Exception as e:
+                console.print(f"  [red]  Failed {rel}: {e}[/red]")
+                fail += 1
+
+    console.print(
+        f"  [green bold]Push complete:[/green bold] {ok} uploaded"
+        + (f", {fail} failed" if fail else "")
+    )
+
+
+@main.command(name="pull")
+@click.option("--dry-run", is_flag=True, help="Show what would be downloaded without downloading")
+@click.option("--force", is_flag=True, help="Download all files, ignoring modification times")
+def workspace_pull(dry_run: bool, force: bool) -> None:
+    """Pull workspace from the cloud to local machine (cloud → local)."""
+    import httpx
+
+    workspace = Path.home() / "plutus-workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    try:
+        url, token = _get_sync_config()
+    except click.ClickException as e:
+        console.print(f"  [red]{e.format_message()}[/red]")
+        return
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Fetch remote manifest
+    with console.status("[cyan]Fetching remote manifest…[/cyan]"):
+        try:
+            resp = httpx.get(f"{url}/api/workspace/manifest", headers=headers, timeout=15)
+            resp.raise_for_status()
+            remote_files = resp.json().get("files", [])
+        except Exception as e:
+            console.print(f"  [red]Could not fetch remote manifest: {e}[/red]")
+            return
+
+    if not remote_files:
+        console.print("  [dim]Remote workspace is empty — nothing to pull.[/dim]")
+        return
+
+    to_download = []
+    for rf in remote_files:
+        rel = rf["path"]
+        local_path = workspace / rel
+        if force or not local_path.exists() or rf.get("mtime", 0) > local_path.stat().st_mtime:
+            to_download.append(rf)
+
+    if not to_download:
+        console.print("  [green]Already up to date — nothing to pull.[/green]")
+        return
+
+    console.print(f"  [cyan]{len(to_download)} file(s) to download[/cyan]")
+    if dry_run:
+        for rf in to_download:
+            console.print(f"    [dim]would download:[/dim] {rf['path']}")
+        return
+
+    ok = 0
+    fail = 0
+    with console.status("[cyan]Downloading…[/cyan]") as status:
+        for rf in to_download:
+            rel = rf["path"]
+            status.update(f"[cyan]Downloading {rel}…[/cyan]")
+            try:
+                resp = httpx.get(
+                    f"{url}/api/workspace/files/{rel}",
+                    headers=headers,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                local_path = workspace / rel
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                local_path.write_text(data.get("content", ""), encoding="utf-8")
+                ok += 1
+            except Exception as e:
+                console.print(f"  [red]  Failed {rel}: {e}[/red]")
+                fail += 1
+
+    console.print(
+        f"  [green bold]Pull complete:[/green bold] {ok} downloaded"
+        + (f", {fail} failed" if fail else "")
+    )
+
+
+@main.command(name="sync-status")
+def workspace_sync_status() -> None:
+    """Show the diff between local workspace and cloud workspace."""
+    import httpx
+
+    workspace = Path.home() / "plutus-workspace"
+
+    try:
+        url, token = _get_sync_config()
+    except click.ClickException as e:
+        console.print(f"  [red]{e.format_message()}[/red]")
+        return
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with console.status("[cyan]Comparing workspaces…[/cyan]"):
+        try:
+            resp = httpx.get(f"{url}/api/workspace/manifest", headers=headers, timeout=15)
+            resp.raise_for_status()
+            remote_files = {f["path"]: f for f in resp.json().get("files", [])}
+        except Exception as e:
+            console.print(f"  [red]Could not fetch remote manifest: {e}[/red]")
+            return
+
+    local_files: dict[str, float] = {}
+    if workspace.exists():
+        for f in workspace.rglob("*"):
+            if f.is_file():
+                rel = str(f.relative_to(workspace))
+                if not any(p in rel for p in ["__pycache__", ".git", "node_modules"]):
+                    local_files[rel] = f.stat().st_mtime
+
+    only_local = [p for p in local_files if p not in remote_files]
+    only_remote = [p for p in remote_files if p not in local_files]
+    newer_local = [
+        p for p in local_files
+        if p in remote_files and local_files[p] > remote_files[p].get("mtime", 0)
+    ]
+    newer_remote = [
+        p for p in local_files
+        if p in remote_files and remote_files[p].get("mtime", 0) > local_files[p]
+    ]
+    in_sync = len(local_files) + len(remote_files) - len(only_local) - len(only_remote) - len(newer_local) - len(newer_remote)
+
+    table = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 2))
+    table.add_column("Status")
+    table.add_column("Count")
+    table.add_row("[green]In sync[/green]", str(max(0, in_sync // 2)))
+    table.add_row("[yellow]Local only (push needed)[/yellow]", str(len(only_local)))
+    table.add_row("[blue]Cloud only (pull needed)[/blue]", str(len(only_remote)))
+    table.add_row("[yellow]Newer locally[/yellow]", str(len(newer_local)))
+    table.add_row("[blue]Newer in cloud[/blue]", str(len(newer_remote)))
+    console.print(Panel(table, title="Workspace Sync Status", border_style="cyan"))
+
+    if only_local:
+        console.print("\n  [yellow]Local only:[/yellow]")
+        for p in only_local[:10]:
+            console.print(f"    {p}")
+        if len(only_local) > 10:
+            console.print(f"    … and {len(only_local) - 10} more")
+
+    if only_remote:
+        console.print("\n  [blue]Cloud only:[/blue]")
+        for p in only_remote[:10]:
+            console.print(f"    {p}")
+        if len(only_remote) > 10:
+            console.print(f"    … and {len(only_remote) - 10} more")

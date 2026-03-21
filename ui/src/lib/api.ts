@@ -372,4 +372,92 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ patch: opts }),
     }),
+
+  // Workspace sync
+  getWorkspaceManifest: () =>
+    request<{ files: { path: string; size: number; mtime: number }[]; total: number }>(
+      "/workspace/manifest"
+    ),
+  workspacePush: (cloudUrl: string, token: string) =>
+    fetch(`${cloudUrl}/api/workspace/manifest`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then(async (remote) => {
+        const localManifest = await request<{
+          files: { path: string; size: number; mtime: number }[];
+        }>("/workspace/manifest");
+        const remoteMap: Record<string, { mtime: number }> = {};
+        for (const f of remote.files || []) remoteMap[f.path] = f;
+        const toUpload = (localManifest.files || []).filter(
+          (f) => !remoteMap[f.path] || f.mtime > remoteMap[f.path].mtime + 1
+        );
+        let uploaded = 0;
+        for (const f of toUpload) {
+          const content = await request<{ content: string }>(`/workspace/files/${f.path}`);
+          await fetch(`${cloudUrl}/api/workspace/files`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ path: f.path, content: content.content }),
+          });
+          uploaded++;
+        }
+        return { uploaded, total: toUpload.length };
+      }),
+  workspacePull: (cloudUrl: string, token: string) =>
+    fetch(`${cloudUrl}/api/workspace/manifest`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then(async (remote) => {
+        const localManifest = await request<{
+          files: { path: string; size: number; mtime: number }[];
+        }>("/workspace/manifest");
+        const localMap: Record<string, { mtime: number }> = {};
+        for (const f of localManifest.files || []) localMap[f.path] = f;
+        const toDownload = (remote.files || []).filter(
+          (f: { path: string; mtime: number }) =>
+            !localMap[f.path] || f.mtime > localMap[f.path].mtime + 1
+        );
+        let downloaded = 0;
+        for (const f of toDownload) {
+          const resp = await fetch(`${cloudUrl}/api/workspace/files/${f.path}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await resp.json();
+          await request("/workspace/files", {
+            method: "POST",
+            body: JSON.stringify({ path: f.path, content: data.content }),
+          });
+          downloaded++;
+        }
+        return { downloaded, total: toDownload.length };
+      }),
+  getWorkspaceSyncStatus: (cloudUrl: string, token: string) =>
+    Promise.all([
+      request<{ files: { path: string; mtime: number }[] }>("/workspace/manifest"),
+      fetch(`${cloudUrl}/api/workspace/manifest`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => r.json()),
+    ]).then(([local, remote]) => {
+      const localMap: Record<string, number> = {};
+      for (const f of local.files || []) localMap[f.path] = f.mtime;
+      const remoteMap: Record<string, number> = {};
+      for (const f of remote.files || []) remoteMap[f.path] = f.mtime;
+      const allPaths = new Set([...Object.keys(localMap), ...Object.keys(remoteMap)]);
+      let local_only = 0, cloud_only = 0, newer_local = 0, newer_cloud = 0, in_sync = 0;
+      for (const p of allPaths) {
+        const lm = localMap[p];
+        const rm = remoteMap[p];
+        if (!rm) local_only++;
+        else if (!lm) cloud_only++;
+        else if (lm > rm + 1) newer_local++;
+        else if (rm > lm + 1) newer_cloud++;
+        else in_sync++;
+      }
+      return { local_only, cloud_only, newer_local, newer_cloud, in_sync };
+    }),
 };

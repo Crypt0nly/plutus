@@ -2509,3 +2509,134 @@ def create_router() -> APIRouter:
         }
 
     return router
+
+
+# ---------------------------------------------------------------------------
+# Workspace sync endpoints (local ↔ cloud)
+# ---------------------------------------------------------------------------
+
+
+def create_workspace_router() -> APIRouter:
+    """Return a sub-router that exposes ~/plutus-workspace over HTTP."""
+    import shutil
+    from pathlib import Path
+
+    ws_router = APIRouter(prefix="/workspace")
+
+    WORKSPACE_ROOT = Path.home() / "plutus-workspace"
+    _SKIP = {"__pycache__", ".git", "node_modules", ".DS_Store"}
+
+    def _ws() -> Path:
+        WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+        return WORKSPACE_ROOT
+
+    def _safe(rel: str) -> Path:
+        ws = _ws()
+        clean = rel.lstrip("/")
+        resolved = (ws / clean).resolve()
+        if not str(resolved).startswith(str(ws.resolve())):
+            raise HTTPException(status_code=400, detail="Invalid path")
+        return resolved
+
+    # ── Manifest ──────────────────────────────────────────────────────────
+
+    @ws_router.get("/manifest")
+    async def local_manifest() -> dict[str, Any]:
+        """Return all workspace files with mtime for sync diff."""
+        ws = _ws()
+        files = []
+        for f in ws.rglob("*"):
+            if not f.is_file():
+                continue
+            rel = str(f.relative_to(ws))
+            if any(skip in rel for skip in _SKIP):
+                continue
+            files.append(
+                {
+                    "path": rel,
+                    "size": f.stat().st_size,
+                    "mtime": f.stat().st_mtime,
+                }
+            )
+        return {"files": files, "total": len(files)}
+
+    # ── List files ────────────────────────────────────────────────────────
+
+    @ws_router.get("/files")
+    async def list_files(path: str = "") -> dict[str, Any]:
+        ws = _ws()
+        target = _safe(path) if path else ws
+        if not target.exists():
+            raise HTTPException(status_code=404, detail="Path not found")
+        entries = []
+        for item in sorted(target.iterdir()):
+            entries.append(
+                {
+                    "name": item.name,
+                    "path": str(item.relative_to(ws)),
+                    "type": "directory" if item.is_dir() else "file",
+                    "size": item.stat().st_size if item.is_file() else None,
+                    "mtime": item.stat().st_mtime,
+                }
+            )
+        return {"files": entries, "path": path or "/"}
+
+    # ── Read a file ───────────────────────────────────────────────────────
+
+    @ws_router.get("/files/{file_path:path}")
+    async def read_file(file_path: str) -> dict[str, Any]:
+        target = _safe(file_path)
+        if not target.exists() or target.is_dir():
+            raise HTTPException(status_code=404, detail="File not found")
+        try:
+            content = target.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Binary file — use download endpoint")
+        ws = _ws()
+        return {
+            "path": file_path,
+            "content": content,
+            "size": target.stat().st_size,
+            "mtime": target.stat().st_mtime,
+        }
+
+    # ── Create / overwrite a file ─────────────────────────────────────────
+
+    @ws_router.post("/files")
+    async def create_file(payload: dict[str, Any]) -> dict[str, Any]:
+        target = _safe(payload.get("path", "untitled.txt"))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(payload.get("content", ""), encoding="utf-8")
+        ws = _ws()
+        return {
+            "path": str(target.relative_to(ws)),
+            "size": target.stat().st_size,
+        }
+
+    # ── Delete a file ─────────────────────────────────────────────────────
+
+    @ws_router.delete("/files/{file_path:path}")
+    async def delete_file(file_path: str) -> dict[str, Any]:
+        target = _safe(file_path)
+        if not target.exists():
+            raise HTTPException(status_code=404, detail="Not found")
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+        return {"deleted": file_path}
+
+    # ── Workspace info ────────────────────────────────────────────────────
+
+    @ws_router.get("")
+    async def workspace_info() -> dict[str, Any]:
+        ws = _ws()
+        total_size = sum(f.stat().st_size for f in ws.rglob("*") if f.is_file())
+        file_count = sum(1 for f in ws.rglob("*") if f.is_file())
+        return {
+            "path": str(ws),
+            "total_size_bytes": total_size,
+            "file_count": file_count,
+        }
+
+    return ws_router

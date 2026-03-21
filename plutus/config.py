@@ -142,6 +142,15 @@ class PlannerConfig(BaseModel):
     show_progress: bool = True  # emit plan progress events to UI
 
 
+class CloudSyncConfig(BaseModel):
+    url: str = ""  # Cloud Plutus URL, e.g. https://app.plutus.ai
+    token: str = ""  # API token from cloud Settings → Workspace
+    auto_sync: bool = False  # automatically sync on file changes
+    auto_sync_interval: int = 300  # seconds between auto-sync checks (default 5 min)
+    last_push: float = 0.0  # unix timestamp of last successful push
+    last_pull: float = 0.0  # unix timestamp of last successful pull
+
+
 class PlutusConfig(BaseSettings):
     model: ModelConfig = Field(default_factory=ModelConfig)
     guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig)
@@ -159,6 +168,7 @@ class PlutusConfig(BaseSettings):
     updates: UpdateConfig = Field(default_factory=UpdateConfig)
     skills_dir: str = ""  # empty = ~/.plutus/skills
     onboarding_completed: bool = False  # set True after first-run wizard finishes
+    cloud_sync: CloudSyncConfig = Field(default_factory=CloudSyncConfig)
 
     @classmethod
     def load(cls) -> PlutusConfig:
