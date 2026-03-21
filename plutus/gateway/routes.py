@@ -2558,7 +2558,10 @@ def create_workspace_router() -> APIRouter:
     ws_router = APIRouter(prefix="/workspace")
 
     WORKSPACE_ROOT = Path.home() / "plutus-workspace"
-    _SKIP = {"__pycache__", ".git", "node_modules", ".DS_Store"}
+    # Segment names to skip anywhere in the path tree
+    _SKIP = {"__pycache__", ".git", "node_modules", ".DS_Store", ".venv", "venv", ".env"}
+    # Top-level directory names that are Plutus internals, never user files
+    _SKIP_TOP = {"plutus", ".plutus", "plutus_ai", "plutus-ai"}
 
     def _ws() -> Path:
         WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -2574,6 +2577,19 @@ def create_workspace_router() -> APIRouter:
 
     # ── Manifest ──────────────────────────────────────────────────────────
 
+    def _is_user_file(f: Path, ws: Path) -> bool:
+        """Return True if *f* is a user file that should be synced."""
+        rel = f.relative_to(ws)
+        parts = rel.parts
+        # Skip top-level Plutus internal directories
+        if parts and parts[0] in _SKIP_TOP:
+            return False
+        # Skip any path segment that matches the general skip set
+        rel_str = str(rel)
+        if any(skip in rel_str for skip in _SKIP):
+            return False
+        return True
+
     @ws_router.get("/manifest")
     async def local_manifest() -> dict[str, Any]:
         """Return all workspace files with mtime for sync diff."""
@@ -2582,9 +2598,9 @@ def create_workspace_router() -> APIRouter:
         for f in ws.rglob("*"):
             if not f.is_file():
                 continue
-            rel = str(f.relative_to(ws))
-            if any(skip in rel for skip in _SKIP):
+            if not _is_user_file(f, ws):
                 continue
+            rel = str(f.relative_to(ws))
             files.append(
                 {
                     "path": rel,
