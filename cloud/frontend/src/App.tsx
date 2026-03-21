@@ -413,29 +413,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Mobile virtual-keyboard height tracking ──────────────────────────────
-  // When the soft keyboard opens the visual viewport shrinks. We measure the
-  // gap and expose it as --keyboard-height so the chat input can shift up.
-  useEffect(() => {
-    if (!isMobile) return;
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    const update = () => {
-      const kh = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty("--keyboard-height", `${kh}px`);
-    };
-
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    update();
-    return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
-      document.documentElement.style.setProperty("--keyboard-height", "0px");
-    };
-  }, [isMobile]);
-
   // Check for updates on mount, then every 6 hours
   useEffect(() => {
     const check = () => {
@@ -512,34 +489,17 @@ export default function App() {
         <ConnectionBanner />
         <UpdateBanner />
 
-        {/* Main content — grows to fill space between header and bottom nav */}
+        {/* Main content — flex-1 so it fills all space between header and nav */}
         <main
           className={`flex-1 flex flex-col min-h-0 ${
             view === "chat" || view === "sessions"
               ? "overflow-hidden"
               : "overflow-y-auto"
-          }`}
-          style={{
-            // The MobileNav is position:fixed so it takes no space in the flex
-            // column. We must manually reserve its height (56px + safe-area)
-            // as bottom padding so ChatInput is never hidden behind it.
-            // When the keyboard opens, --keyboard-height is set by the
-            // visualViewport listener and added on top so the input shifts up.
-            paddingBottom:
-              view === "chat" || view === "sessions"
-                ? "calc(56px + env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px))"
-                : "calc(64px + env(safe-area-inset-bottom))",
-          }}
-        >
-          {view !== "chat" && view !== "sessions" && (
-            <div className="px-4 pt-4 pb-2">
-              {/* Mobile view padding wrapper for non-chat views */}
-            </div>
-          )}
+          }`}>
           {viewComponents[view] || viewComponents.chat}
         </main>
 
-        {/* Mobile bottom navigation */}
+        {/* Mobile bottom navigation — flex child, never scrolls */}
         <MobileNav send={send} />
 
         {/* Mobile full nav drawer (triggered from header menu button) */}

@@ -142,10 +142,7 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
 
   return (
     <div
-      className="flex-shrink-0 px-4 pt-2 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent"
-      style={{
-        paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))",
-      }}
+      className="flex-shrink-0 px-4 pt-2 pb-4 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent"
     >
       <div className="max-w-3xl mx-auto">
         <div

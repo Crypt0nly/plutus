@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   MessageSquare,
   LayoutDashboard,
@@ -48,24 +48,6 @@ interface MobileNavProps {
 export function MobileNav({ send: _send }: MobileNavProps) {
   const { view, setView, connected, setPendingNewSession } = useAppStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-
-  // Hide the nav bar when the virtual keyboard is open so it doesn't
-  // compete with the chat input for the reduced viewport space.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => {
-      const kh = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKeyboardOpen(kh > 80); // 80px threshold to avoid false positives
-    };
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
-    };
-  }, []);
 
   const handleNewChat = () => {
     setPendingNewSession(true);
@@ -83,17 +65,15 @@ export function MobileNav({ send: _send }: MobileNavProps) {
 
   return (
     <>
-      {/* Bottom navigation bar — hidden when virtual keyboard is open */}
+      {/* Bottom navigation bar — in-flow so it never scrolls */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-40 flex items-stretch transition-transform duration-200"
+        className="flex-shrink-0 flex items-stretch z-40"
         style={{
           background: "rgba(9, 9, 11, 0.95)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           borderTop: "1px solid rgba(255,255,255,0.06)",
           paddingBottom: "env(safe-area-inset-bottom)",
-          transform: keyboardOpen ? "translateY(100%)" : "translateY(0)",
-          pointerEvents: keyboardOpen ? "none" : "auto",
         }}
       >
         {primaryTabs.map((tab) => {
