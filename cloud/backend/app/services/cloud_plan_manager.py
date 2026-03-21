@@ -87,7 +87,8 @@ class CloudPlanManager:
 
         await self._session.execute(
             text(
-                "INSERT INTO plans (id, user_id, title, goal, status, steps, created_at, updated_at) "
+                "INSERT INTO plans "
+                "(id, user_id, title, goal, status, steps, created_at, updated_at) "
                 "VALUES (:id, :uid, :title, :goal, 'active', :steps, :now, :now)"
             ),
             {

@@ -32,9 +32,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Callable
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -288,8 +288,6 @@ class CloudHeartbeatManager:
 
     async def _get_or_create_heartbeat_conv(self, user_id: str, agent_svc) -> str:
         """Return the persistent heartbeat conversation ID for this user."""
-        from sqlalchemy import text
-
         # Use a deterministic conversation ID so heartbeat messages are
         # grouped together and don't pollute the user's chat history.
         conv_id = f"heartbeat-{user_id}"
@@ -305,7 +303,7 @@ class CloudHeartbeatManager:
     def _in_quiet_hours(state: HeartbeatState) -> bool:
         if state.quiet_hours_start is None or state.quiet_hours_end is None:
             return False
-        hour = datetime.now(timezone.utc).hour
+        hour = datetime.now(datetime.UTC).hour
         start, end = state.quiet_hours_start, state.quiet_hours_end
         if start <= end:
             return start <= hour < end
