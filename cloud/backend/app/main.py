@@ -169,7 +169,9 @@ class _DynamicCORSMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-app.add_middleware(_DynamicCORSMiddleware)
+# Middleware is applied in reverse registration order (last added = outermost).
+# _DynamicCORSMiddleware must be added AFTER CORSMiddleware so it runs first
+# and can intercept localhost origins before the static middleware rejects them.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -177,6 +179,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(_DynamicCORSMiddleware)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
