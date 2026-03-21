@@ -404,15 +404,32 @@ export const api = {
         );
         let uploaded = 0;
         for (const f of toUpload) {
-          const content = await request<{ content: string }>(`/workspace/files/${f.path}`);
-          await fetch(`${cloudUrl}/api/workspace/files`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ path: f.path, content: content.content }),
-          });
+          const fileData = await request<{ content: string; binary?: boolean }>(`/workspace/files/${f.path}`);
+          if (fileData.binary) {
+            // Binary file — decode base64 and upload via multipart
+            const binaryStr = atob(fileData.content);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+            const blob = new Blob([bytes], { type: "application/octet-stream" });
+            const form = new FormData();
+            form.append("file", blob, f.path.split("/").pop() || "file");
+            form.append("path", f.path);
+            await fetch(`${cloudUrl}/api/workspace/upload`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              body: form,
+            });
+          } else {
+            // Text file — upload as JSON
+            await fetch(`${cloudUrl}/api/workspace/files`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ path: f.path, content: fileData.content }),
+            });
+          }
           uploaded++;
         }
         return { uploaded, total: toUpload.length };

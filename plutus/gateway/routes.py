@@ -2619,20 +2619,40 @@ def create_workspace_router() -> APIRouter:
 
     @ws_router.get("/files/{file_path:path}")
     async def read_file(file_path: str) -> dict[str, Any]:
+        import base64
+
         target = _safe(file_path)
         if not target.exists() or target.is_dir():
             raise HTTPException(status_code=404, detail="File not found")
+        raw = target.read_bytes()
         try:
-            content = target.read_text(encoding="utf-8")
+            content = raw.decode("utf-8")
+            is_binary = False
         except UnicodeDecodeError:
-            raise HTTPException(status_code=400, detail="Binary file — use download endpoint")
+            # Return binary files as base64 so the push flow can upload them
+            content = base64.b64encode(raw).decode("ascii")
+            is_binary = True
         ws = _ws()
         return {
             "path": file_path,
             "content": content,
+            "binary": is_binary,
             "size": target.stat().st_size,
             "mtime": target.stat().st_mtime,
         }
+
+    # ── Download a file (raw bytes) ──────────────────────────────────────
+
+    @ws_router.get("/download/{file_path:path}")
+    async def download_file(file_path: str):
+        target = _safe(file_path)
+        if not target.exists() or target.is_dir():
+            raise HTTPException(status_code=404, detail="File not found")
+        return FileResponse(
+            path=str(target),
+            filename=target.name,
+            media_type="application/octet-stream",
+        )
 
     # ── Create / overwrite a file ─────────────────────────────────────────
 
