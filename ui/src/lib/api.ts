@@ -378,8 +378,10 @@ export const api = {
     request<{ files: { path: string; size: number; mtime: number }[]; total: number }>(
       "/workspace/manifest"
     ),
-  workspacePush: (cloudUrl: string, token: string) =>
-    fetch(`${cloudUrl}/api/workspace/manifest`, {
+  workspacePush: (token: string) => {
+    const cloudUrl = extractCloudUrlFromToken(token);
+    if (!cloudUrl) return Promise.reject(new Error("Invalid token — cannot determine server URL"));
+    return fetch(`${cloudUrl}/api/workspace/manifest`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -406,9 +408,12 @@ export const api = {
           uploaded++;
         }
         return { uploaded, total: toUpload.length };
-      }),
-  workspacePull: (cloudUrl: string, token: string) =>
-    fetch(`${cloudUrl}/api/workspace/manifest`, {
+      });
+  },
+  workspacePull: (token: string) => {
+    const cloudUrl = extractCloudUrlFromToken(token);
+    if (!cloudUrl) return Promise.reject(new Error("Invalid token — cannot determine server URL"));
+    return fetch(`${cloudUrl}/api/workspace/manifest`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -435,9 +440,12 @@ export const api = {
           downloaded++;
         }
         return { downloaded, total: toDownload.length };
-      }),
-  getWorkspaceSyncStatus: (cloudUrl: string, token: string) =>
-    Promise.all([
+      });
+  },
+  getWorkspaceSyncStatus: (token: string) => {
+    const cloudUrl = extractCloudUrlFromToken(token);
+    if (!cloudUrl) return Promise.reject(new Error("Invalid token — cannot determine server URL"));
+    return Promise.all([
       request<{ files: { path: string; mtime: number }[] }>("/workspace/manifest"),
       fetch(`${cloudUrl}/api/workspace/manifest`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -459,5 +467,27 @@ export const api = {
         else in_sync++;
       }
       return { local_only, cloud_only, newer_local, newer_cloud, in_sync };
-    }),
+    });
+  },
 };
+
+/**
+ * Extract the cloud server URL embedded in a Plutus sync token.
+ *
+ * New token format:  plutus_<base64url(server_url)>.<hex_secret>
+ * Legacy format:     plutus_<hex>  (no embedded URL — returns null)
+ */
+export function extractCloudUrlFromToken(token: string): string | null {
+  if (!token.startsWith("plutus_")) return null;
+  const rest = token.slice(7); // strip "plutus_"
+  const dotIdx = rest.indexOf(".");
+  if (dotIdx === -1) return null; // legacy token — no embedded URL
+  const b64 = rest.slice(0, dotIdx);
+  try {
+    // Re-add stripped padding
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    return atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+  } catch {
+    return null;
+  }
+}

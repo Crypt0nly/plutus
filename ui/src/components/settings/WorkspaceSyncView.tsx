@@ -5,15 +5,18 @@ import {
   Upload,
   Download,
   RefreshCw,
-  CheckCircle,
-  AlertCircle,
+  CheckCircle2,
+  XCircle,
   Clock,
-  ToggleLeft,
-  ToggleRight,
   Eye,
   EyeOff,
+  ArrowUpDown,
+  Plug,
+  Zap,
+  AlertTriangle,
+  Link2,
 } from "lucide-react";
-import { api } from "../../lib/api";
+import { api, extractCloudUrlFromToken } from "../../lib/api";
 
 interface SyncConfig {
   url: string;
@@ -34,15 +37,9 @@ interface SyncStatus {
   total_cloud: number;
 }
 
-function formatTime(ts: number): string {
-  if (!ts) return "Never";
-  const d = new Date(ts * 1000);
-  return d.toLocaleString();
-}
-
 function formatRelative(ts: number): string {
   if (!ts) return "Never";
-  const diff = Math.floor((Date.now() / 1000) - ts);
+  const diff = Math.floor(Date.now() / 1000 - ts);
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -64,9 +61,9 @@ export default function WorkspaceSyncView() {
   const [pulling, setPulling] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [showToken, setShowToken] = useState(false);
-  const [saveMsg, setSaveMsg] = useState("");
-  const [pushMsg, setPushMsg] = useState("");
-  const [pullMsg, setPullMsg] = useState("");
+  const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [pullMsg, setPullMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -77,7 +74,7 @@ export default function WorkspaceSyncView() {
           ...(data.cloud_sync as Partial<SyncConfig>),
         }));
       }
-    } catch (e) {
+    } catch {
       // ignore
     } finally {
       setLoading(false);
@@ -88,59 +85,35 @@ export default function WorkspaceSyncView() {
     loadConfig();
   }, [loadConfig]);
 
+  // Derive the cloud URL from the embedded token automatically
+  const derivedUrl = extractCloudUrlFromToken(config.token) || config.url;
+  const isConfigured = !!(derivedUrl && config.token);
+
   const saveConfig = async () => {
     try {
-      await api.updateConfig({ cloud_sync: config });
-      setSaveMsg("Saved!");
-      setTimeout(() => setSaveMsg(""), 2000);
-    } catch (e) {
-      setSaveMsg("Save failed");
-      setTimeout(() => setSaveMsg(""), 3000);
+      // Persist the derived URL so legacy code paths still work
+      const toSave = { ...config, url: derivedUrl || config.url };
+      await api.updateConfig({ cloud_sync: toSave });
+      setSaveMsg({ text: "Saved successfully", ok: true });
+      setTimeout(() => setSaveMsg(null), 2500);
+    } catch {
+      setSaveMsg({ text: "Failed to save", ok: false });
+      setTimeout(() => setSaveMsg(null), 3000);
     }
   };
 
   const fetchStatus = async () => {
-    if (!config.url || !config.token) return;
+    if (!isConfigured) return;
     setStatusLoading(true);
     try {
-      const resp = await fetch(`${config.url}/api/workspace/manifest`, {
-        headers: { Authorization: `Bearer ${config.token}` },
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      const remoteFiles: Record<string, { mtime: number }> = {};
-      for (const f of data.files || []) {
-        remoteFiles[f.path] = f;
-      }
-      // Get local manifest from local server
+      const data = await api.getWorkspaceSyncStatus(config.token);
       const localResp = await api.getWorkspaceManifest();
-      const localFiles: Record<string, { mtime: number }> = {};
-      for (const f of localResp.files || []) {
-        localFiles[f.path] = f;
-      }
-      const allPaths = new Set([...Object.keys(localFiles), ...Object.keys(remoteFiles)]);
-      let local_only = 0, cloud_only = 0, newer_local = 0, newer_cloud = 0, in_sync = 0;
-      for (const p of allPaths) {
-        const l = localFiles[p];
-        const r = remoteFiles[p];
-        if (l && !r) local_only++;
-        else if (!l && r) cloud_only++;
-        else if (l && r) {
-          if (l.mtime > r.mtime + 1) newer_local++;
-          else if (r.mtime > l.mtime + 1) newer_cloud++;
-          else in_sync++;
-        }
-      }
       setStatus({
-        local_only,
-        cloud_only,
-        newer_local,
-        newer_cloud,
-        in_sync,
-        total_local: Object.keys(localFiles).length,
-        total_cloud: Object.keys(remoteFiles).length,
+        ...data,
+        total_local: localResp.total,
+        total_cloud: data.local_only + data.cloud_only + data.newer_local + data.newer_cloud + data.in_sync,
       });
-    } catch (e) {
+    } catch {
       setStatus(null);
     } finally {
       setStatusLoading(false);
@@ -148,141 +121,167 @@ export default function WorkspaceSyncView() {
   };
 
   const handlePush = async () => {
-    if (!config.url || !config.token) {
-      setPushMsg("Configure URL and token first");
-      setTimeout(() => setPushMsg(""), 3000);
+    if (!isConfigured) {
+      setPushMsg({ text: "Paste your sync token first", ok: false });
+      setTimeout(() => setPushMsg(null), 3000);
       return;
     }
     setPushing(true);
-    setPushMsg("");
+    setPushMsg(null);
     try {
-      const resp = await api.workspacePush(config.url, config.token);
-      setPushMsg(`✓ Pushed ${resp.uploaded} file(s)`);
-      await api.updateConfig({ cloud_sync: { ...config, last_push: Date.now() / 1000 } });
+      const resp = await api.workspacePush(config.token);
+      await api.updateConfig({ cloud_sync: { ...config, url: derivedUrl, last_push: Date.now() / 1000 } });
       setConfig((c) => ({ ...c, last_push: Date.now() / 1000 }));
-      setTimeout(() => setPushMsg(""), 4000);
+      setPushMsg({ text: `Pushed ${resp.uploaded} file${resp.uploaded !== 1 ? "s" : ""}`, ok: true });
+      setTimeout(() => setPushMsg(null), 4000);
     } catch (e: any) {
-      setPushMsg(`Push failed: ${e.message || e}`);
-      setTimeout(() => setPushMsg(""), 4000);
+      setPushMsg({ text: `Push failed: ${e.message || e}`, ok: false });
+      setTimeout(() => setPushMsg(null), 5000);
     } finally {
       setPushing(false);
     }
   };
 
   const handlePull = async () => {
-    if (!config.url || !config.token) {
-      setPullMsg("Configure URL and token first");
-      setTimeout(() => setPullMsg(""), 3000);
+    if (!isConfigured) {
+      setPullMsg({ text: "Paste your sync token first", ok: false });
+      setTimeout(() => setPullMsg(null), 3000);
       return;
     }
     setPulling(true);
-    setPullMsg("");
+    setPullMsg(null);
     try {
-      const resp = await api.workspacePull(config.url, config.token);
-      setPullMsg(`✓ Pulled ${resp.downloaded} file(s)`);
-      await api.updateConfig({ cloud_sync: { ...config, last_pull: Date.now() / 1000 } });
+      const resp = await api.workspacePull(config.token);
+      await api.updateConfig({ cloud_sync: { ...config, url: derivedUrl, last_pull: Date.now() / 1000 } });
       setConfig((c) => ({ ...c, last_pull: Date.now() / 1000 }));
-      setTimeout(() => setPullMsg(""), 4000);
+      setPullMsg({ text: `Pulled ${resp.downloaded} file${resp.downloaded !== 1 ? "s" : ""}`, ok: true });
+      setTimeout(() => setPullMsg(null), 4000);
     } catch (e: any) {
-      setPullMsg(`Pull failed: ${e.message || e}`);
-      setTimeout(() => setPullMsg(""), 4000);
+      setPullMsg({ text: `Pull failed: ${e.message || e}`, ok: false });
+      setTimeout(() => setPullMsg(null), 5000);
     } finally {
       setPulling(false);
     }
   };
 
-  const isConfigured = config.url && config.token;
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <RefreshCw className="w-5 h-5 animate-spin text-zinc-400" />
+      <div className="flex items-center justify-center py-10">
+        <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Cloud className="w-5 h-5 text-cyan-400" />
-        <div>
-          <h2 className="text-sm font-semibold text-white">Cloud Workspace Sync</h2>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            Keep your local{" "}
-            <code className="text-zinc-300">~/plutus-workspace</code> in sync with
-            the cloud sandbox
+    <div className="space-y-5">
+
+      {/* ── Connection status banner ── */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 rounded-xl"
+        style={
+          isConfigured
+            ? { background: "rgba(6, 182, 212, 0.06)", border: "1px solid rgba(6, 182, 212, 0.18)" }
+            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }
+        }
+      >
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={
+            isConfigured
+              ? { background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee" }
+              : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
+          }
+        >
+          {isConfigured ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-200">
+            {isConfigured ? "Connected to cloud" : "Not connected"}
+          </p>
+          <p className="text-xs text-gray-500 truncate mt-0.5">
+            {isConfigured
+              ? derivedUrl
+              : "Paste your sync token from the cloud Settings → Workspace tab"}
           </p>
         </div>
+        {isConfigured && (
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-cyan-400 flex-shrink-0"
+            style={{ background: "rgba(6, 182, 212, 0.1)", border: "1px solid rgba(6, 182, 212, 0.2)" }}>
+            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            Active
+          </span>
+        )}
       </div>
 
-      {/* Connection config */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
-        <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-          Connection
-        </h3>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs text-zinc-400 mb-1">Cloud URL</label>
-            <input
-              type="url"
-              value={config.url}
-              onChange={(e) => setConfig((c) => ({ ...c, url: e.target.value }))}
-              placeholder="https://app.plutus.ai"
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-zinc-400 mb-1">API Token</label>
-            <div className="relative">
-              <input
-                type={showToken ? "text" : "password"}
-                value={config.token}
-                onChange={(e) => setConfig((c) => ({ ...c, token: e.target.value }))}
-                placeholder="Paste your token from cloud Settings → Workspace"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 pr-10 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500"
-              />
-              <button
-                onClick={() => setShowToken((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-              >
-                {showToken ? (
-                  <EyeOff className="w-4 h-4" />
-                ) : (
-                  <Eye className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-          </div>
+      {/* ── API Token input ── */}
+      <div
+        className="rounded-xl p-4 space-y-4"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
+        <div className="flex items-center gap-2">
+          <Link2 className="w-3.5 h-3.5 text-cyan-400" />
+          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sync Token</h4>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div>
+          <div className="relative">
+            <input
+              type={showToken ? "text" : "password"}
+              value={config.token}
+              onChange={(e) => setConfig((c) => ({ ...c, token: e.target.value }))}
+              placeholder="Paste your token from cloud Settings → Workspace"
+              className="w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono"
+            />
+            <button
+              onClick={() => setShowToken((s) => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors"
+            >
+              {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          {config.token && !extractCloudUrlFromToken(config.token) && (
+            <p className="text-[11px] text-amber-400/80 mt-2 flex items-center gap-1.5">
+              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+              Legacy token — please regenerate a new one from the cloud to remove the URL field
+            </p>
+          )}
+          {config.token && extractCloudUrlFromToken(config.token) && (
+            <p className="text-[11px] text-cyan-400/70 mt-2 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+              Server URL detected automatically from token
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
           <button
             onClick={saveConfig}
-            className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium transition-all active:scale-[0.98]"
+            style={{ background: "rgba(6, 182, 212, 0.8)", boxShadow: "0 4px 14px rgba(6, 182, 212, 0.2)" }}
           >
+            <Plug className="w-3.5 h-3.5" />
             Save
           </button>
           {saveMsg && (
-            <span
-              className={`text-xs ${saveMsg.includes("failed") ? "text-red-400" : "text-green-400"}`}
-            >
-              {saveMsg}
+            <span className={`flex items-center gap-1.5 text-xs ${saveMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+              {saveMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+              {saveMsg.text}
             </span>
           )}
         </div>
       </div>
 
-      {/* Auto-sync toggle */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      {/* ── Auto-sync toggle ── */}
+      <div
+        className="rounded-xl p-4"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-white">Auto-sync</h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Automatically push changes to the cloud every{" "}
-              {Math.round(config.auto_sync_interval / 60)} minutes
+            <p className="text-sm font-medium text-gray-200">Auto-sync</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Automatically push local changes every{" "}
+              {Math.round(config.auto_sync_interval / 60)} min
             </p>
           </div>
           <button
@@ -291,19 +290,21 @@ export default function WorkspaceSyncView() {
               setConfig(updated);
               api.updateConfig({ cloud_sync: updated });
             }}
-            className="text-cyan-400 hover:text-cyan-300 transition-colors"
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              config.auto_sync ? "bg-cyan-500" : "bg-gray-700"
+            }`}
           >
-            {config.auto_sync ? (
-              <ToggleRight className="w-8 h-8" />
-            ) : (
-              <ToggleLeft className="w-8 h-8 text-zinc-500" />
-            )}
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                config.auto_sync ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
           </button>
         </div>
 
         {config.auto_sync && (
-          <div className="mt-3 flex items-center gap-3">
-            <label className="text-xs text-zinc-400">Interval (minutes)</label>
+          <div className="mt-3 pt-3 flex items-center gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <label className="text-xs text-gray-500">Interval</label>
             <input
               type="number"
               min={1}
@@ -317,17 +318,38 @@ export default function WorkspaceSyncView() {
                 setConfig(updated);
                 api.updateConfig({ cloud_sync: updated });
               }}
-              className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-cyan-500"
+              className="w-16 bg-gray-900/80 border border-gray-800/60 rounded-lg px-2 py-1 text-sm text-gray-200 text-center focus:outline-none focus:border-cyan-500/50 transition-all"
             />
+            <span className="text-xs text-gray-500">minutes</span>
           </div>
         )}
       </div>
 
-      {/* Push / Pull actions */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
-        <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-          Manual Sync
-        </h3>
+      {/* ── Push / Pull ── */}
+      <div
+        className="rounded-xl p-4 space-y-4"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Manual Sync</h4>
+          {(config.last_push > 0 || config.last_pull > 0) && (
+            <div className="ml-auto flex items-center gap-3 text-[11px] text-gray-600">
+              {config.last_push > 0 && (
+                <span className="flex items-center gap-1">
+                  <Upload className="w-3 h-3" />
+                  {formatRelative(config.last_push)}
+                </span>
+              )}
+              {config.last_pull > 0 && (
+                <span className="flex items-center gap-1">
+                  <Download className="w-3 h-3" />
+                  {formatRelative(config.last_pull)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           {/* Push */}
@@ -335,25 +357,24 @@ export default function WorkspaceSyncView() {
             <button
               onClick={handlePush}
               disabled={pushing || !isConfigured}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed border border-zinc-700 rounded-xl text-sm text-white transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
+              style={
+                isConfigured
+                  ? { background: "rgba(6, 182, 212, 0.08)", border: "1px solid rgba(6, 182, 212, 0.2)", color: "#22d3ee" }
+                  : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#6b7280" }
+              }
             >
               {pushing ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <Upload className="w-4 h-4 text-cyan-400" />
+                <Upload className="w-4 h-4" />
               )}
               {pushing ? "Pushing…" : "Push to Cloud"}
             </button>
-            {config.last_push > 0 && (
-              <p className="text-xs text-zinc-500 text-center">
-                Last: {formatRelative(config.last_push)}
-              </p>
-            )}
             {pushMsg && (
-              <p
-                className={`text-xs text-center ${pushMsg.startsWith("✓") ? "text-green-400" : "text-red-400"}`}
-              >
-                {pushMsg}
+              <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pushMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {pushMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {pushMsg.text}
               </p>
             )}
           </div>
@@ -363,46 +384,47 @@ export default function WorkspaceSyncView() {
             <button
               onClick={handlePull}
               disabled={pulling || !isConfigured}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed border border-zinc-700 rounded-xl text-sm text-white transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
+              style={
+                isConfigured
+                  ? { background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)", color: "#34d399" }
+                  : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#6b7280" }
+              }
             >
               {pulling ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <Download className="w-4 h-4 text-emerald-400" />
+                <Download className="w-4 h-4" />
               )}
               {pulling ? "Pulling…" : "Pull from Cloud"}
             </button>
-            {config.last_pull > 0 && (
-              <p className="text-xs text-zinc-500 text-center">
-                Last: {formatRelative(config.last_pull)}
-              </p>
-            )}
             {pullMsg && (
-              <p
-                className={`text-xs text-center ${pullMsg.startsWith("✓") ? "text-green-400" : "text-red-400"}`}
-              >
-                {pullMsg}
+              <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pullMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {pullMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {pullMsg.text}
               </p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Sync status */}
+      {/* ── Sync status ── */}
       {isConfigured && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
+        <div
+          className="rounded-xl p-4 space-y-3"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+        >
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-              Sync Status
-            </h3>
+            <div className="flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 text-gray-400" />
+              <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sync Status</h4>
+            </div>
             <button
               onClick={fetchStatus}
               disabled={statusLoading}
-              className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
             >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`}
-              />
+              <RefreshCw className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`} />
               Refresh
             </button>
           </div>
@@ -410,87 +432,57 @@ export default function WorkspaceSyncView() {
           {status ? (
             <div className="grid grid-cols-2 gap-2">
               {[
-                {
-                  label: "In sync",
-                  value: status.in_sync,
-                  color: "text-green-400",
-                  icon: <CheckCircle className="w-3.5 h-3.5" />,
-                },
-                {
-                  label: "Local only",
-                  value: status.local_only,
-                  color: "text-yellow-400",
-                  icon: <Upload className="w-3.5 h-3.5" />,
-                },
-                {
-                  label: "Cloud only",
-                  value: status.cloud_only,
-                  color: "text-blue-400",
-                  icon: <Download className="w-3.5 h-3.5" />,
-                },
-                {
-                  label: "Newer locally",
-                  value: status.newer_local,
-                  color: "text-yellow-400",
-                  icon: <Clock className="w-3.5 h-3.5" />,
-                },
-                {
-                  label: "Newer in cloud",
-                  value: status.newer_cloud,
-                  color: "text-blue-400",
-                  icon: <Clock className="w-3.5 h-3.5" />,
-                },
+                { label: "In sync", value: status.in_sync, color: "text-emerald-400", bg: "rgba(16,185,129,0.06)", border: "rgba(16,185,129,0.15)", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+                { label: "Local only", value: status.local_only, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Upload className="w-3.5 h-3.5" /> },
+                { label: "Cloud only", value: status.cloud_only, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Download className="w-3.5 h-3.5" /> },
+                { label: "Newer locally", value: status.newer_local, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
+                { label: "Newer in cloud", value: status.newer_cloud, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between bg-zinc-800 rounded-lg px-3 py-2"
+                  className="flex items-center justify-between rounded-xl px-3 py-2.5"
+                  style={{ background: item.bg, border: `1px solid ${item.border}` }}
                 >
                   <div className={`flex items-center gap-1.5 ${item.color}`}>
                     {item.icon}
-                    <span className="text-xs text-zinc-400">{item.label}</span>
+                    <span className="text-xs text-gray-400">{item.label}</span>
                   </div>
-                  <span className={`text-sm font-semibold ${item.color}`}>
-                    {item.value}
-                  </span>
+                  <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
                 </div>
               ))}
             </div>
           ) : (
             <button
               onClick={fetchStatus}
-              className="w-full py-3 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="w-full py-4 text-xs text-gray-600 hover:text-gray-400 transition-colors flex items-center justify-center gap-2"
             >
-              Click Refresh to check sync status
+              <RefreshCw className="w-3.5 h-3.5" />
+              Click to check sync status
             </button>
           )}
         </div>
       )}
 
-      {/* Help */}
-      <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4">
-        <h3 className="text-xs font-semibold text-zinc-400 mb-2">How it works</h3>
-        <ul className="space-y-1.5 text-xs text-zinc-500">
-          <li>
-            <span className="text-zinc-300">Push</span> — uploads your local{" "}
-            <code className="text-zinc-400">~/plutus-workspace</code> to the cloud
+      {/* ── How to get a token ── */}
+      <div
+        className="rounded-xl p-4"
+        style={{ background: "rgba(6, 182, 212, 0.03)", border: "1px solid rgba(6, 182, 212, 0.1)" }}
+      >
+        <p className="text-xs font-semibold text-cyan-400/70 mb-2.5 uppercase tracking-wider">How to connect</p>
+        <ol className="space-y-2 text-xs text-gray-500">
+          <li className="flex gap-2">
+            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">1</span>
+            Open <span className="text-gray-300 mx-1">cloud Plutus → Settings → Workspace Sync</span>
           </li>
-          <li>
-            <span className="text-zinc-300">Pull</span> — downloads cloud files to
-            your local workspace
+          <li className="flex gap-2">
+            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">2</span>
+            Click <span className="text-gray-300 mx-1">Generate Token</span> and copy it
           </li>
-          <li>
-            <span className="text-zinc-300">Auto-sync</span> — automatically pushes
-            changes on a schedule
+          <li className="flex gap-2">
+            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">3</span>
+            Paste it above — the server URL is embedded automatically
           </li>
-          <li>
-            <span className="text-zinc-300">Cloud sandbox</span> — files are
-            automatically synced to/from the E2B sandbox every 5 minutes
-          </li>
-          <li>
-            Get your API token from{" "}
-            <span className="text-zinc-300">cloud Settings → Workspace → API Token</span>
-          </li>
-        </ul>
+        </ol>
       </div>
     </div>
   );
