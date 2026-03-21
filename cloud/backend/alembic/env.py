@@ -16,6 +16,7 @@ from app.models.agent_state import AgentState, Memory, ScheduledTask, Skill  # n
 # ── Import all models so Base.metadata contains every table ──────────
 from app.models.base import Base
 from app.models.conversation import Conversation, Message  # noqa: F401
+from app.models.plan import Plan  # noqa: F401
 from app.models.sync_log import SyncLog  # noqa: F401
 from app.models.user import User  # noqa: F401
 
