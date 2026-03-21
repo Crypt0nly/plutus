@@ -71,8 +71,11 @@ export default function WorkspaceSyncView() {
   const loadConfig = useCallback(async () => {
     try {
       const data = await api.getConfig();
-      if (data.cloud_sync) {
-        setConfig(data.cloud_sync);
+      if (data.cloud_sync && typeof data.cloud_sync === "object") {
+        setConfig((prev) => ({
+          ...prev,
+          ...(data.cloud_sync as Partial<SyncConfig>),
+        }));
       }
     } catch (e) {
       // ignore
