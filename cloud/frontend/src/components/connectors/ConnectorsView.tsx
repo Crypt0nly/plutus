@@ -38,6 +38,7 @@ import {
   Rocket,
   Upload,
 } from "lucide-react";
+import { useAuth } from "@clerk/clerk-react";
 import { api } from "../../lib/api";
 import { ConnectorLogo, CONNECTOR_LOGO_MAP } from "./ConnectorLogos";
 import { useAppStore } from "../../stores/appStore";
@@ -477,10 +478,12 @@ function ConfigureModal({
   connector,
   onClose,
   onRefresh,
+  userId,
 }: {
   connector: ConnectorData;
   onClose: () => void;
   onRefresh: () => void;
+  userId: string;
 }) {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -688,7 +691,7 @@ function ConfigureModal({
         // Server-side OAuth flow: redirect the browser to Google's consent screen.
         // The backend will redirect back to the frontend after the user authorizes.
         const oauthService = (connector as any).oauth_service || connector.name;
-        const url = api.getGoogleOAuthUrl(oauthService);
+        const url = api.getGoogleOAuthUrl(oauthService, userId);
         // The backend uses a signed state token to identify the user — no JWT needed.
         window.location.href = url;
         // Don't reset authorizing — the page will navigate away
@@ -1193,6 +1196,7 @@ function ConfigureModal({
 
 /* ─── Main View ─── */
 export default function ConnectorsView() {
+  const { userId } = useAuth();
   const [connectors, setConnectors] = useState<ConnectorData[]>([]);
   const [loading, setLoading] = useState(true);
   const [configuring, setConfiguring] = useState<ConnectorData | null>(null);
@@ -1828,6 +1832,7 @@ export default function ConnectorsView() {
           connector={configuring}
           onClose={() => setConfiguring(null)}
           onRefresh={handleRefresh}
+          userId={userId || ""}
         />
       )}
     </div>

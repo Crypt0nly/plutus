@@ -1007,9 +1007,15 @@ async def set_connector_auto_start(
 @router.get("/connectors/google/authorize")
 async def google_authorize(
     service: str = Query(..., description="gmail | google_calendar | google_drive"),
-    user=Depends(get_current_user),
+    user_id: str = Query(..., description="Clerk user ID"),
 ):
-    """Redirect the user to Google's OAuth consent screen."""
+    """Redirect the user to Google's OAuth consent screen.
+
+    This endpoint is intentionally unauthenticated (no JWT required) because
+    it is reached via a plain browser redirect (window.location.href) which
+    cannot carry an Authorization header.  The user_id is embedded in a
+    signed HMAC state token so it cannot be tampered with.
+    """
     from app.services.google_oauth import build_authorize_url
 
     if not settings.google_client_id:
@@ -1017,7 +1023,7 @@ async def google_authorize(
             "error": "Google OAuth is not configured on this server. "
             "Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
         }
-    url = build_authorize_url(user["user_id"], service)
+    url = build_authorize_url(user_id, service)
     return RedirectResponse(url)
 
 

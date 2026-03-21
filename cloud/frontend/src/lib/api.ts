@@ -302,12 +302,14 @@ export const api = {
     safeRequest<Record<string, any>>(`/connectors/${name}/authorize`, {}, {
       method: "POST",
     }),
-  /** Returns the Google OAuth redirect URL for the given service (gmail | google_calendar | google_drive). */
-  getGoogleOAuthUrl: (service: string): string => {
+  /** Returns the Google OAuth redirect URL for the given service (gmail | google_calendar | google_drive).
+   *  user_id is passed as a query param so the backend can embed it in the signed state token.
+   *  The endpoint is intentionally unauthenticated (plain browser redirect cannot carry JWT). */
+  getGoogleOAuthUrl: (service: string, userId: string): string => {
     const base = (import.meta.env.VITE_API_BASE_URL
       ? `${import.meta.env.VITE_API_BASE_URL}/api`
       : "/api") as string;
-    return `${base}/connectors/google/authorize?service=${encodeURIComponent(service)}`;
+    return `${base}/connectors/google/authorize?service=${encodeURIComponent(service)}&user_id=${encodeURIComponent(userId)}`;
   },
   createCustomConnector: (data: {
     connector_id: string;
