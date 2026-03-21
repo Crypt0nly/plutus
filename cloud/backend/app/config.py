@@ -17,8 +17,15 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # CORS
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # CORS — comma-separated list of allowed origins.
+    # Override via CORS_ORIGINS env var, e.g.:
+    # CORS_ORIGINS=https://app.useplutus.ai,http://localhost:3000
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://app.useplutus.ai",
+        "https://useplutus.ai",
+    ]
 
     # Agent
     default_llm_provider: str = "anthropic"

@@ -78,12 +78,20 @@ async def get_heartbeat(
     session: AsyncSession = Depends(get_session),
 ):
     """Return the current heartbeat status for this user."""
-    from app.services.cloud_heartbeat import CloudHeartbeatManager
+    try:
+        from app.services.cloud_heartbeat import CloudHeartbeatManager
 
-    mgr = CloudHeartbeatManager.get_instance()
-    status = mgr.get_status(user.id)
-    # Also persist running state in user settings for auto-restart on pod restart
-    return status
+        mgr = CloudHeartbeatManager.get_instance()
+        return mgr.get_status(user.id)
+    except Exception:
+        # Return a safe default if the heartbeat service is unavailable
+        return {
+            "enabled": False,
+            "interval_seconds": 300,
+            "last_beat": None,
+            "running": False,
+            "consecutive": 0,
+        }
 
 
 @router.put("/heartbeat")
