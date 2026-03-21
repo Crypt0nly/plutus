@@ -413,6 +413,29 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Mobile virtual-keyboard height tracking ──────────────────────────────
+  // When the soft keyboard opens the visual viewport shrinks. We measure the
+  // gap and expose it as --keyboard-height so the chat input can shift up.
+  useEffect(() => {
+    if (!isMobile) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const update = () => {
+      const kh = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--keyboard-height", `${kh}px`);
+    };
+
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      document.documentElement.style.setProperty("--keyboard-height", "0px");
+    };
+  }, [isMobile]);
+
   // Check for updates on mount, then every 6 hours
   useEffect(() => {
     const check = () => {
@@ -496,7 +519,12 @@ export default function App() {
               ? "overflow-hidden"
               : "overflow-y-auto"
           }`}
-          style={{ paddingBottom: view === "chat" || view === "sessions" ? 0 : "calc(64px + env(safe-area-inset-bottom))" }}
+          style={{
+            paddingBottom:
+              view === "chat" || view === "sessions"
+                ? "var(--keyboard-height, 0px)"
+                : "calc(64px + env(safe-area-inset-bottom))",
+          }}
         >
           {view !== "chat" && view !== "sessions" && (
             <div className="px-4 pt-4 pb-2">

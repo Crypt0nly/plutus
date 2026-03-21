@@ -45,6 +45,18 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
     textareaRef.current?.focus();
   }, []);
 
+  // On mobile, when the textarea gains focus the virtual keyboard opens and
+  // can cover the input. Scroll the input into view after a short delay to
+  // let the viewport finish resizing.
+  const handleFocus = () => {
+    setIsFocused(true);
+    if (typeof window !== "undefined" && "visualViewport" in window) {
+      setTimeout(() => {
+        textareaRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 100);
+    }
+  };
+
   const handleSubmit = () => {
     const trimmed = input.trim();
     if ((!trimmed && attachments.length === 0) || disabled) return;
@@ -129,8 +141,11 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
   const hasInput = input.trim().length > 0 || attachments.length > 0;
 
   return (
-    <div className="flex-shrink-0 px-4 pt-2 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent"
-      style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))" }}
+    <div
+      className="flex-shrink-0 px-4 pt-2 bg-gradient-to-t from-gray-950 via-gray-950/95 to-transparent"
+      style={{
+        paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))",
+      }}
     >
       <div className="max-w-3xl mx-auto">
         <div
@@ -195,7 +210,7 @@ export function ChatInput({ onSend, onStop, disabled }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => setIsFocused(true)}
+            onFocus={handleFocus}
             onBlur={() => setIsFocused(false)}
             placeholder={isProcessing ? "Plutus is working..." : "Message Plutus..."}
             disabled={disabled}
