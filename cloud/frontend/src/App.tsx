@@ -520,9 +520,14 @@ export default function App() {
               : "overflow-y-auto"
           }`}
           style={{
+            // The MobileNav is position:fixed so it takes no space in the flex
+            // column. We must manually reserve its height (56px + safe-area)
+            // as bottom padding so ChatInput is never hidden behind it.
+            // When the keyboard opens, --keyboard-height is set by the
+            // visualViewport listener and added on top so the input shifts up.
             paddingBottom:
               view === "chat" || view === "sessions"
-                ? "var(--keyboard-height, 0px)"
+                ? "calc(56px + env(safe-area-inset-bottom, 0px) + var(--keyboard-height, 0px))"
                 : "calc(64px + env(safe-area-inset-bottom))",
           }}
         >
