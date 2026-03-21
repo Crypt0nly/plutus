@@ -1,4 +1,5 @@
 """SQLAlchemy model for cloud agent plans."""
+
 from __future__ import annotations
 
 import time
