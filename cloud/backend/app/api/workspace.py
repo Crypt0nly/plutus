@@ -20,7 +20,7 @@ import shutil
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.api.auth import get_current_user
@@ -280,8 +280,36 @@ def _token_store_path(user_id: str) -> Path:
     return WORKSPACE_ROOT / user_id / ".sync_token"
 
 
+def _derive_server_url(request: Request) -> str:
+    """
+    Determine the public base URL of this server.
+
+    Priority:
+    1. ``X-Forwarded-Proto`` + ``X-Forwarded-Host`` headers (set by reverse proxies)
+    2. ``Host`` header from the incoming request
+    3. ``settings.server_base_url`` — only if it is not the localhost default
+    4. Fall back to ``settings.server_base_url`` regardless
+    """
+    forwarded_host = request.headers.get("x-forwarded-host")
+    forwarded_proto = request.headers.get("x-forwarded-proto", "https")
+    if forwarded_host:
+        return f"{forwarded_proto}://{forwarded_host}"
+
+    host = request.headers.get("host", "")
+    # Only trust the Host header when it is not a loopback address
+    if host and not host.startswith("localhost") and not host.startswith("127."):
+        proto = forwarded_proto if forwarded_proto != "https" else "https"
+        # Detect plain-HTTP deployments via the request scope
+        if request.url.scheme == "http":
+            proto = "http"
+        return f"{proto}://{host}"
+
+    # Fall back to the configured value
+    return settings.server_base_url
+
+
 @router.post("/token")
-async def generate_sync_token(user=Depends(get_current_user)):
+async def generate_sync_token(request: Request, user=Depends(get_current_user)):
     """
     Generate (or regenerate) a long-lived API token for workspace sync.
 
@@ -290,14 +318,19 @@ async def generate_sync_token(user=Depends(get_current_user)):
 
     Token format:  plutus_<base64url(server_url)>.<hex_secret>
 
+    The server URL is derived from the incoming request headers first
+    (X-Forwarded-Host, Host) so that it reflects the real public address
+    even when SERVER_BASE_URL is not explicitly configured.
+
     The token is returned once — only the hash of the full token is stored
     server-side.
     """
     import base64
 
     raw = os.urandom(32).hex()
+    server_url = _derive_server_url(request)
     # Encode the server URL into the token so the local client can extract it
-    url_b64 = base64.urlsafe_b64encode(settings.server_base_url.encode()).decode().rstrip("=")
+    url_b64 = base64.urlsafe_b64encode(server_url.encode()).decode().rstrip("=")
     token = f"plutus_{url_b64}.{raw}"
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     store = _token_store_path(user["user_id"])
@@ -341,3 +374,144 @@ def verify_sync_token(user_id: str, token: str) -> bool:
     stored_hash = store.read_text().split(":")[0]
     candidate_hash = hashlib.sha256(token.encode()).hexdigest()
     return hmac.compare_digest(stored_hash, candidate_hash)
+
+
+# ---------------------------------------------------------------------------
+# Manual push / pull — sandbox ↔ server workspace
+# ---------------------------------------------------------------------------
+
+
+@router.post("/push")
+async def push_workspace(user=Depends(get_current_user)):
+    """
+    Manually push files from the active E2B sandbox into the server workspace.
+
+    If no sandbox is currently active for this user the endpoint still
+    succeeds but reports 0 files synced (nothing to push).
+    """
+    from app.services.e2b_manager import E2BSandboxManager
+    from app.services.workspace_sync import push_sandbox_to_workspace
+
+    user_id = user["user_id"]
+    mgr = E2BSandboxManager.get_instance()
+
+    # Peek at the active sandbox without creating a new one
+    async with mgr._lock:
+        entry = mgr._sandboxes.get(user_id)
+
+    if not entry or entry.is_expired():
+        return {"synced": 0, "message": "No active sandbox — nothing to push"}
+
+    try:
+        synced = await push_sandbox_to_workspace(entry, user_id)
+        return {"synced": synced, "message": f"Pushed {synced} file(s) from sandbox to workspace"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Push failed: {e}") from e
+
+
+@router.post("/pull")
+async def pull_workspace(user=Depends(get_current_user)):
+    """
+    Manually pull files from the server workspace into the active E2B sandbox.
+
+    If no sandbox is currently active the endpoint returns a 409 — the
+    caller should start a sandbox first (e.g. by sending a chat message).
+    """
+    from app.services.e2b_manager import E2BSandboxManager
+    from app.services.workspace_sync import pull_workspace_to_sandbox
+
+    user_id = user["user_id"]
+    mgr = E2BSandboxManager.get_instance()
+
+    async with mgr._lock:
+        entry = mgr._sandboxes.get(user_id)
+
+    if not entry or entry.is_expired():
+        raise HTTPException(
+            status_code=409,
+            detail="No active sandbox. Start a conversation first to launch a sandbox, then pull.",
+        )
+
+    try:
+        synced = await pull_workspace_to_sandbox(entry, user_id)
+        return {"synced": synced, "message": f"Pulled {synced} file(s) from workspace into sandbox"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pull failed: {e}") from e
+
+
+@router.get("/sync-status")
+async def workspace_sync_status(user=Depends(get_current_user)):
+    """
+    Compare the server workspace manifest against the active sandbox.
+    Returns file counts per sync state.
+    """
+    from app.services.e2b_manager import E2BSandboxManager
+
+    user_id = user["user_id"]
+    mgr = E2BSandboxManager.get_instance()
+
+    async with mgr._lock:
+        entry = mgr._sandboxes.get(user_id)
+
+    # Build server-side manifest
+    ws = _user_workspace(user_id)
+    server_files: dict[str, float] = {}
+    for f in ws.rglob("*"):
+        if f.is_file():
+            rel = str(f.relative_to(ws))
+            server_files[rel] = f.stat().st_mtime
+
+    if not entry or entry.is_expired():
+        # No sandbox — treat all server files as "cloud only"
+        return {
+            "in_sync": 0,
+            "local_only": 0,
+            "cloud_only": len(server_files),
+            "newer_local": 0,
+            "newer_cloud": 0,
+        }
+
+    # Get sandbox file list
+    try:
+        result = await entry.sandbox.commands.run(
+            "find /home/user -type f 2>/dev/null | head -2000", timeout=30
+        )
+        sandbox_files: dict[str, float] = {}
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            rel = line.removeprefix("/home/user/")
+            stat_result = await entry.sandbox.commands.run(
+                f"stat -c %Y {line!r} 2>/dev/null || echo 0", timeout=10
+            )
+            try:
+                sandbox_files[rel] = float(stat_result.stdout.strip())
+            except ValueError:
+                sandbox_files[rel] = 0.0
+    except Exception:
+        sandbox_files = {}
+
+    all_paths = set(server_files) | set(sandbox_files)
+    in_sync = local_only = cloud_only = newer_local = newer_cloud = 0
+    for p in all_paths:
+        sm = server_files.get(p)
+        sbm = sandbox_files.get(p)
+        if sm is None:
+            local_only += 1
+        elif sbm is None:
+            cloud_only += 1
+        elif abs(sm - sbm) <= 1:
+            in_sync += 1
+        elif sbm > sm + 1:
+            newer_local += 1
+        else:
+            newer_cloud += 1
+
+    return {
+        "in_sync": in_sync,
+        "local_only": local_only,
+        "cloud_only": cloud_only,
+        "newer_local": newer_local,
+        "newer_cloud": newer_cloud,
+    }

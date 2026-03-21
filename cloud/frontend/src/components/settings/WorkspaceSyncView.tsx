@@ -15,6 +15,7 @@ import {
   Zap,
   Link2,
   ShieldCheck,
+  Server,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -51,6 +52,10 @@ export default function WorkspaceSyncView() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [pushing, setPushing] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [pullMsg, setPullMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const loadTokenStatus = useCallback(async () => {
     try {
@@ -136,6 +141,39 @@ export default function WorkspaceSyncView() {
     }
   };
 
+  const handlePush = async () => {
+    setPushing(true);
+    setPushMsg(null);
+    try {
+      const resp = await api.workspacePush();
+      setPushMsg({ text: resp.message, ok: true });
+      setTimeout(() => setPushMsg(null), 5000);
+    } catch (e: any) {
+      setPushMsg({ text: e.message || "Push failed", ok: false });
+      setTimeout(() => setPushMsg(null), 5000);
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const handlePull = async () => {
+    setPulling(true);
+    setPullMsg(null);
+    try {
+      const resp = await api.workspacePull();
+      setPullMsg({ text: resp.message, ok: true });
+      setTimeout(() => setPullMsg(null), 5000);
+    } catch (e: any) {
+      const msg = e.message?.includes("409")
+        ? "No active sandbox — start a conversation first"
+        : e.message || "Pull failed";
+      setPullMsg({ text: msg, ok: false });
+      setTimeout(() => setPullMsg(null), 5000);
+    } finally {
+      setPulling(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
@@ -177,8 +215,10 @@ export default function WorkspaceSyncView() {
           </p>
         </div>
         {tokenStatus?.has_token && (
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-cyan-400 flex-shrink-0"
-            style={{ background: "rgba(6, 182, 212, 0.1)", border: "1px solid rgba(6, 182, 212, 0.2)" }}>
+          <span
+            className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-cyan-400 flex-shrink-0"
+            style={{ background: "rgba(6, 182, 212, 0.1)", border: "1px solid rgba(6, 182, 212, 0.2)" }}
+          >
             <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
             Active
           </span>
@@ -192,13 +232,13 @@ export default function WorkspaceSyncView() {
       >
         <div className="flex items-center gap-2">
           <Link2 className="w-3.5 h-3.5 text-cyan-400" />
-          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sync Token</h4>
+          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Local Connection Token</h4>
         </div>
 
         <p className="text-xs text-gray-500 leading-relaxed">
           Generate a token and paste it into{" "}
           <span className="text-gray-300">local Plutus → Settings → Cloud Sync</span>.
-          The server URL is embedded automatically — no extra fields needed.
+          The server URL is embedded automatically — no extra fields needed on the local side.
         </p>
 
         {/* Newly generated token display */}
@@ -274,6 +314,68 @@ export default function WorkspaceSyncView() {
         </div>
       </div>
 
+      {/* ── Sandbox ↔ Workspace Push / Pull ── */}
+      <div
+        className="rounded-xl p-4 space-y-4"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
+        <div className="flex items-center gap-2">
+          <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sandbox Sync</h4>
+          <span className="ml-auto text-[10px] text-gray-600">Sandbox ↔ Cloud Workspace</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Push sandbox → workspace */}
+          <div className="space-y-2">
+            <button
+              onClick={handlePush}
+              disabled={pushing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
+              style={{ background: "rgba(6, 182, 212, 0.08)", border: "1px solid rgba(6, 182, 212, 0.2)", color: "#22d3ee" }}
+            >
+              {pushing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4" />
+              )}
+              {pushing ? "Pushing…" : "Push to Workspace"}
+            </button>
+            <p className="text-[10px] text-gray-600 text-center">Sandbox → Server workspace</p>
+            {pushMsg && (
+              <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pushMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {pushMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {pushMsg.text}
+              </p>
+            )}
+          </div>
+
+          {/* Pull workspace → sandbox */}
+          <div className="space-y-2">
+            <button
+              onClick={handlePull}
+              disabled={pulling}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
+              style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)", color: "#34d399" }}
+            >
+              {pulling ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {pulling ? "Pulling…" : "Pull to Sandbox"}
+            </button>
+            <p className="text-[10px] text-gray-600 text-center">Server workspace → Sandbox</p>
+            {pullMsg && (
+              <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pullMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {pullMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {pullMsg.text}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* ── Auto-sync toggle ── */}
       <div
         className="rounded-xl p-4"
@@ -281,9 +383,9 @@ export default function WorkspaceSyncView() {
       >
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-200">Auto-sync to local</p>
+            <p className="text-sm font-medium text-gray-200">Auto-sync sandbox</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Push cloud workspace changes to connected local clients every{" "}
+              Automatically push sandbox files to the workspace every{" "}
               {autoSyncInterval} min
             </p>
           </div>
@@ -330,7 +432,7 @@ export default function WorkspaceSyncView() {
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+            <Zap className="w-3.5 h-3.5 text-gray-400" />
             <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sync Status</h4>
           </div>
           <button
@@ -347,10 +449,10 @@ export default function WorkspaceSyncView() {
           <div className="grid grid-cols-2 gap-2">
             {[
               { label: "In sync", value: syncStatus.in_sync, color: "text-emerald-400", bg: "rgba(16,185,129,0.06)", border: "rgba(16,185,129,0.15)", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
-              { label: "Local only", value: syncStatus.local_only, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Upload className="w-3.5 h-3.5" /> },
-              { label: "Cloud only", value: syncStatus.cloud_only, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Download className="w-3.5 h-3.5" /> },
-              { label: "Newer locally", value: syncStatus.newer_local, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
-              { label: "Newer in cloud", value: syncStatus.newer_cloud, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
+              { label: "Sandbox only", value: syncStatus.local_only, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Upload className="w-3.5 h-3.5" /> },
+              { label: "Workspace only", value: syncStatus.cloud_only, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Server className="w-3.5 h-3.5" /> },
+              { label: "Newer in sandbox", value: syncStatus.newer_local, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
+              { label: "Newer in workspace", value: syncStatus.newer_cloud, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
             ].map((item) => (
               <div
                 key={item.label}
@@ -371,7 +473,7 @@ export default function WorkspaceSyncView() {
             className="w-full py-4 text-xs text-gray-600 hover:text-gray-400 transition-colors flex items-center justify-center gap-2"
           >
             <Zap className="w-3.5 h-3.5" />
-            Click to compare cloud and local workspaces
+            Click to compare sandbox and workspace
           </button>
         )}
       </div>
@@ -385,19 +487,19 @@ export default function WorkspaceSyncView() {
         <ul className="space-y-2 text-xs text-gray-500">
           <li className="flex gap-2">
             <Cloud className="w-3.5 h-3.5 text-cyan-400/50 flex-shrink-0 mt-0.5" />
-            Files created by Plutus in the sandbox are synced here every 5 minutes
+            The <span className="text-gray-300 mx-1">cloud workspace</span> is the persistent server-side file store — it survives sandbox restarts
           </li>
           <li className="flex gap-2">
             <Upload className="w-3.5 h-3.5 text-amber-400/50 flex-shrink-0 mt-0.5" />
-            <span><span className="text-gray-300">Push</span> — uploads your local workspace to the cloud</span>
+            <span><span className="text-gray-300">Push</span> — copies files from the active sandbox into the workspace</span>
           </li>
           <li className="flex gap-2">
             <Download className="w-3.5 h-3.5 text-sky-400/50 flex-shrink-0 mt-0.5" />
-            <span><span className="text-gray-300">Pull</span> — downloads cloud files to your local machine</span>
+            <span><span className="text-gray-300">Pull</span> — restores workspace files into the active sandbox</span>
           </li>
           <li className="flex gap-2">
             <Key className="w-3.5 h-3.5 text-cyan-400/50 flex-shrink-0 mt-0.5" />
-            The generated token includes the server URL — no separate URL field needed on the local side
+            The <span className="text-gray-300 mx-1">local connection token</span> lets your local Plutus push/pull to this same workspace
           </li>
         </ul>
       </div>

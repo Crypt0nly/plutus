@@ -407,6 +407,10 @@ export const api = {
     }),
 
   // Workspace sync
+  workspacePush: () =>
+    request<{ synced: number; message: string }>("/workspace/push", { method: "POST" }),
+  workspacePull: () =>
+    request<{ synced: number; message: string }>("/workspace/pull", { method: "POST" }),
   getWorkspaceSyncStatus: () =>
     safeRequest<{
       local_only: number;
