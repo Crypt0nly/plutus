@@ -2465,20 +2465,54 @@ def create_router() -> APIRouter:
                 pass
 
             if latest_pypi and latest_pypi != __version__:
-                # A newer version exists on PyPI but pip couldn't install it
-                # — most likely a missing wheel for this platform/Python.
-                return {
-                    "success": False,
-                    "error": (
-                        f"Update to v{latest_pypi} is available on PyPI but could not be "
-                        f"installed automatically. "
-                        f"Please run: pip install --upgrade plutus-ai"
-                    ),
-                    "previous_version": __version__,
-                    "new_version": latest_pypi,
-                    "steps": steps,
-                    "restart_required": False,
-                }
+                # A newer version exists on PyPI but pip returned the old
+                # version. This can happen when the latest release has no
+                # wheel for this platform yet and pip silently falls back to
+                # the newest compatible version.
+                # Retry with an explicit version pin so pip either installs
+                # it or gives a clear error.
+                pip_pin_cmd = [
+                    sys.executable, "-m", "pip", "install",
+                    "--upgrade", "--no-cache-dir",
+                    f"plutus-ai=={latest_pypi}",
+                ]
+                pin_code, pin_out, pin_err = await run(pip_pin_cmd, timeout=180)
+                clean_pin_err = _clean_pip_stderr(pin_err)
+                steps.append({
+                    "step": "pip_upgrade_pinned",
+                    "success": pin_code == 0,
+                    "output": (pin_out.strip() or clean_pin_err)[:500],
+                })
+                if pin_code == 0:
+                    # Re-read version after pinned install
+                    try:
+                        p_code, p_out, _ = await run([
+                            sys.executable, "-c",
+                            "import importlib.metadata; "
+                            "print(importlib.metadata.version('plutus-ai'))",
+                        ])
+                        if p_code == 0 and p_out.strip():
+                            new_version = p_out.strip()
+                    except Exception:
+                        pass
+                if new_version != __version__:
+                    # Pinned install succeeded — fall through to restart
+                    pass
+                else:
+                    # Still couldn't install — no compatible wheel available
+                    return {
+                        "success": False,
+                        "error": (
+                            f"v{latest_pypi} is available but has no compatible wheel "
+                            f"for your platform yet. A new release with your platform "
+                            f"support is being published. Please try again in a few minutes, "
+                            f"or run: pip install --upgrade plutus-ai"
+                        ),
+                        "previous_version": __version__,
+                        "new_version": latest_pypi,
+                        "steps": steps,
+                        "restart_required": False,
+                    }
             else:
                 # Already on the latest version
                 return {

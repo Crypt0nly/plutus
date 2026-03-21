@@ -414,8 +414,9 @@ async def pull_workspace(user=Depends(get_current_user)):
     """
     Manually pull files from the server workspace into the active E2B sandbox.
 
-    If no sandbox is currently active the endpoint returns a 409 — the
-    caller should start a sandbox first (e.g. by sending a chat message).
+    If no sandbox is currently active, one is automatically started so the
+    pull can proceed immediately without requiring the user to send a message
+    first.
     """
     from app.services.e2b_manager import E2BSandboxManager
     from app.services.workspace_sync import pull_workspace_to_sandbox
@@ -423,14 +424,21 @@ async def pull_workspace(user=Depends(get_current_user)):
     user_id = user["user_id"]
     mgr = E2BSandboxManager.get_instance()
 
-    async with mgr._lock:
-        entry = mgr._sandboxes.get(user_id)
-
-    if not entry or entry.is_expired():
+    # Check if E2B is configured at all — if no API key, we cannot auto-start.
+    if not mgr._api_key:
         raise HTTPException(
             status_code=409,
             detail="No active sandbox. Start a conversation first to launch a sandbox, then pull.",
         )
+
+    # Auto-start a sandbox if none is active so the pull works immediately.
+    try:
+        entry = await mgr._get_or_create(user_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not start sandbox: {e}",
+        ) from e
 
     try:
         synced = await pull_workspace_to_sandbox(entry, user_id)
