@@ -284,10 +284,23 @@ def _token_store_path(user_id: str) -> Path:
 async def generate_sync_token(user=Depends(get_current_user)):
     """
     Generate (or regenerate) a long-lived API token for workspace sync.
-    The token is returned once — only the hash is stored server-side.
+
+    The token embeds the server base URL so the local Plutus client can
+    connect without requiring a separate "Cloud URL" configuration field.
+
+    Token format:  plutus_<base64url(server_url)>.<hex_secret>
+
+    The token is returned once — only the hash of the full token is stored
+    server-side.
     """
+    import base64
+
     raw = os.urandom(32).hex()
-    token = f"plutus_{raw}"
+    # Encode the server URL into the token so the local client can extract it
+    url_b64 = base64.urlsafe_b64encode(
+        settings.server_base_url.encode()
+    ).decode().rstrip("=")
+    token = f"plutus_{url_b64}.{raw}"
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     store = _token_store_path(user["user_id"])
     store.parent.mkdir(parents=True, exist_ok=True)
@@ -296,7 +309,8 @@ async def generate_sync_token(user=Depends(get_current_user)):
         "token": token,
         "note": (
             "Copy this token now — it will not be shown again. "
-            "Paste it into local Plutus Settings → Cloud Sync → API Token."
+            "Paste it into local Plutus → Settings → Cloud Sync. "
+            "The server URL is embedded in the token — no separate URL field needed."
         ),
     }
 

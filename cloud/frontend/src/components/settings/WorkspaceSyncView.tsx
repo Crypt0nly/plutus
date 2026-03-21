@@ -4,14 +4,17 @@ import {
   Upload,
   Download,
   RefreshCw,
-  CheckCircle,
+  CheckCircle2,
+  XCircle,
   Clock,
-  ToggleLeft,
-  ToggleRight,
   Key,
   Copy,
   Trash2,
-  AlertCircle,
+  AlertTriangle,
+  ArrowUpDown,
+  Zap,
+  Link2,
+  ShieldCheck,
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -66,9 +69,7 @@ export default function WorkspaceSyncView() {
       if (data.cloud_sync) {
         const cs = data.cloud_sync as { auto_sync?: boolean; auto_sync_interval?: number };
         setAutoSync(cs.auto_sync ?? false);
-        setAutoSyncInterval(
-          Math.round((cs.auto_sync_interval ?? 300) / 60)
-        );
+        setAutoSyncInterval(Math.round((cs.auto_sync_interval ?? 300) / 60));
       }
     } catch {
       // ignore
@@ -119,10 +120,7 @@ export default function WorkspaceSyncView() {
     const updated = !autoSync;
     setAutoSync(updated);
     await api.updateConfig({
-      cloud_sync: {
-        auto_sync: updated,
-        auto_sync_interval: autoSyncInterval * 60,
-      },
+      cloud_sync: { auto_sync: updated, auto_sync_interval: autoSyncInterval * 60 },
     });
   };
 
@@ -140,67 +138,115 @@ export default function WorkspaceSyncView() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-5 h-5 animate-spin text-zinc-400" />
+      <div className="flex items-center justify-center py-10">
+        <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      {/* API Token */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
+
+      {/* ── Token status banner ── */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 rounded-xl"
+        style={
+          tokenStatus?.has_token
+            ? { background: "rgba(6, 182, 212, 0.06)", border: "1px solid rgba(6, 182, 212, 0.18)" }
+            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }
+        }
+      >
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={
+            tokenStatus?.has_token
+              ? { background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee" }
+              : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
+          }
+        >
+          {tokenStatus?.has_token ? <ShieldCheck className="w-4 h-4" /> : <Key className="w-4 h-4" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-200">
+            {tokenStatus?.has_token ? "Sync token active" : "No sync token"}
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {tokenStatus?.has_token
+              ? `Generated ${formatRelative(tokenStatus.created_at)} — paste into local Plutus to connect`
+              : "Generate a token to link your local Plutus installation"}
+          </p>
+        </div>
+        {tokenStatus?.has_token && (
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-cyan-400 flex-shrink-0"
+            style={{ background: "rgba(6, 182, 212, 0.1)", border: "1px solid rgba(6, 182, 212, 0.2)" }}>
+            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            Active
+          </span>
+        )}
+      </div>
+
+      {/* ── API Token management ── */}
+      <div
+        className="rounded-xl p-4 space-y-4"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
         <div className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-            Sync API Token
-          </h3>
+          <Link2 className="w-3.5 h-3.5 text-cyan-400" />
+          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sync Token</h4>
         </div>
 
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-gray-500 leading-relaxed">
           Generate a token and paste it into{" "}
-          <span className="text-zinc-200">
-            local Plutus → Settings → Cloud Sync → API Token
-          </span>{" "}
-          to enable push/pull between your local machine and this workspace.
+          <span className="text-gray-300">local Plutus → Settings → Cloud Sync</span>.
+          The server URL is embedded automatically — no extra fields needed.
         </p>
 
-        {tokenStatus?.has_token && !newToken && (
-          <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
-            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-            Token active — created {formatRelative(tokenStatus.created_at)}
-          </div>
-        )}
-
+        {/* Newly generated token display */}
         {newToken && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          <div className="space-y-3">
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+              style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#fbbf24" }}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
               Copy this token now — it will not be shown again
             </div>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-cyan-300 font-mono break-all">
+            <div
+              className="flex items-center gap-2 p-3 rounded-xl"
+              style={{ background: "rgba(6,182,212,0.04)", border: "1px solid rgba(6,182,212,0.15)" }}
+            >
+              <code className="flex-1 text-xs text-cyan-300 font-mono break-all leading-relaxed">
                 {newToken}
               </code>
               <button
                 onClick={handleCopy}
-                className="shrink-0 p-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-400 hover:text-white transition-colors"
+                className="flex-shrink-0 p-2 rounded-lg transition-all"
+                style={
+                  copied
+                    ? { background: "rgba(16,185,129,0.15)", color: "#34d399" }
+                    : { background: "rgba(255,255,255,0.06)", color: "#9ca3af" }
+                }
+                title="Copy token"
               >
-                {copied ? (
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
+                {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
+            {copied && (
+              <p className="text-[11px] text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3" />
+                Copied to clipboard
+              </p>
+            )}
           </div>
         )}
 
+        {/* Actions */}
         <div className="flex items-center gap-2">
           <button
             onClick={handleGenerateToken}
             disabled={generatingToken}
-            className="flex items-center gap-2 px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98]"
+            style={{ background: "rgba(6, 182, 212, 0.8)", boxShadow: "0 4px 14px rgba(6, 182, 212, 0.2)" }}
           >
             {generatingToken ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -214,40 +260,50 @@ export default function WorkspaceSyncView() {
             <button
               onClick={handleRevokeToken}
               disabled={revokingToken}
-              className="flex items-center gap-2 px-4 py-1.5 bg-red-900/40 hover:bg-red-900/60 disabled:opacity-50 text-red-400 text-xs rounded-lg border border-red-800/40 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-50 active:scale-[0.98]"
+              style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              {revokingToken ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
               Revoke
             </button>
           )}
         </div>
       </div>
 
-      {/* Auto-sync toggle */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      {/* ── Auto-sync toggle ── */}
+      <div
+        className="rounded-xl p-4"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-white">Auto-sync to local</h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Automatically push cloud workspace changes to connected local
-              clients every {autoSyncInterval} minute{autoSyncInterval !== 1 ? "s" : ""}
+            <p className="text-sm font-medium text-gray-200">Auto-sync to local</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Push cloud workspace changes to connected local clients every{" "}
+              {autoSyncInterval} min
             </p>
           </div>
           <button
             onClick={handleAutoSyncToggle}
-            className="text-cyan-400 hover:text-cyan-300 transition-colors"
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              autoSync ? "bg-cyan-500" : "bg-gray-700"
+            }`}
           >
-            {autoSync ? (
-              <ToggleRight className="w-8 h-8" />
-            ) : (
-              <ToggleLeft className="w-8 h-8 text-zinc-500" />
-            )}
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                autoSync ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
           </button>
         </div>
 
         {autoSync && (
-          <div className="mt-3 flex items-center gap-3">
-            <label className="text-xs text-zinc-400">Interval (minutes)</label>
+          <div className="mt-3 pt-3 flex items-center gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <label className="text-xs text-gray-500">Interval</label>
             <input
               type="number"
               min={1}
@@ -260,26 +316,29 @@ export default function WorkspaceSyncView() {
                   cloud_sync: { auto_sync: true, auto_sync_interval: v * 60 },
                 });
               }}
-              className="w-20 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-cyan-500"
+              className="w-16 bg-gray-900/80 border border-gray-800/60 rounded-lg px-2 py-1 text-sm text-gray-200 text-center focus:outline-none focus:border-cyan-500/50 transition-all"
             />
+            <span className="text-xs text-gray-500">minutes</span>
           </div>
         )}
       </div>
 
-      {/* Sync status */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
+      {/* ── Sync status ── */}
+      <div
+        className="rounded-xl p-4 space-y-3"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+      >
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-            Sync Status
-          </h3>
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+            <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sync Status</h4>
+          </div>
           <button
             onClick={fetchSyncStatus}
             disabled={statusLoading}
-            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
           >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`} />
             Refresh
           </button>
         </div>
@@ -287,82 +346,58 @@ export default function WorkspaceSyncView() {
         {syncStatus ? (
           <div className="grid grid-cols-2 gap-2">
             {[
-              {
-                label: "In sync",
-                value: syncStatus.in_sync,
-                color: "text-green-400",
-                icon: <CheckCircle className="w-3.5 h-3.5" />,
-              },
-              {
-                label: "Local only",
-                value: syncStatus.local_only,
-                color: "text-yellow-400",
-                icon: <Upload className="w-3.5 h-3.5" />,
-              },
-              {
-                label: "Cloud only",
-                value: syncStatus.cloud_only,
-                color: "text-blue-400",
-                icon: <Download className="w-3.5 h-3.5" />,
-              },
-              {
-                label: "Newer locally",
-                value: syncStatus.newer_local,
-                color: "text-yellow-400",
-                icon: <Clock className="w-3.5 h-3.5" />,
-              },
-              {
-                label: "Newer in cloud",
-                value: syncStatus.newer_cloud,
-                color: "text-blue-400",
-                icon: <Clock className="w-3.5 h-3.5" />,
-              },
+              { label: "In sync", value: syncStatus.in_sync, color: "text-emerald-400", bg: "rgba(16,185,129,0.06)", border: "rgba(16,185,129,0.15)", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+              { label: "Local only", value: syncStatus.local_only, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Upload className="w-3.5 h-3.5" /> },
+              { label: "Cloud only", value: syncStatus.cloud_only, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Download className="w-3.5 h-3.5" /> },
+              { label: "Newer locally", value: syncStatus.newer_local, color: "text-amber-400", bg: "rgba(245,158,11,0.06)", border: "rgba(245,158,11,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
+              { label: "Newer in cloud", value: syncStatus.newer_cloud, color: "text-sky-400", bg: "rgba(14,165,233,0.06)", border: "rgba(14,165,233,0.15)", icon: <Clock className="w-3.5 h-3.5" /> },
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex items-center justify-between bg-zinc-800 rounded-lg px-3 py-2"
+                className="flex items-center justify-between rounded-xl px-3 py-2.5"
+                style={{ background: item.bg, border: `1px solid ${item.border}` }}
               >
                 <div className={`flex items-center gap-1.5 ${item.color}`}>
                   {item.icon}
-                  <span className="text-xs text-zinc-400">{item.label}</span>
+                  <span className="text-xs text-gray-400">{item.label}</span>
                 </div>
-                <span className={`text-sm font-semibold ${item.color}`}>
-                  {item.value}
-                </span>
+                <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-zinc-500 text-center py-2">
-            Click Refresh to compare cloud and local workspaces
-          </p>
+          <button
+            onClick={fetchSyncStatus}
+            className="w-full py-4 text-xs text-gray-600 hover:text-gray-400 transition-colors flex items-center justify-center gap-2"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            Click to compare cloud and local workspaces
+          </button>
         )}
       </div>
 
-      {/* How it works */}
-      <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4">
-        <h3 className="text-xs font-semibold text-zinc-400 mb-2">How it works</h3>
-        <ul className="space-y-1.5 text-xs text-zinc-500">
-          <li>
-            <span className="text-zinc-300">Cloud workspace</span> — files
-            created by Plutus in the sandbox are automatically synced here every
-            5 minutes
+      {/* ── How it works ── */}
+      <div
+        className="rounded-xl p-4"
+        style={{ background: "rgba(6, 182, 212, 0.03)", border: "1px solid rgba(6, 182, 212, 0.1)" }}
+      >
+        <p className="text-xs font-semibold text-cyan-400/70 mb-2.5 uppercase tracking-wider">How it works</p>
+        <ul className="space-y-2 text-xs text-gray-500">
+          <li className="flex gap-2">
+            <Cloud className="w-3.5 h-3.5 text-cyan-400/50 flex-shrink-0 mt-0.5" />
+            Files created by Plutus in the sandbox are synced here every 5 minutes
           </li>
-          <li>
-            <span className="text-zinc-300">Local push</span> — run{" "}
-            <code className="text-zinc-400">plutus push</code> or use the local
-            settings to upload your local workspace here
+          <li className="flex gap-2">
+            <Upload className="w-3.5 h-3.5 text-amber-400/50 flex-shrink-0 mt-0.5" />
+            <span><span className="text-gray-300">Push</span> — uploads your local workspace to the cloud</span>
           </li>
-          <li>
-            <span className="text-zinc-300">Local pull</span> — run{" "}
-            <code className="text-zinc-400">plutus pull</code> to download cloud
-            files to your local machine
+          <li className="flex gap-2">
+            <Download className="w-3.5 h-3.5 text-sky-400/50 flex-shrink-0 mt-0.5" />
+            <span><span className="text-gray-300">Pull</span> — downloads cloud files to your local machine</span>
           </li>
-          <li>
-            <span className="text-zinc-300">Packages</span> — installed packages
-            are saved as{" "}
-            <code className="text-zinc-400">.sandbox_requirements.txt</code> and
-            auto-installed when a new sandbox starts
+          <li className="flex gap-2">
+            <Key className="w-3.5 h-3.5 text-cyan-400/50 flex-shrink-0 mt-0.5" />
+            The generated token includes the server URL — no separate URL field needed on the local side
           </li>
         </ul>
       </div>
