@@ -25,7 +25,6 @@ import base64
 import json
 import logging
 import smtplib
-import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
