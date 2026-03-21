@@ -13,6 +13,7 @@ Endpoints:
   GET    /api/workspace/download/{path} — download a file
 """
 
+import base64
 import hashlib
 import hmac
 import os
@@ -22,9 +23,83 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.api.auth import get_current_user
 from app.config import settings
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def _get_user_from_sync_token(token: str) -> dict | None:
+    """
+    Try to authenticate a request using a Plutus sync token.
+    Scans all user workspace directories for a .sync_token file whose
+    SHA-256 hash matches the provided token.
+    Returns a user dict on success, or None if no match is found.
+    """
+    candidate_hash = hashlib.sha256(token.encode()).hexdigest()
+    if not WORKSPACE_ROOT.exists():
+        return None
+    for user_dir in WORKSPACE_ROOT.iterdir():
+        if not user_dir.is_dir():
+            continue
+        store = user_dir / ".sync_token"
+        if not store.exists():
+            continue
+        try:
+            stored_hash = store.read_text().split(":")[0]
+            if hmac.compare_digest(stored_hash, candidate_hash):
+                return {"user_id": user_dir.name, "sub": user_dir.name}
+        except Exception:
+            continue
+    return None
+
+
+async def get_workspace_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict:
+    """
+    Dual-auth dependency for workspace endpoints.
+    Accepts either:
+      1. A Clerk JWT (issued to cloud UI users), or
+      2. A Plutus sync token (issued by /workspace/token, used by local app).
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = credentials.credentials
+    # Plutus sync tokens always start with "plutus_"
+    if token.startswith("plutus_"):
+        user = await _get_user_from_sync_token(token)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Invalid or revoked sync token")
+        return user
+    # Fall back to Clerk JWT verification
+    import jwt as pyjwt
+
+    from app.api.auth import get_clerk_jwks
+
+    try:
+        jwks = await get_clerk_jwks()
+        header = pyjwt.get_unverified_header(token)
+        key = None
+        for k in jwks.get("keys", []):
+            if k["kid"] == header["kid"]:
+                key = pyjwt.algorithms.RSAAlgorithm.from_jwk(k)
+                break
+        if not key:
+            raise HTTPException(status_code=401, detail="Invalid token signing key")
+        payload = pyjwt.decode(token, key, algorithms=["RS256"], options={"verify_aud": False})
+        return {
+            "sub": payload.get("sub"),
+            "user_id": payload.get("sub"),
+            "email": payload.get("email"),
+        }
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except pyjwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
 
 router = APIRouter()
 
@@ -60,7 +135,7 @@ def _safe_path(workspace: Path, relative: str) -> Path:
 @router.get("/files")
 async def list_files(
     path: str | None = None,
-    user=Depends(get_current_user),
+    user=Depends(get_workspace_user),
 ):
     """List files and directories in the workspace (or a sub-path)."""
     ws = _user_workspace(user["user_id"])
@@ -91,16 +166,20 @@ async def list_files(
 @router.post("/files")
 async def create_file(
     payload: dict,
-    user=Depends(get_current_user),
+    user=Depends(get_workspace_user),
 ):
     """
-    Create or overwrite a text file.
-    Body: { "path": "notes/todo.txt", "content": "..." }
+    Create or overwrite a file.
+    Body: { "path": "notes/todo.txt", "content": "...", "binary": false }
+    When binary=true, content must be a base64-encoded string.
     """
     ws = _user_workspace(user["user_id"])
     file_path = _safe_path(ws, payload.get("path", "untitled.txt"))
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(payload.get("content", ""), encoding="utf-8")
+    if payload.get("binary"):
+        file_path.write_bytes(base64.b64decode(payload.get("content", "")))
+    else:
+        file_path.write_text(payload.get("content", ""), encoding="utf-8")
     return {
         "path": str(file_path.relative_to(ws)),
         "size": file_path.stat().st_size,
@@ -115,7 +194,7 @@ async def create_file(
 @router.get("/files/{file_path:path}")
 async def read_file(
     file_path: str,
-    user=Depends(get_current_user),
+    user=Depends(get_workspace_user),
 ):
     """Read a text file from the workspace."""
     ws = _user_workspace(user["user_id"])
@@ -149,7 +228,7 @@ async def read_file(
 @router.delete("/files/{file_path:path}")
 async def delete_file(
     file_path: str,
-    user=Depends(get_current_user),
+    user=Depends(get_workspace_user),
 ):
     """Delete a file or directory from the workspace."""
     ws = _user_workspace(user["user_id"])
@@ -175,7 +254,7 @@ async def delete_file(
 async def upload_file(
     file: UploadFile = File(...),
     path: str | None = None,
-    user=Depends(get_current_user),
+    user=Depends(get_workspace_user),
 ):
     """Upload a file to the workspace (multipart/form-data)."""
     ws = _user_workspace(user["user_id"])
@@ -202,7 +281,7 @@ async def upload_file(
 @router.get("/download/{file_path:path}")
 async def download_file(
     file_path: str,
-    user=Depends(get_current_user),
+    user=Depends(get_workspace_user),
 ):
     """Download a file from the workspace."""
     ws = _user_workspace(user["user_id"])
@@ -224,7 +303,7 @@ async def download_file(
 
 
 @router.get("")
-async def workspace_info(user=Depends(get_current_user)):
+async def workspace_info(user=Depends(get_workspace_user)):
     """Return workspace metadata for the current user."""
     ws = _user_workspace(user["user_id"])
 
@@ -247,7 +326,7 @@ _SKIP_PATTERNS = {"__pycache__", ".git", "node_modules", ".DS_Store"}
 
 
 @router.get("/manifest")
-async def workspace_manifest(user=Depends(get_current_user)):
+async def workspace_manifest(user=Depends(get_workspace_user)):
     """
     Return a flat list of all files in the workspace with their modification
     timestamps. Used by the local Plutus client to compute push/pull diffs.
