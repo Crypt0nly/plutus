@@ -1,10 +1,14 @@
 import asyncio
 import logging
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from app.api import agents, auth, bridge, chat, health, misc, workspace
 from app.api.sync import router as sync_router
@@ -133,6 +137,39 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Localhost origins regex — matches http://localhost:<any-port> and
+# http://127.0.0.1:<any-port> so that local Plutus instances running on
+# any port (default 7777, but user-configurable) can reach the cloud API.
+_LOCALHOST_ORIGIN_RE = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
+
+
+class _DynamicCORSMiddleware(BaseHTTPMiddleware):
+    """Extends the static CORS allow-list with a dynamic localhost pattern.
+
+    FastAPI's built-in CORSMiddleware only supports exact origin strings, so
+    it cannot allow all localhost ports with a single entry.  This middleware
+    sits in front of it: if the request origin matches the localhost pattern
+    it injects the correct CORS headers directly and short-circuits the
+    preflight; otherwise it falls through to the standard middleware.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
+        origin = request.headers.get("origin", "")
+        if origin and _LOCALHOST_ORIGIN_RE.match(origin):
+            if request.method == "OPTIONS":
+                # Preflight — respond immediately with the correct headers.
+                response = Response(status_code=204)
+            else:
+                response = await call_next(request)
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
+        return await call_next(request)
+
+
+app.add_middleware(_DynamicCORSMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
