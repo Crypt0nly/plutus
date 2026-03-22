@@ -2585,7 +2585,7 @@ def create_workspace_router() -> APIRouter:
         if parts and parts[0] in _SKIP_TOP:
             return False
         # Skip any path segment that matches the general skip set
-        rel_str = str(rel)
+        rel_str = rel.as_posix()
         if any(skip in rel_str for skip in _SKIP):
             return False
         return True
@@ -2600,7 +2600,7 @@ def create_workspace_router() -> APIRouter:
                 continue
             if not _is_user_file(f, ws):
                 continue
-            rel = str(f.relative_to(ws))
+            rel = f.relative_to(ws).as_posix()
             files.append(
                 {
                     "path": rel,
@@ -2623,7 +2623,7 @@ def create_workspace_router() -> APIRouter:
             entries.append(
                 {
                     "name": item.name,
-                    "path": str(item.relative_to(ws)),
+                    "path": item.relative_to(ws).as_posix(),
                     "type": "directory" if item.is_dir() else "file",
                     "size": item.stat().st_size if item.is_file() else None,
                     "mtime": item.stat().st_mtime,
@@ -2679,7 +2679,7 @@ def create_workspace_router() -> APIRouter:
         target.write_text(payload.get("content", ""), encoding="utf-8")
         ws = _ws()
         return {
-            "path": str(target.relative_to(ws)),
+            "path": target.relative_to(ws).as_posix(),
             "size": target.stat().st_size,
         }
 

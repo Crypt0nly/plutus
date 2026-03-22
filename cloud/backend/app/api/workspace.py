@@ -117,10 +117,19 @@ def _user_workspace(user_id: str) -> Path:
 def _safe_path(workspace: Path, relative: str) -> Path:
     """
     Resolve a relative path inside the workspace, preventing path traversal.
+
+    Normalises Windows-style backslash separators to forward slashes so that
+    files pushed from Windows clients are stored in proper subdirectories on
+    the Linux server (e.g. 'docs\\\\notes.txt' becomes 'docs/notes.txt' and
+    is written to <workspace>/docs/notes.txt, not as a flat file with a
+    backslash in its name).
+
     Raises HTTPException 400 if the resolved path escapes the workspace.
     """
-    # Normalise: strip leading slashes so Path doesn't treat it as absolute
-    clean = relative.lstrip("/")
+    # Convert Windows backslashes to forward slashes before anything else
+    normalised = relative.replace("\\", "/")
+    # Strip leading slashes so Path doesn't treat it as absolute
+    clean = normalised.lstrip("/")
     resolved = (workspace / clean).resolve()
     if not str(resolved).startswith(str(workspace.resolve())):
         raise HTTPException(status_code=400, detail="Invalid path")
