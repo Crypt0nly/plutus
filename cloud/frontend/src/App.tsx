@@ -70,6 +70,7 @@ export default function App() {
     removeSession,
     setActiveSessionId,
     setWhatsappPairingCode,
+    setPendingConversationRename,
   } = useAppStore();
 
   useTheme(theme);
@@ -374,9 +375,18 @@ export default function App() {
           // WhatsApp connected — clear the pairing code
           setWhatsappPairingCode(null);
           break;
+        case "conversation_renamed":
+          // Backend auto-named the conversation — update the history list in real-time
+          if (msg.conversation_id && msg.title) {
+            setPendingConversationRename({
+              conversationId: msg.conversation_id,
+              title: msg.title,
+            });
+          }
+          break;
       }
     },
-    [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId, setWhatsappPairingCode]
+    [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId, setWhatsappPairingCode, setPendingConversationRename]
   );
 
   const { send, connected } = useWebSocket(handleWSMessage);

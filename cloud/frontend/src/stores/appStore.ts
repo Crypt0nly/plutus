@@ -124,6 +124,10 @@ interface AppState {
   whatsappPairingCode: string | null;
   setWhatsappPairingCode: (code: string | null) => void;
 
+  // Auto-rename notification pushed from backend via WebSocket
+  pendingConversationRename: { conversationId: string; title: string } | null;
+  setPendingConversationRename: (v: { conversationId: string; title: string } | null) => void;
+
   // Updates
   updateInfo: {
     available: boolean;
@@ -324,6 +328,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // WhatsApp pairing code
   whatsappPairingCode: null,
   setWhatsappPairingCode: (whatsappPairingCode) => set({ whatsappPairingCode }),
+
+  // Auto-rename notification
+  pendingConversationRename: null,
+  setPendingConversationRename: (pendingConversationRename) => set({ pendingConversationRename }),
 
   // Updates
   updateInfo: null,

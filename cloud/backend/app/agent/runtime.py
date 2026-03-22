@@ -60,6 +60,16 @@ class CloudAgentRuntime:
 
         await self._save_message(conversation_id, "user", message)
 
+        # Auto-name the conversation from the first user message
+        auto_title: str | None = None
+        history_check = await self.agent_service.get_messages(conversation_id)
+        user_msgs = [m for m in history_check if m.role == "user"]
+        if len(user_msgs) == 1:
+            # This is the very first user message — set the title
+            auto_title = await self.agent_service.auto_name_conversation(
+                conversation_id, message
+            )
+
         # Reset heartbeat consecutive counter when user sends a real message
         try:
             from app.services.cloud_heartbeat import CloudHeartbeatManager
@@ -92,6 +102,7 @@ class CloudAgentRuntime:
         return {
             "response": response_text,
             "conversation_id": conversation_id,
+            "auto_title": auto_title,
         }
 
     # ── Agentic loops ─────────────────────────────────────────────────────────

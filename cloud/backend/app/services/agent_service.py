@@ -156,6 +156,30 @@ class AgentService:
         self.session.add(msg)
         await self.session.commit()
 
+    async def auto_name_conversation(
+        self, conversation_id: str, first_message: str
+    ) -> str:
+        """
+        Set the conversation title to a trimmed version of the first user
+        message (max 60 characters).  Returns the title that was set.
+        Only updates if the title is still the default placeholder.
+        """
+        from app.models.conversation import Conversation
+
+        result = await self.session.execute(
+            select(Conversation).where(Conversation.id == conversation_id)
+        )
+        conv = result.scalar_one_or_none()
+        if conv is None or (conv.title and conv.title != "New Conversation"):
+            return conv.title if conv else ""
+        # Trim to 60 chars, strip newlines
+        title = first_message.replace("\n", " ").strip()[:60]
+        if len(first_message.strip()) > 60:
+            title = title.rstrip() + "…"
+        conv.title = title
+        await self.session.commit()
+        return title
+
     async def get_memory_facts(self, user_id: str) -> list[str]:
         """Return memory content strings for system prompt."""
         memories = await self.recall_memories(user_id, limit=50)

@@ -29,9 +29,19 @@ export function ConversationHistory({ send }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   // Read conversationId from sessionStates directly so Zustand can track it
   // as a reactive dependency (computed getters on the store are not tracked).
-  const { activeSessionId, sessionStates, setConversationId, clearMessages, setView, connected } =
+  const { activeSessionId, sessionStates, setConversationId, clearMessages, setView, connected, pendingConversationRename, setPendingConversationRename } =
     useAppStore();
   const conversationId = sessionStates[activeSessionId]?.conversationId ?? null;
+
+  // React to backend auto-rename events pushed via WebSocket
+  useEffect(() => {
+    if (!pendingConversationRename) return;
+    const { conversationId: renamedId, title } = pendingConversationRename;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === renamedId ? { ...c, title } : c))
+    );
+    setPendingConversationRename(null);
+  }, [pendingConversationRename, setPendingConversationRename]);
 
   // Build a set of conversation IDs that are currently being processed
   // across ALL sessions (not just the active one) so we can show spinners

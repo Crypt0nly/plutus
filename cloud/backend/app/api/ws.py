@@ -213,6 +213,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                     new_conv_id = result["conversation_id"]
                     sessions[sid] = new_conv_id
                     response_text = result["response"]
+                    auto_title = result.get("auto_title")
 
                     # Send the assistant reply
                     await websocket.send_text(
@@ -237,6 +238,19 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
                             }
                         )
                     )
+
+                    # Notify frontend of the auto-generated title
+                    if auto_title:
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    "type": "conversation_renamed",
+                                    "conversation_id": new_conv_id,
+                                    "title": auto_title,
+                                    "session_id": sid,
+                                }
+                            )
+                        )
 
                 except Exception as e:
                     logger.error(f"Agent error for user {user_id}: {e}", exc_info=True)
