@@ -66,6 +66,7 @@ export default function App() {
     removeSession,
     setActiveSessionId,
     setWhatsappPairingCode,
+    updateSession,
   } = useAppStore();
 
   useTheme(theme);
@@ -269,8 +270,6 @@ export default function App() {
               setConversationId(s.conversation_id, newId);
             }
             // Only auto-switch for user-created sessions, not connector sessions.
-            // Connector sessions are pre-created at startup and should never
-            // hijack the user's active chat.
             if (!s.is_connector) {
               setActiveSessionId(newId);
               // Clean up the pending-new-session sentinel from sessionStates
@@ -296,6 +295,13 @@ export default function App() {
         case "session_closed":
           if (msg.session_id) {
             removeSession(msg.session_id);
+          }
+          break;
+
+        case "session_renamed":
+          // Auto-naming: backend renamed the session after first user message
+          if (msg.session_id && msg.display_name) {
+            updateSession(msg.session_id, { display_name: msg.display_name });
           }
           break;
 
@@ -377,7 +383,7 @@ export default function App() {
           break;
       }
     },
-    [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId, setWhatsappPairingCode]
+    [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId, setWhatsappPairingCode, updateSession]
   );
 
   const { send, connected } = useWebSocket(handleWSMessage);

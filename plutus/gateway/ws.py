@@ -258,6 +258,7 @@ async def _handle_computer_use_chat(
 ) -> None:
     """Process a message through the Anthropic Computer Use agent."""
     from plutus.core.computer_use_agent import ComputerUseEvent
+    from plutus.core.session_registry import get_registry
 
     logger.info(f"Computer Use agent handling [{session_id}]: {user_text[:80]}")
 
@@ -267,6 +268,19 @@ async def _handle_computer_use_chat(
         "message": "Using Computer Use mode — I can see and control your screen",
         "session_id": session_id,
     })
+
+    # Auto-name the session from the first user message
+    registry = get_registry()
+    cu_session = registry.get(session_id)
+    if cu_session and cu_session.display_name in ("New Chat", "Chat") and not cu_session.is_connector:
+        auto_title = user_text[:60].strip()
+        if auto_title:
+            cu_session.display_name = auto_title
+            await manager.broadcast({
+                "type": "session_renamed",
+                "session_id": session_id,
+                "display_name": auto_title,
+            })
 
     try:
         async for event in cu_agent.run_task(user_text):
@@ -354,6 +368,7 @@ async def _handle_standard_chat(
 ) -> None:
     """Process a message through the standard LiteLLM agent."""
     from plutus.gateway.server import _agent_lock
+    from plutus.core.session_registry import get_registry
 
     lock = session_lock or _agent_lock
     logger.info(f"Standard agent handling [{session_id}]: {user_text[:80]}")
@@ -364,6 +379,19 @@ async def _handle_standard_chat(
         "message": "🖥️ Computer Use mode — I can see and control your screen",
         "session_id": session_id,
     })
+
+    # Auto-name the session from the first user message
+    registry = get_registry()
+    session = registry.get(session_id)
+    if session and session.display_name in ("New Chat", "Chat") and not session.is_connector:
+        auto_title = user_text[:60].strip()
+        if auto_title:
+            session.display_name = auto_title
+            await manager.broadcast({
+                "type": "session_renamed",
+                "session_id": session_id,
+                "display_name": auto_title,
+            })
 
     disconnected = False
     try:
