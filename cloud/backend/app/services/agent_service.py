@@ -156,9 +156,7 @@ class AgentService:
         self.session.add(msg)
         await self.session.commit()
 
-    async def auto_name_conversation(
-        self, conversation_id: str, first_message: str
-    ) -> str:
+    async def auto_name_conversation(self, conversation_id: str, first_message: str) -> str:
         """
         Set the conversation title to a trimmed version of the first user
         message (max 60 characters).  Returns the title that was set.

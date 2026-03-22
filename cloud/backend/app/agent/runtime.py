@@ -66,9 +66,7 @@ class CloudAgentRuntime:
         user_msgs = [m for m in history_check if m.role == "user"]
         if len(user_msgs) == 1:
             # This is the very first user message — set the title
-            auto_title = await self.agent_service.auto_name_conversation(
-                conversation_id, message
-            )
+            auto_title = await self.agent_service.auto_name_conversation(conversation_id, message)
 
         # Reset heartbeat consecutive counter when user sends a real message
         try:
