@@ -85,7 +85,7 @@ export function ChatView({ send }: Props) {
       {/* Messages area */}
       <div ref={scrollRef} className="relative flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 space-y-1">
-          {messages.length === 0 ? (
+          {messages.length === 0 || pendingNewSession ? (
             keyConfigured ? <EmptyState onSend={handleSend} /> : <SetupPrompt />
           ) : (
             messages.map((msg, i) => <MessageBubble key={i} message={msg} send={send} />)
