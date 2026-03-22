@@ -6,9 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.api import agents, auth, bridge, chat, health, misc, workspace
 from app.api.sync import router as sync_router
@@ -143,30 +141,75 @@ app = FastAPI(
 _LOCALHOST_ORIGIN_RE = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
 
 
-class _DynamicCORSMiddleware(BaseHTTPMiddleware):
-    """Extends the static CORS allow-list with a dynamic localhost pattern.
+class _DynamicCORSMiddleware:
+    """Pure ASGI middleware that extends the static CORS allow-list with a
+    dynamic localhost pattern.
 
-    FastAPI's built-in CORSMiddleware only supports exact origin strings, so
-    it cannot allow all localhost ports with a single entry.  This middleware
-    sits in front of it: if the request origin matches the localhost pattern
-    it injects the correct CORS headers directly and short-circuits the
-    preflight; otherwise it falls through to the standard middleware.
+    Unlike BaseHTTPMiddleware, this implementation does NOT wrap the ASGI
+    scope, so WebSocket upgrade requests pass through completely unmodified.
+    Only HTTP requests with a matching localhost Origin header are intercepted
+    to inject the correct CORS response headers.
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[override]
-        origin = request.headers.get("origin", "")
-        if origin and _LOCALHOST_ORIGIN_RE.match(origin):
-            if request.method == "OPTIONS":
-                # Preflight — respond immediately with the correct headers.
-                response = Response(status_code=204)
-            else:
-                response = await call_next(request)
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "*"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            return response
-        return await call_next(request)
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # WebSocket connections must never be intercepted — pass straight through.
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Extract the Origin header from the scope headers list.
+        headers = dict(scope.get("headers", []))
+        origin = headers.get(b"origin", b"").decode("latin-1")
+
+        if not (origin and _LOCALHOST_ORIGIN_RE.match(origin)):
+            # Not a localhost origin — let the standard middleware handle it.
+            await self.app(scope, receive, send)
+            return
+
+        method = scope.get("method", "")
+        if method == "OPTIONS":
+            # Preflight — respond immediately without calling the inner app.
+            cors_headers = [
+                (b"access-control-allow-origin", origin.encode()),
+                (b"access-control-allow-credentials", b"true"),
+                (b"access-control-allow-methods", b"*"),
+                (b"access-control-allow-headers", b"*"),
+                (b"content-length", b"0"),
+            ]
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 204,
+                    "headers": cors_headers,
+                }
+            )
+            await send({"type": "http.response.body", "body": b""})
+            return
+
+        # Non-preflight HTTP request — call the inner app but inject CORS
+        # headers into the response before forwarding it to the client.
+        cors_extra = [
+            (b"access-control-allow-origin", origin.encode()),
+            (b"access-control-allow-credentials", b"true"),
+            (b"access-control-allow-methods", b"*"),
+            (b"access-control-allow-headers", b"*"),
+        ]
+
+        async def send_with_cors(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                # Merge our CORS headers into the response, avoiding duplicates.
+                existing_names = {name.lower() for name, _ in message.get("headers", [])}
+                extra = [(k, v) for k, v in cors_extra if k not in existing_names]
+                message = {
+                    **message,
+                    "headers": list(message.get("headers", [])) + extra,
+                }
+            await send(message)
+
+        await self.app(scope, receive, send_with_cors)
 
 
 # Middleware is applied in reverse registration order (last added = outermost).
