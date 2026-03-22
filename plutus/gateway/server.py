@@ -859,6 +859,12 @@ async def lifespan(app: FastAPI):
         tool_registry.register(git_tool)
         agent.set_connector_manager(connector_manager)
 
+        # Register workspace sync tool (push/pull/delete cloud workspace)
+        from plutus.tools.workspace_sync import WorkspaceSyncTool
+        workspace_sync_tool = WorkspaceSyncTool(config=config)
+        tool_registry.register(workspace_sync_tool)
+        logger.info("Registered workspace_sync tool")
+
         # Register web deploy tool
         from plutus.tools.web_deploy import WebDeployTool
         web_deploy_tool = WebDeployTool(secrets=secrets)

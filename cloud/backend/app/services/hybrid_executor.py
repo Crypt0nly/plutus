@@ -94,6 +94,11 @@ class HybridExecutor:
         if tool_name == "plan":
             return await self._execute_plan(user_id, tool_args, db_session=db_session)
 
+        # The workspace_sync tool is always handled cloud-side — it reads/writes
+        # the user's server workspace files directly.
+        if tool_name == "workspace_sync":
+            return await self._execute_workspace_sync(user_id, tool_args)
+
         if self.is_bridge_connected(user_id):
             try:
                 result = await asyncio.wait_for(
@@ -207,6 +212,105 @@ class HybridExecutor:
 
         except Exception as exc:
             logger.error(f"[Plan] Error executing plan tool for {user_id}: {exc}", exc_info=True)
+            return {"success": False, "error": str(exc)}
+
+    # ── Workspace sync tool ───────────────────────────────────────────────────
+
+    async def _execute_workspace_sync(
+        self,
+        user_id: str,
+        tool_args: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Execute workspace sync actions directly against the server workspace."""
+
+        from app.services.workspace_sync import (
+            _user_workspace,
+            list_workspace_manifest,
+            pull_workspace_to_sandbox,
+        )
+
+        action = tool_args.get("action", "status")
+        file_path = tool_args.get("path", "")
+
+        ws_root = _user_workspace(user_id)
+
+        try:
+            if action in ("list", "status"):
+                files = list_workspace_manifest(user_id)
+                if not files:
+                    return {
+                        "success": True,
+                        "output": "The cloud workspace is empty — no files stored yet.",
+                    }
+                lines = [f"Cloud workspace ({len(files)} file{'s' if len(files) != 1 else ''}):"]
+                for f in sorted(files, key=lambda x: x["path"]):
+                    size = f.get("size", 0)
+                    if size < 1024:
+                        size_str = f"{size} B"
+                    elif size < 1024 * 1024:
+                        size_str = f"{size / 1024:.1f} KB"
+                    else:
+                        size_str = f"{size / (1024 * 1024):.1f} MB"
+                    lines.append(f"  {f['path']}  ({size_str})")
+                return {"success": True, "output": "\n".join(lines)}
+
+            elif action == "pull":
+                # Use the existing pull_workspace_to_sandbox function
+                from app.services.e2b_manager import E2BSandboxManager
+
+                e2b = E2BSandboxManager.get_instance()
+                entry = await e2b._get_or_create(user_id)
+                files = list_workspace_manifest(user_id)
+                if not files:
+                    return {
+                        "success": True,
+                        "output": "Cloud workspace is empty — nothing to pull into sandbox.",
+                    }
+                synced = await pull_workspace_to_sandbox(entry, user_id)
+                return {
+                    "success": True,
+                    "output": (
+                        f"Pull complete: {synced} file(s) copied into sandbox at /home/user/."
+                    ),
+                }
+
+            elif action == "push":
+                # Copy files from the E2B sandbox into the server workspace
+                from app.services.e2b_manager import E2BSandboxManager
+                from app.services.workspace_sync import push_sandbox_to_workspace
+
+                e2b = E2BSandboxManager.get_instance()
+                entry = await e2b._get_or_create(user_id)
+                synced = await push_sandbox_to_workspace(entry, user_id)
+                if synced == 0:
+                    return {
+                        "success": True,
+                        "output": (
+                            "No files found in sandbox /home/user/ to push (or all were excluded)."
+                        ),
+                    }
+                return {
+                    "success": True,
+                    "output": f"Push complete: {synced} file(s) saved to cloud workspace.",
+                }
+
+            elif action == "delete":
+                if not file_path:
+                    return {"success": False, "error": "'path' is required for the delete action."}
+                target = ws_root / file_path.lstrip("/")
+                if not target.exists():
+                    return {"success": False, "error": f"File not found: {file_path}"}
+                target.unlink()
+                return {
+                    "success": True,
+                    "output": f"Deleted '{file_path}' from the cloud workspace.",
+                }
+
+            else:
+                return {"success": False, "error": f"Unknown workspace_sync action: {action}"}
+
+        except Exception as exc:
+            logger.error(f"[WorkspaceSync] Error for {user_id}: {exc}", exc_info=True)
             return {"success": False, "error": str(exc)}
 
     # ── Bridge delegation ─────────────────────────────────────────────────────
@@ -610,6 +714,42 @@ TOOL_DEFINITIONS = [
                 "result": {
                     "type": "string",
                     "description": "Optional result note or summary for the step.",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "workspace_sync",
+        "description": (
+            "Manage files in the user's persistent cloud workspace. "
+            "The cloud workspace stores files that persist between sessions and can be "
+            "synced with the user's local machine. "
+            "Actions:\n"
+            "  list   — list all files currently stored in the cloud workspace\n"
+            "  status — same as list, shows all files with sizes\n"
+            "  pull   — copy all cloud workspace files into the sandbox at /home/user/ "
+            "so you can read and work with them\n"
+            "  push   — save files from the sandbox /home/user/ back to the cloud workspace "
+            "for persistence\n"
+            "  delete — delete a specific file from the cloud workspace by path\n"
+            "Use 'pull' at the start of a session to load the user's files, and 'push' "
+            "to save important results back to the cloud workspace."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "status", "pull", "push", "delete"],
+                    "description": "Workspace sync action to perform.",
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "For 'delete': the relative file path to delete "
+                        "(e.g. 'report.pdf' or 'projects/main.py')."
+                    ),
                 },
             },
             "required": ["action"],
