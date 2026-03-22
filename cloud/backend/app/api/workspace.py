@@ -470,7 +470,7 @@ def verify_sync_token(user_id: str, token: str) -> bool:
 
 
 @router.post("/push")
-async def push_workspace(user=Depends(get_current_user)):
+async def push_workspace(user=Depends(get_workspace_user)):
     """
     Manually push files from the active E2B sandbox into the server workspace.
 
@@ -498,7 +498,7 @@ async def push_workspace(user=Depends(get_current_user)):
 
 
 @router.post("/pull")
-async def pull_workspace(user=Depends(get_current_user)):
+async def pull_workspace(user=Depends(get_workspace_user)):
     """
     Manually pull files from the server workspace into the active E2B sandbox.
 

@@ -374,6 +374,15 @@ export const api = {
     }),
 
   // Workspace sync
+  getWorkspaceInfo: () =>
+    request<{ path: string; default_path: string; custom_path: string; total_size_bytes: number; file_count: number }>(
+      "/workspace"
+    ),
+  setWorkspaceDir: (workspace_dir: string) =>
+    request<{ path: string; custom_path: string }>("/workspace", {
+      method: "PATCH",
+      body: JSON.stringify({ workspace_dir }),
+    }),
   getWorkspaceManifest: () =>
     request<{ files: { path: string; size: number; mtime: number }[]; total: number }>(
       "/workspace/manifest"
@@ -458,6 +467,8 @@ export const api = {
         const localManifest = await request<{
           files: { path: string; size: number; mtime: number }[];
         }>("/workspace/manifest");
+        // Build a map of local files keyed by path for fast duplicate detection.
+        // Files that already exist locally with an equal or newer mtime are skipped.
         const localMap: Record<string, { mtime: number }> = {};
         for (const f of localManifest.files || []) localMap[f.path] = f;
         const toDownload = (remote.files || []).filter(
@@ -465,18 +476,33 @@ export const api = {
             !localMap[f.path] || f.mtime > localMap[f.path].mtime + 1
         );
         let downloaded = 0;
+        let skipped = 0;
+        const failed: string[] = [];
         for (const f of toDownload) {
-          const resp = await fetch(`${cloudUrl}/api/workspace/files/${f.path}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await resp.json();
-          await request("/workspace/files", {
-            method: "POST",
-            body: JSON.stringify({ path: f.path, content: data.content }),
-          });
-          downloaded++;
+          try {
+            const resp = await fetch(`${cloudUrl}/api/workspace/files/${f.path}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!resp.ok) {
+              // File listed in manifest but not found on server — skip silently.
+              skipped++;
+              continue;
+            }
+            const data = await resp.json();
+            await request("/workspace/files", {
+              method: "POST",
+              body: JSON.stringify({
+                path: f.path,
+                content: data.content,
+                binary: data.binary ?? false,
+              }),
+            });
+            downloaded++;
+          } catch {
+            failed.push(f.path);
+          }
         }
-        return { downloaded, total: toDownload.length };
+        return { downloaded, skipped, failed: failed.length, total: toDownload.length };
       });
   },
   getWorkspaceSyncStatus: (token: string) => {

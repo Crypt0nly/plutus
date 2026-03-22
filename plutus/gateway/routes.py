@@ -2557,15 +2557,19 @@ def create_workspace_router() -> APIRouter:
 
     ws_router = APIRouter(prefix="/workspace")
 
-    WORKSPACE_ROOT = Path.home() / "plutus-workspace"
     # Segment names to skip anywhere in the path tree
     _SKIP = {"__pycache__", ".git", "node_modules", ".DS_Store", ".venv", "venv", ".env"}
     # Top-level directory names that are Plutus internals, never user files
     _SKIP_TOP = {"plutus", ".plutus", "plutus_ai", "plutus-ai"}
 
     def _ws() -> Path:
-        WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
-        return WORKSPACE_ROOT
+        """Return the workspace root, honouring any user-configured custom path."""
+        from plutus.config import PlutusConfig
+        cfg = PlutusConfig.load()
+        custom = getattr(cfg.cloud_sync, "workspace_dir", "") or ""
+        root = Path(custom).expanduser() if custom else Path.home() / "plutus-workspace"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
 
     def _safe(rel: str) -> Path:
         ws = _ws()
@@ -2703,10 +2707,30 @@ def create_workspace_router() -> APIRouter:
         ws = _ws()
         total_size = sum(f.stat().st_size for f in ws.rglob("*") if f.is_file())
         file_count = sum(1 for f in ws.rglob("*") if f.is_file())
+        from plutus.config import PlutusConfig
+        cfg = PlutusConfig.load()
+        default_path = str(Path.home() / "plutus-workspace")
         return {
             "path": str(ws),
+            "default_path": default_path,
+            "custom_path": getattr(cfg.cloud_sync, "workspace_dir", "") or "",
             "total_size_bytes": total_size,
             "file_count": file_count,
         }
+
+    @ws_router.patch("")
+    async def set_workspace_dir(payload: dict[str, Any]) -> dict[str, Any]:
+        """Change the local workspace directory. Pass {\"workspace_dir\": \"/path/to/dir\"} to set a custom path,
+        or {\"workspace_dir\": \"\"} to reset to the default ~/plutus-workspace."""
+        from plutus.config import PlutusConfig
+        new_dir = payload.get("workspace_dir", "")
+        if new_dir:
+            resolved = Path(new_dir).expanduser().resolve()
+            resolved.mkdir(parents=True, exist_ok=True)
+            new_dir = str(resolved)
+        cfg = PlutusConfig.load()
+        cfg.update({"cloud_sync": {"workspace_dir": new_dir}})
+        ws = _ws()
+        return {"path": str(ws), "custom_path": new_dir}
 
     return ws_router

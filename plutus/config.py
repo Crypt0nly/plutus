@@ -149,6 +149,7 @@ class CloudSyncConfig(BaseModel):
     auto_sync_interval: int = 300  # seconds between auto-sync checks (default 5 min)
     last_push: float = 0.0  # unix timestamp of last successful push
     last_pull: float = 0.0  # unix timestamp of last successful pull
+    workspace_dir: str = ""  # custom workspace path; empty = ~/plutus-workspace
 
 
 class PlutusConfig(BaseSettings):
