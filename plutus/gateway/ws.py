@@ -326,7 +326,7 @@ async def _handle_computer_use_chat(
         "session_id": session_id,
     })
 
-    # Auto-name the session from the first user message
+    # Auto-name the session AND the conversation from the first user message
     registry = get_registry()
     cu_session = registry.get(session_id)
     if cu_session and cu_session.display_name in ("New Chat", "Chat") and not cu_session.is_connector:
@@ -338,7 +338,23 @@ async def _handle_computer_use_chat(
                 "session_id": session_id,
                 "display_name": auto_title,
             })
-
+            # Also persist the title on the conversation row
+            try:
+                conv_id = cu_session.conversation_id
+                if conv_id:
+                    from plutus.gateway.server import get_state
+                    state = get_state()
+                    memory = state.get("memory")
+                    if memory:
+                        await memory.rename_conversation(conv_id, auto_title)
+                        await manager.broadcast({
+                            "type": "conversation_renamed",
+                            "conversation_id": conv_id,
+                            "title": auto_title,
+                            "session_id": session_id,
+                        })
+            except Exception as _name_err:
+                logger.debug("Auto-name conversation (CU) failed: %s", _name_err)
     try:
         async for event in cu_agent.run_task(user_text):
             event_dict = event.to_dict()
@@ -437,7 +453,7 @@ async def _handle_standard_chat(
         "session_id": session_id,
     })
 
-    # Auto-name the session from the first user message
+    # Auto-name the session AND the conversation from the first user message
     registry = get_registry()
     session = registry.get(session_id)
     if session and session.display_name in ("New Chat", "Chat") and not session.is_connector:
@@ -449,7 +465,25 @@ async def _handle_standard_chat(
                 "session_id": session_id,
                 "display_name": auto_title,
             })
-
+            # Also persist the title on the conversation row so the history
+            # panel shows the first message instead of the creation date.
+            try:
+                conv_id = session.conversation_id or agent._conversation.conversation_id
+                if conv_id:
+                    # Only rename if the conversation has no user-set title yet
+                    from plutus.gateway.server import get_state
+                    state = get_state()
+                    memory = state.get("memory") or getattr(agent, "_memory", None)
+                    if memory:
+                        await memory.rename_conversation(conv_id, auto_title)
+                        await manager.broadcast({
+                            "type": "conversation_renamed",
+                            "conversation_id": conv_id,
+                            "title": auto_title,
+                            "session_id": session_id,
+                        })
+            except Exception as _name_err:
+                logger.debug("Auto-name conversation failed: %s", _name_err)
     disconnected = False
     try:
         async with lock:

@@ -29,7 +29,7 @@ export function ConversationHistory({ send }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   // Read conversationId from sessionStates directly so Zustand can track it
   // as a reactive dependency (computed getters on the store are not tracked).
-  const { activeSessionId, sessionStates, setConversationId, clearMessages, setView, connected } =
+  const { activeSessionId, sessionStates, setConversationId, clearMessages, setView, connected, conversationRefreshTick } =
     useAppStore();
   const conversationId = sessionStates[activeSessionId]?.conversationId ?? null;
 
@@ -56,7 +56,7 @@ export function ConversationHistory({ send }: Props) {
 
   useEffect(() => {
     fetchConversations();
-  }, [fetchConversations, conversationId]);
+  }, [fetchConversations, conversationId, conversationRefreshTick]);
 
   // Re-fetch when any session finishes processing so newly created chats
   // appear in the history list as soon as Plutus sends its first response.

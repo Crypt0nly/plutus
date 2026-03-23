@@ -120,6 +120,10 @@ interface AppState {
   historyPanelOpen: boolean;
   setHistoryPanelOpen: (v: boolean) => void;
   toggleHistoryPanel: () => void;
+  // Incremented whenever a conversation is renamed by the backend so that
+  // ConversationHistory can re-fetch without waiting for the 30s poll.
+  conversationRefreshTick: number;
+  bumpConversationRefresh: () => void;
 
   // Theme
   theme: ThemeMode;
@@ -321,6 +325,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setHistoryPanelOpen: (historyPanelOpen) => set({ historyPanelOpen }),
   toggleHistoryPanel: () =>
     set((s) => ({ historyPanelOpen: !s.historyPanelOpen })),
+  conversationRefreshTick: 0,
+  bumpConversationRefresh: () =>
+    set((s) => ({ conversationRefreshTick: s.conversationRefreshTick + 1 })),
 
   // Theme
   theme: getStoredTheme(),

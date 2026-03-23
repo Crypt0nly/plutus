@@ -305,6 +305,12 @@ export default function App() {
           }
           break;
 
+        case "conversation_renamed":
+          // Backend auto-named the conversation from the first user message.
+          // Bump the refresh tick so ConversationHistory re-fetches immediately.
+          useAppStore.getState().bumpConversationRefresh();
+          break;
+
         case "session_history_cleared":
           // Backend confirmed the clear — ensure the frontend message list is empty
           clearMessages(sid);
