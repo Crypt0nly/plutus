@@ -89,14 +89,11 @@ export function Sidebar({ send }: SidebarProps) {
         <div className="flex items-center gap-3">
           {/* Logo mark */}
           <div className="relative w-9 h-9 flex-shrink-0">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm text-white"
-              style={{
-                background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #4338ca 100%)",
-                boxShadow: "0 4px 16px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255,255,255,0.15)"
-              }}
-            >
-              P
-            </div>
+            <img
+              src="/logo.svg"
+              alt="Plutus"
+              className="w-9 h-9 object-contain"
+            />
             {/* Online indicator */}
             <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-950 ${
               connected ? "bg-emerald-400" : "bg-red-400"
