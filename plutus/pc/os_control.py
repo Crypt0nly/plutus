@@ -340,6 +340,23 @@ class OSControl:
         self, command: str, timeout: int = 30, cwd: Optional[str] = None
     ) -> dict:
         """Execute a shell command and return the output."""
+        import re as _re
+        # Auto-inject CI=1 for npm/npx create commands that prompt interactively
+        # (e.g. "npm create vite@latest" asks "Ok to proceed? (y)").
+        _interactive_pats = [
+            _re.compile(r"\bnpm\s+create\b", _re.IGNORECASE),
+            _re.compile(r"\bnpx\s+create-", _re.IGNORECASE),
+            _re.compile(r"\bnpx\s+.*@latest\b", _re.IGNORECASE),
+            _re.compile(r"\bnpm\s+init\b", _re.IGNORECASE),
+            _re.compile(r"\byarn\s+create\b", _re.IGNORECASE),
+            _re.compile(r"\bpnpm\s+create\b", _re.IGNORECASE),
+        ]
+        env = {**os.environ}
+        if any(p.search(command) for p in _interactive_pats):
+            env["CI"] = "1"
+            env["npm_config_yes"] = "true"
+            env["FORCE_COLOR"] = "0"
+
         try:
             if self.os_type == "windows":
                 process = await asyncio.create_subprocess_shell(
@@ -348,6 +365,7 @@ class OSControl:
                     stderr=asyncio.subprocess.PIPE,
                     cwd=cwd,
                     shell=True,
+                    env=env,
                 )
             else:
                 process = await asyncio.create_subprocess_shell(
@@ -355,6 +373,7 @@ class OSControl:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=cwd,
+                    env=env,
                 )
 
             stdout, stderr = await asyncio.wait_for(

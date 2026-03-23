@@ -9,13 +9,17 @@ Supports running commands via:
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import platform
+import re
 import shutil
 from typing import Any
 
 
 from plutus.tools.base import Tool
+
+logger = logging.getLogger("plutus.shell")
 
 # Commands that are always blocked regardless of tier
 BLOCKED_COMMANDS = [
@@ -30,6 +34,43 @@ BLOCKED_COMMANDS = [
 MAX_OUTPUT_LENGTH = 50_000
 IS_WINDOWS = platform.system() == "Windows"
 HAS_WSL = IS_WINDOWS and shutil.which("wsl") is not None
+
+# Regex patterns for commands that are known to prompt interactively and need
+# CI=1 / npm_config_yes=true to suppress prompts.
+_INTERACTIVE_CMD_PATTERNS = [
+    re.compile(r"\bnpm\s+create\b", re.IGNORECASE),
+    re.compile(r"\bnpx\s+create-", re.IGNORECASE),
+    re.compile(r"\bnpx\s+.*@latest\b", re.IGNORECASE),
+    re.compile(r"\bcreate-react-app\b", re.IGNORECASE),
+    re.compile(r"\bcreate-next-app\b", re.IGNORECASE),
+    re.compile(r"\bcreate-vite\b", re.IGNORECASE),
+    re.compile(r"\bcreate-svelte\b", re.IGNORECASE),
+    re.compile(r"\bcreate-astro\b", re.IGNORECASE),
+    re.compile(r"\bcreate-nuxt\b", re.IGNORECASE),
+    re.compile(r"\bcreate-vue\b", re.IGNORECASE),
+    re.compile(r"\bnpm\s+init\b", re.IGNORECASE),
+    re.compile(r"\byarn\s+create\b", re.IGNORECASE),
+    re.compile(r"\bpnpm\s+create\b", re.IGNORECASE),
+]
+
+
+def _needs_ci_env(command: str) -> bool:
+    """Return True if the command is likely to prompt interactively."""
+    for pat in _INTERACTIVE_CMD_PATTERNS:
+        if pat.search(command):
+            return True
+    return False
+
+
+def _build_env(command: str) -> dict[str, str]:
+    """Build the subprocess environment, injecting CI=1 when needed."""
+    env = {**os.environ}
+    if _needs_ci_env(command):
+        env["CI"] = "1"
+        env["npm_config_yes"] = "true"
+        env["FORCE_COLOR"] = "0"
+        logger.debug("[shell] Injected CI=1 for interactive command: %.80s", command)
+    return env
 
 
 class ShellTool(Tool):
@@ -126,20 +167,22 @@ class ShellTool(Tool):
         else:
             actual_command = command
 
+        # Build environment — auto-inject CI=1 for interactive npm/npx commands
+        # so they never hang waiting for "Ok to proceed? (y)".
+        env = _build_env(command)
+
         try:
             process = await asyncio.create_subprocess_shell(
                 actual_command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=working_dir,
+                env=env,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
+            stdout_text, stderr_text = await self._communicate_with_heartbeat(
+                process, timeout=timeout
             )
-
-            stdout_text = stdout.decode("utf-8", errors="replace")
-            stderr_text = stderr.decode("utf-8", errors="replace")
 
             # Truncate large outputs
             if len(stdout_text) > MAX_OUTPUT_LENGTH:
@@ -169,3 +212,59 @@ class ShellTool(Tool):
             return f"[TIMEOUT] Command timed out after {timeout} seconds"
         except Exception as e:
             return f"[ERROR] {e}"
+
+    async def _communicate_with_heartbeat(
+        self,
+        process: asyncio.subprocess.Process,
+        timeout: int,
+        heartbeat_interval: float = 15.0,
+    ) -> tuple[str, str]:
+        """Collect stdout/stderr while yielding control every heartbeat_interval
+        seconds.  This prevents the event loop from being starved during long-
+        running commands (e.g. npm install, build steps) and keeps the agent's
+        _last_activity watchdog from firing false stall warnings.
+
+        Returns (stdout_text, stderr_text).
+        """
+        stdout_chunks: list[bytes] = []
+        stderr_chunks: list[bytes] = []
+        deadline = asyncio.get_event_loop().time() + timeout
+
+        async def _read(stream: asyncio.StreamReader, bucket: list[bytes]) -> None:
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(stream.read(4096), timeout=5.0)
+                except asyncio.TimeoutError:
+                    if asyncio.get_event_loop().time() > deadline:
+                        break
+                    continue
+                if not chunk:
+                    break
+                bucket.append(chunk)
+
+        read_task = asyncio.create_task(
+            asyncio.gather(
+                _read(process.stdout, stdout_chunks),   # type: ignore[arg-type]
+                _read(process.stderr, stderr_chunks),   # type: ignore[arg-type]
+            )
+        )
+
+        while not read_task.done():
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
+                read_task.cancel()
+                raise asyncio.TimeoutError()
+            await asyncio.sleep(min(heartbeat_interval, remaining, 1.0))
+
+        await read_task
+        await process.wait()
+
+        return (
+            b"".join(stdout_chunks).decode("utf-8", errors="replace"),
+            b"".join(stderr_chunks).decode("utf-8", errors="replace"),
+        )
