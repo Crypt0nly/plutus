@@ -495,6 +495,72 @@ function ToolResultContent({ content }: { content: string }) {
   );
 }
 
+function CollapsibleToolResult({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+
+  // Special cases that have their own visual — screenshots, attachments, snapshots
+  // should still be collapsible but show a meaningful summary label.
+  const isScreenshot = content.startsWith("__SCREENSHOT__:");
+  const isAttachmentImage = content.startsWith("__ATTACHMENT_IMAGE__:");
+  const isAttachmentFile = content.startsWith("__ATTACHMENT_FILE__:");
+  const isSnapshot = !isScreenshot && !isAttachmentImage && !isAttachmentFile &&
+    content.includes("[ref=") && (content.includes("button") || content.includes("link") ||
+      content.includes("textbox") || content.includes("heading"));
+  const isError = content.startsWith("[ERROR]") || content.toLowerCase().includes("error:");
+  const isJson = content.trim().startsWith("{") || content.trim().startsWith("[");
+  const isDiff = content.includes("@@") || content.includes("--- ") || content.includes("+++ ");
+
+  let label = "Output";
+  let labelColor = "#6b7280";
+  let labelIcon = <Play className="w-3 h-3" />;
+  if (isScreenshot) { label = "Screenshot"; labelColor = "#60a5fa"; labelIcon = <Camera className="w-3 h-3" />; }
+  else if (isAttachmentImage) { label = "Image attachment"; labelColor = "#60a5fa"; labelIcon = <Camera className="w-3 h-3" />; }
+  else if (isAttachmentFile) {
+    const fileName = content.replace("__ATTACHMENT_FILE__:", "").split(":")[0] || "File";
+    label = fileName; labelColor = "#22d3ee"; labelIcon = <FileDown className="w-3 h-3" />;
+  } else if (isSnapshot) { label = "Page snapshot"; labelColor = "#a78bfa"; labelIcon = <Monitor className="w-3 h-3" />; }
+  else if (isError) { label = "Error"; labelColor = "#f87171"; labelIcon = <XCircle className="w-3 h-3" />; }
+  else if (isDiff) { label = "File changes"; labelColor = "#34d399"; labelIcon = <Code2 className="w-3 h-3" />; }
+  else if (isJson) { label = "Result"; labelColor = "#34d399"; labelIcon = <CheckCircle2 className="w-3 h-3" />; }
+
+  const charCount = content.length;
+  const summary = charCount > 0 ? `${charCount.toLocaleString()} chars` : "";
+
+  return (
+    <div className="py-0.5 pl-11 animate-fade-in">
+      <div className="rounded-xl overflow-hidden"
+        style={{ border: "1px solid rgba(107,114,128,0.15)" }}
+      >
+        {/* Collapsed header — always visible */}
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center gap-2 px-3 py-1.5 transition-all"
+          style={{ background: "rgb(var(--surface-alt) / 0.5)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.1)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = ""; }}
+        >
+          <span style={{ color: labelColor, display: "flex", alignItems: "center" }}>{labelIcon}</span>
+          <span className="text-[11px] font-medium" style={{ color: labelColor }}>{label}</span>
+          {summary && <span className="text-[10px] text-gray-600 font-mono ml-1">{summary}</span>}
+          <span className="ml-auto">
+            {open
+              ? <ChevronUp className="w-3 h-3 text-gray-600" />
+              : <ChevronDown className="w-3 h-3 text-gray-600" />}
+          </span>
+        </button>
+        {/* Expanded content */}
+        {open && (
+          <div className="animate-fade-in"
+            style={{ borderTop: "1px solid rgba(107,114,128,0.12)" }}
+          >
+            <ToolResultContent content={content} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function MessageBubble({ message, send }: Props) {
   const { role, content, tool_calls } = message;
 
@@ -592,11 +658,7 @@ export function MessageBubble({ message, send }: Props) {
 
   // ── Tool result ──
   if (role === "tool") {
-    return (
-      <div className="py-1 pl-11 animate-fade-in">
-        <ToolResultContent content={content || ""} />
-      </div>
-    );
+    return <CollapsibleToolResult content={content || ""} />;
   }
 
   // ── System messages ──
