@@ -68,24 +68,27 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
   const [quietEnd, setQuietEnd] = useState(config.quiet_hours_end ?? "");
   const [prompt, setPrompt] = useState(config.prompt ?? "");
   const [blockedOps, setBlockedOps] = useState<string[]>(
-    config.blocked_ops ?? ALL_OPS
+    // Default: empty list = everything allowed. The server's actual value
+    // is loaded on mount via fetchStatus(true) and will replace this.
+    config.blocked_ops ?? []
   );
   const [expanded, setExpanded] = useState(false);
 
-  const fetchStatus = () => {
+   const fetchStatus = (initialLoad = false) => {
     api.getHeartbeatStatus().then((s) => {
       const hs = s as HeartbeatStatus;
       setStatus(hs);
-      // Keep local blocked_ops in sync with what the server reports
-      if (Array.isArray(hs.blocked_ops)) {
+      // Only sync blocked_ops from the server on the very first load.
+      // After that, the user's local edits must not be overwritten by the
+      // polling loop — otherwise clicking "Allow all" gets undone 5 s later.
+      if (initialLoad && Array.isArray(hs.blocked_ops)) {
         setBlockedOps(hs.blocked_ops);
       }
     }).catch(() => {});
   };
-
   useEffect(() => {
-    fetchStatus();
-    const timer = window.setInterval(fetchStatus, 5000);
+    fetchStatus(true); // initial load — sync blocked_ops from server
+    const timer = window.setInterval(() => fetchStatus(false), 5000);
     return () => window.clearInterval(timer);
   }, []);
 

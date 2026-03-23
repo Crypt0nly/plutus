@@ -63,14 +63,9 @@ class MemoryConfig(BaseModel):
 
 
 # Default set of pc() operations that are blocked during unattended heartbeat runs.
-# Users can override this list in Settings → Heartbeat → Blocked Operations.
-_DEFAULT_HEARTBEAT_BLOCKED_OPS: list[str] = [
-    "open_app", "close_app", "run_command", "kill_process",
-    "open_file", "open_folder", "open_url",
-    "desktop_click", "desktop_click_ref", "desktop_type",
-    "desktop_type_ref", "desktop_key", "desktop_scroll",
-    "desktop_snapshot", "screenshot", "mouse_click", "mouse_scroll",
-]
+# Empty by default — everything is allowed. Users can restrict specific operations
+# in Settings → Heartbeat → Blocked Operations.
+_DEFAULT_HEARTBEAT_BLOCKED_OPS: list[str] = []
 
 
 class HeartbeatConfig(BaseModel):
