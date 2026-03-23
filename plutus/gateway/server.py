@@ -565,9 +565,25 @@ async def _worker_executor(task: WorkerTask, on_status: Any, *, deadline: float 
             # drains at the start of each new process_message call.
             agent: AgentRuntime | None = _state.get("agent")
             if agent:
+                # Truncate very large worker outputs to avoid overflowing the
+                # coordinator's context window.  The full result is always
+                # visible in the UI via the worker_result broadcast above.
+                MAX_WORKER_RESULT_CHARS = 12_000
+                result_for_context = result
+                truncated = False
+                if len(result) > MAX_WORKER_RESULT_CHARS:
+                    result_for_context = result[:MAX_WORKER_RESULT_CHARS]
+                    truncated = True
+
+                truncation_note = (
+                    f"\n[Output truncated to {MAX_WORKER_RESULT_CHARS:,} chars. "
+                    f"Full result ({len(result):,} chars) is visible in the Workers panel. "
+                    f"Use a tool to read any files the worker created if you need the complete output.]"
+                ) if truncated else ""
+
                 worker_context_msg = (
                     f"[WORKER COMPLETED — {task.name} ({model_display})]\n"
-                    f"{result}\n"
+                    f"{result_for_context}{truncation_note}\n"
                     f"[You may reference this worker's output when responding to the user.]"
                 )
                 if not hasattr(agent, '_pending_worker_results'):

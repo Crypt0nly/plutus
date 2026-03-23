@@ -1388,6 +1388,21 @@ class AgentRuntime:
                 self._processing = False
                 yield AgentEvent("cancelled", {"message": "Task stopped by user"})
                 return
+
+            # Drain any worker results that arrived mid-loop.
+            # Workers may complete while the agent is already processing, so we
+            # check at the start of every round — not just at process_message entry.
+            if hasattr(self, '_pending_worker_results') and self._pending_worker_results:
+                for wr_msg in self._pending_worker_results:
+                    await self._conversation.add_user_message(
+                        f"[SYSTEM NOTIFICATION]\n{wr_msg}"
+                    )
+                logger.info(
+                    f"Mid-loop: drained {len(self._pending_worker_results)} "
+                    f"pending worker results into conversation (round {round_num})"
+                )
+                self._pending_worker_results.clear()
+
             messages = await self._conversation.build_messages()
 
             # Inject system prompt
