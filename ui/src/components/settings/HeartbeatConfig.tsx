@@ -96,6 +96,17 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
         setStatus(s as HeartbeatStatus);
         setEnabled(false);
       } else {
+        // Save current settings first so the backend uses the selected interval
+        const patch = {
+          enabled: true,
+          interval_seconds: interval,
+          max_consecutive: maxConsecutive,
+          quiet_hours_start: quietStart || null,
+          quiet_hours_end: quietEnd || null,
+          prompt: prompt || "",
+          blocked_ops: blockedOps,
+        };
+        await api.updateHeartbeat(patch).catch(() => {});
         const s = await api.startHeartbeat();
         setStatus(s as HeartbeatStatus);
         setEnabled(true);
@@ -199,7 +210,7 @@ export function HeartbeatConfig({ config, onSave, saving }: Props) {
             <span className="text-gray-600">/{status.max_consecutive}</span>
           </span>
           <span>
-            Interval: <span className="text-gray-200 font-medium">{formatInterval(status.interval_seconds)}</span>
+            Interval: <span className="text-gray-200 font-medium">{formatInterval(interval)}</span>
           </span>
           {status.quiet_hours_start && status.quiet_hours_end && (
             <span className="flex items-center gap-1">
