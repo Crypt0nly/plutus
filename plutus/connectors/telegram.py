@@ -28,6 +28,8 @@ from typing import Any
 
 import aiohttp
 
+from pathlib import Path
+
 from plutus.connectors.base import BaseConnector
 from plutus.utils.ssl_utils import make_aiohttp_connector
 
@@ -319,6 +321,87 @@ class TelegramConnector(BaseConnector):
         except Exception as e:
             return {"success": False, "message": f"Failed to send photo: {str(e)}"}
 
+    async def send_voice(
+        self,
+        file_path: str,
+        caption: str = "",
+        chat_id: str | int | None = None,
+    ) -> dict[str, Any]:
+        """Send a voice message via Telegram (displayed as a playable voice note)."""
+        import os
+        target = chat_id or self._chat_id
+        if not target:
+            return {"success": False, "message": "No chat_id configured"}
+
+        try:
+            session = await self._get_send_session()
+            url = f"{self._api_url}/sendVoice"
+
+            data = aiohttp.FormData()
+            data.add_field("chat_id", str(target))
+            if caption:
+                data.add_field("caption", caption[:1024])
+            data.add_field(
+                "voice",
+                open(file_path, "rb"),
+                filename=os.path.basename(file_path),
+            )
+
+            async with session.post(url, data=data) as resp:
+                result = await resp.json()
+                if result.get("ok"):
+                    return {"success": True, "message": "Voice message sent via Telegram"}
+                else:
+                    desc = result.get("description", "Failed")
+                    logger.warning(f"sendVoice failed: {desc}")
+                    return {"success": False, "message": desc}
+
+        except Exception as e:
+            return {"success": False, "message": f"Failed to send voice: {str(e)}"}
+
+    async def download_file(self, file_id: str, dest_dir: str | None = None) -> str | None:
+        """Download a file from Telegram by file_id.
+
+        Returns the local file path, or None on failure.
+        Used to download voice memos, audio files, etc.
+        """
+        try:
+            # Get file path from Telegram
+            file_info = await self._send_api_call("getFile", file_id=file_id)
+            file_path = file_info.get("file_path", "")
+            if not file_path:
+                logger.error(f"No file_path returned for file_id {file_id}")
+                return None
+
+            # Download the file
+            download_url = f"https://api.telegram.org/file/bot{self._token}/{file_path}"
+            session = await self._get_send_session()
+
+            async with session.get(download_url) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to download file: HTTP {resp.status}")
+                    return None
+
+                # Determine destination
+                if not dest_dir:
+                    dest_dir = str(Path.home() / ".plutus" / "audio_cache")
+                Path(dest_dir).mkdir(parents=True, exist_ok=True)
+
+                # Preserve original extension
+                ext = Path(file_path).suffix or ".ogg"
+                import time
+                local_path = str(Path(dest_dir) / f"telegram_voice_{int(time.time() * 1000)}{ext}")
+
+                with open(local_path, "wb") as f:
+                    f.write(await resp.read())
+
+                logger.info(f"Downloaded Telegram file to {local_path}")
+                return local_path
+
+        except Exception as e:
+            logger.error(f"Failed to download Telegram file: {e}")
+            return None
+
     async def send_document(
         self,
         file_path: str,
@@ -447,24 +530,74 @@ class TelegramConnector(BaseConnector):
                         self._config_store.save(self._config)
                         logger.info(f"Auto-detected chat_id: {chat['id']}")
 
-                    if text and self._on_message:
-                        from_name = (
-                            from_user.get("first_name", "") + " " + from_user.get("last_name", "")
-                        ).strip()
-                        logger.info(f"Received Telegram message from {from_name}: {text[:80]}")
+                    # Build metadata common to all message types
+                    from_name = (
+                        from_user.get("first_name", "") + " " + from_user.get("last_name", "")
+                    ).strip()
+                    metadata = {
+                        "chat_id": chat.get("id"),
+                        "from_user": from_user.get("username", ""),
+                        "from_name": from_name,
+                        "message_id": msg.get("message_id"),
+                        "source": "telegram",
+                    }
 
-                        metadata = {
-                            "chat_id": chat.get("id"),
-                            "from_user": from_user.get("username", ""),
-                            "from_name": from_name,
-                            "message_id": msg.get("message_id"),
-                            "source": "telegram",
-                        }
+                    # Handle voice messages and audio files
+                    voice = msg.get("voice") or msg.get("audio")
+                    if voice and self._on_message:
+                        file_id = voice.get("file_id", "")
+                        duration = voice.get("duration", 0)
+                        logger.info(
+                            f"Received Telegram voice message from {from_name} "
+                            f"({duration}s, file_id={file_id[:20]}...)"
+                        )
+
+                        # Download the voice file
+                        local_path = await self.download_file(file_id)
+                        if local_path:
+                            # Transcribe the voice memo
+                            try:
+                                from plutus.tools.transcription import transcribe_audio
+                                transcribed = await transcribe_audio(local_path)
+                                logger.info(f"Transcribed voice memo: {transcribed[:80]}")
+
+                                # Pass the transcribed text to the handler
+                                # Include voice metadata so the bridge knows this was a voice memo
+                                metadata["voice_memo"] = True
+                                metadata["voice_file"] = local_path
+                                metadata["voice_duration"] = duration
+                                try:
+                                    await self._on_message(transcribed, metadata)
+                                except Exception as e:
+                                    logger.exception(f"Error in message handler: {e}")
+                                    try:
+                                        await self.send_message(
+                                            f"⚠️ Error processing your voice message: {str(e)[:200]}",
+                                            chat_id=chat.get("id"),
+                                            parse_mode="",
+                                        )
+                                    except Exception:
+                                        pass
+                            except Exception as e:
+                                logger.error(f"Voice transcription failed: {e}")
+                                try:
+                                    await self.send_message(
+                                        "⚠️ I couldn't transcribe your voice message. "
+                                        "Please make sure an OpenAI API key is configured.",
+                                        chat_id=chat.get("id"),
+                                        parse_mode="",
+                                    )
+                                except Exception:
+                                    pass
+                        else:
+                            logger.error("Failed to download voice file from Telegram")
+
+                    elif text and self._on_message:
+                        logger.info(f"Received Telegram message from {from_name}: {text[:80]}")
                         try:
                             await self._on_message(text, metadata)
                         except Exception as e:
                             logger.exception(f"Error in message handler: {e}")
-                            # Try to send error back to user
                             try:
                                 await self.send_message(
                                     f"⚠️ Error processing your message: {str(e)[:200]}",
@@ -473,8 +606,8 @@ class TelegramConnector(BaseConnector):
                                 )
                             except Exception:
                                 pass
-                    elif not text and msg:
-                        # Non-text message (photo, sticker, etc.)
+                    elif not text and not voice and msg:
+                        # Non-text, non-voice message (photo, sticker, etc.)
                         logger.debug(f"Ignoring non-text Telegram message: {list(msg.keys())}")
 
             except asyncio.CancelledError:

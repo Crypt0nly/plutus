@@ -57,8 +57,11 @@ desktop = [
 browser = [
     "playwright>=1.49.0",
 ]
+voice = [
+    "faster-whisper>=1.0.0",
+]
 all = [
-    "plutus-ai[desktop,browser]",
+    "plutus-ai[desktop,browser,voice]",
 ]
 dev = [
     "plutus-ai[all]",

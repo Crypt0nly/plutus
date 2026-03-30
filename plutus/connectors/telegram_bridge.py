@@ -292,8 +292,15 @@ class TelegramBridge:
 
         logger.info(f"Sending reply to Telegram ({len(final_response)} chars)")
 
-        # Send the response back via Telegram
-        await self._send_reply(final_response, metadata)
+        # If the incoming message was a voice memo and ElevenLabs is configured,
+        # respond with a voice message as well as text
+        voice_sent = False
+        if metadata.get("voice_memo"):
+            voice_sent = await self._send_voice_reply(final_response, metadata)
+
+        # Always send the text response (as fallback or alongside voice)
+        if not voice_sent:
+            await self._send_reply(final_response, metadata)
 
     async def _send_reply(self, text: str, metadata: dict[str, Any]) -> None:
         """Send a reply back to the Telegram user."""
@@ -317,6 +324,69 @@ class TelegramBridge:
             logger.error(
                 f"Failed to send Telegram reply: {result.get('message')}"
             )
+
+    async def _send_voice_reply(
+        self, text: str, metadata: dict[str, Any]
+    ) -> bool:
+        """Try to send a voice reply via ElevenLabs TTS.
+
+        Returns True if a voice message was successfully sent.
+        """
+        try:
+            from plutus.gateway.server import get_state
+            state = get_state()
+            connector_mgr = state.get("connector_manager")
+            if not connector_mgr:
+                return False
+
+            elevenlabs = connector_mgr.get("elevenlabs")
+            if not elevenlabs or not elevenlabs.is_configured:
+                return False
+            if not elevenlabs.voice_mode_enabled:
+                return False
+
+            # Strip tool summaries and emoji for cleaner TTS
+            tts_text = text
+            if "\n\n\U0001f4cb Actions:" in tts_text:
+                tts_text = tts_text.split("\n\n\U0001f4cb Actions:")[0]
+            tts_text = tts_text.strip()
+            if not tts_text:
+                return False
+
+            # Generate voice audio for Telegram
+            result = await elevenlabs.synthesize_for_telegram(tts_text)
+            if not result.get("success"):
+                logger.warning(f"ElevenLabs TTS failed: {result.get('message')}")
+                return False
+
+            # Send the voice message
+            telegram = self._get_telegram()
+            if not telegram:
+                return False
+
+            chat_id = metadata.get("chat_id") or telegram._chat_id
+            send_result = await telegram.send_voice(
+                result["audio_path"], chat_id=chat_id
+            )
+
+            # Clean up the audio file
+            try:
+                Path(result["audio_path"]).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+            if send_result.get("success"):
+                logger.info("Voice reply sent to Telegram via ElevenLabs")
+                return True
+            else:
+                logger.warning(
+                    f"Failed to send voice to Telegram: {send_result.get('message')}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Voice reply failed: {e}")
+            return False
 
     async def _send_screenshot(
         self,

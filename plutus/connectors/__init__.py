@@ -6,6 +6,7 @@ from plutus.connectors.ai_providers import (
     OllamaConnector,
     OpenAIConnector,
 )
+from plutus.connectors.elevenlabs import ElevenLabsConnector
 from plutus.connectors.base import BaseConnector, ConnectorManager
 from plutus.connectors.discord import DiscordConnector
 from plutus.connectors.email import EmailConnector
@@ -29,6 +30,7 @@ def create_connector_manager() -> ConnectorManager:
     mgr.register(AnthropicConnector())
     mgr.register(GeminiConnector())
     mgr.register(OllamaConnector())
+    mgr.register(ElevenLabsConnector())
 
     # Messaging Connectors
     mgr.register(TelegramConnector())
@@ -63,6 +65,7 @@ __all__ = [
     "AnthropicConnector",
     "GeminiConnector",
     "OllamaConnector",
+    "ElevenLabsConnector",
     "GmailConnector",
     "GoogleCalendarConnector",
     "GoogleDriveConnector",

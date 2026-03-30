@@ -129,6 +129,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.subprocess_tool import SubprocessTool
     from plutus.tools.system_info import SystemInfoTool
     from plutus.tools.tool_creator import ToolCreatorTool
+    from plutus.tools.transcription import TranscriptionTool
     from plutus.tools.video_gen import VideoGenTool
     from plutus.tools.web_search import WebSearchTool
     from plutus.tools.wsl import WSLTool
@@ -164,10 +165,11 @@ def create_default_registry() -> ToolRegistry:
     registry.register(tool_creator)
 
     # ═══════════════════════════════════════════════════════════
-    # MEDIA TOOLS — image and video generation
+    # MEDIA TOOLS — image and video generation, transcription
     # ═══════════════════════════════════════════════════════════
     registry.register(ImageGenTool())
     registry.register(VideoGenTool())
+    registry.register(TranscriptionTool())
 
     # ═══════════════════════════════════════════════════════════
     # WEB TOOLS — internet access and search
