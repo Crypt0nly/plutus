@@ -400,7 +400,7 @@ A hosted, fully managed version of Plutus is available at [useplutus.ai](https:/
 - Managed infrastructure — no API keys or server setup required
 - Priority support
 
-The cloud backend is **closed-source** and maintained in a private repository. If you are interested in self-hosting the full cloud stack, please [get in touch](https://useplutus.ai).
+The cloud backend is **open-source** and available to the community. Contributions, self-hosting, and custom deployments are welcome — check out the [documentation](https://useplutus.ai) to get started.
 
 ## License
 
