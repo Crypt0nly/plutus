@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -33,10 +31,17 @@ AUDIO_OUTPUT_DIR = Path.home() / ".plutus" / "audio_cache"
 
 # Available ElevenLabs TTS models
 MODELS = {
-    "multilingual_v2": "eleven_multilingual_v2",
-    "flash": "eleven_flash_v2_5",
-    "turbo": "eleven_turbo_v2_5",
-    "multilingual_v1": "eleven_multilingual_v1",
+    "eleven_multilingual_v2": "Multilingual v2 — Best quality, 29 languages",
+    "eleven_flash_v2_5": "Flash v2.5 — Low latency, great for real-time",
+    "eleven_turbo_v2_5": "Turbo v2.5 — Balanced speed and quality",
+    "eleven_multilingual_v1": "Multilingual v1 — Legacy",
+}
+
+MODEL_IDS = {
+    "eleven_multilingual_v2": "eleven_multilingual_v2",
+    "eleven_flash_v2_5": "eleven_flash_v2_5",
+    "eleven_turbo_v2_5": "eleven_turbo_v2_5",
+    "eleven_multilingual_v1": "eleven_multilingual_v1",
 }
 
 # Pre-built voice IDs (ElevenLabs defaults)
@@ -94,7 +99,7 @@ class ElevenLabsConnector(AIProviderConnector):
 
     name = "elevenlabs"
     display_name = "ElevenLabs"
-    description = "Voice mode — respond with voice memos via text-to-speech"
+    description = "Voice mode \u2014 respond with voice memos via text-to-speech"
     icon = "AudioLines"
     env_var = "ELEVENLABS_API_KEY"
     provider_key = "elevenlabs"
@@ -106,8 +111,20 @@ class ElevenLabsConnector(AIProviderConnector):
         AUDIO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     def config_schema(self) -> list[dict[str, Any]]:
-        """Configuration fields for the UI."""
-        voice_options = ", ".join(sorted(DEFAULT_VOICES.keys()))
+        """Configuration fields for the UI.
+
+        Uses 'select' and 'toggle' types so the frontend renders proper
+        dropdowns and switches instead of raw text inputs.
+        """
+        voice_options = [
+            {"value": name, "label": name}
+            for name in sorted(DEFAULT_VOICES.keys())
+        ]
+        model_options = [
+            {"value": model_id, "label": label}
+            for model_id, label in MODELS.items()
+        ]
+
         return [
             {
                 "name": "api_key",
@@ -118,34 +135,33 @@ class ElevenLabsConnector(AIProviderConnector):
                 "help": f"Get your key from {self.docs_url}",
             },
             {
+                "name": "voice_mode_enabled",
+                "label": "Enable Voice Mode",
+                "type": "toggle",
+                "required": False,
+                "default": True,
+                "help": (
+                    "When enabled, Plutus can respond with voice memos in "
+                    "the chat UI, Telegram, and WhatsApp."
+                ),
+            },
+            {
                 "name": "voice_name",
                 "label": "Default Voice",
-                "type": "text",
+                "type": "select",
                 "required": False,
-                "placeholder": DEFAULT_VOICE_NAME,
-                "help": f"Available voices: {voice_options}",
+                "options": voice_options,
+                "default": DEFAULT_VOICE_NAME,
+                "help": "The voice Plutus will use when speaking.",
             },
             {
                 "name": "model",
                 "label": "TTS Model",
-                "type": "text",
+                "type": "select",
                 "required": False,
-                "placeholder": "multilingual_v2",
-                "help": (
-                    "Models: multilingual_v2 (best quality), flash (low latency), "
-                    "turbo (balanced). Default: multilingual_v2."
-                ),
-            },
-            {
-                "name": "voice_mode_enabled",
-                "label": "Enable Voice Mode",
-                "type": "text",
-                "required": False,
-                "placeholder": "true",
-                "help": (
-                    "When enabled, Plutus will respond with voice memos on "
-                    "Telegram and WhatsApp. Set to 'true' or 'false'."
-                ),
+                "options": model_options,
+                "default": "eleven_multilingual_v2",
+                "help": "The model used for speech synthesis.",
             },
         ]
 
@@ -155,7 +171,9 @@ class ElevenLabsConnector(AIProviderConnector):
     @property
     def voice_mode_enabled(self) -> bool:
         """Whether voice mode is currently enabled."""
-        val = self._config.get("voice_mode_enabled", "true")
+        val = self._config.get("voice_mode_enabled", True)
+        if isinstance(val, bool):
+            return val
         return str(val).lower() in ("true", "1", "yes")
 
     @property
@@ -166,9 +184,19 @@ class ElevenLabsConnector(AIProviderConnector):
 
     @property
     def default_model(self) -> str:
-        """Get the configured TTS model."""
-        model_key = self._config.get("model", "multilingual_v2")
-        return MODELS.get(model_key, MODELS["multilingual_v2"])
+        """Get the configured TTS model ID."""
+        model_key = self._config.get("model", "eleven_multilingual_v2")
+        # Accept both the model ID directly or legacy short names
+        if model_key in MODEL_IDS:
+            return MODEL_IDS[model_key]
+        # Legacy fallback for old configs
+        legacy_map = {
+            "multilingual_v2": "eleven_multilingual_v2",
+            "flash": "eleven_flash_v2_5",
+            "turbo": "eleven_turbo_v2_5",
+            "multilingual_v1": "eleven_multilingual_v1",
+        }
+        return legacy_map.get(model_key, "eleven_multilingual_v2")
 
     async def _test_with_key(self, key: str) -> dict[str, Any]:
         """Test the ElevenLabs API connection."""
@@ -297,7 +325,7 @@ class ElevenLabsConnector(AIProviderConnector):
                     return {
                         "success": False,
                         "audio_path": "",
-                        "message": f"ElevenLabs API error {resp.status_code}: {error}",
+                        "message": f"ElevenLabs API error ({resp.status_code}): {error[:200]}",
                     }
 
         except Exception as e:
@@ -312,12 +340,10 @@ class ElevenLabsConnector(AIProviderConnector):
         self, text: str, voice_id: str | None = None
     ) -> dict[str, Any]:
         """Generate audio optimized for Telegram voice messages (.ogg opus)."""
-        # Telegram voice messages use ogg/opus
-        # ElevenLabs doesn't output ogg directly, so we generate mp3 and convert
         result = await self.synthesize(
             text=text,
             voice_id=voice_id,
-            output_format="mp3_22050_32",  # Smaller file for messaging
+            output_format="mp3_22050_32",
         )
 
         if not result["success"]:
@@ -338,12 +364,10 @@ class ElevenLabsConnector(AIProviderConnector):
             _, stderr = await proc.communicate()
 
             if proc.returncode == 0:
-                # Clean up mp3
                 Path(mp3_path).unlink(missing_ok=True)
                 result["audio_path"] = ogg_path
                 return result
             else:
-                # Fall back to mp3 if conversion fails
                 logger.warning(f"ogg conversion failed, using mp3: {stderr.decode()}")
                 return result
 
@@ -355,11 +379,10 @@ class ElevenLabsConnector(AIProviderConnector):
         self, text: str, voice_id: str | None = None
     ) -> dict[str, Any]:
         """Generate audio optimized for WhatsApp voice messages."""
-        # WhatsApp accepts mp3 and ogg/opus
         return await self.synthesize(
             text=text,
             voice_id=voice_id,
-            output_format="mp3_22050_32",  # Compact for messaging
+            output_format="mp3_22050_32",
         )
 
     async def send_message(self, text: str, **kwargs: Any) -> dict[str, Any]:

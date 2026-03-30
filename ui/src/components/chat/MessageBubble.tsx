@@ -19,6 +19,7 @@ import {
   FileDown,
   Search,
   Play,
+  Pause,
   Monitor,
   Camera,
   Minimize2,
@@ -27,6 +28,8 @@ import {
   Cpu,
   Heart,
   Info,
+  Volume2,
+  FileText,
 } from "lucide-react";
 import type { Message } from "../../lib/types";
 import { ToolApproval } from "./ToolApproval";
@@ -561,6 +564,154 @@ function CollapsibleToolResult({ content }: { content: string }) {
   );
 }
 
+/** Voice memo player with waveform visualization and hover-to-read transcript. */
+function VoiceMemoPlayer({
+  audioBase64,
+  transcript,
+  duration,
+}: {
+  audioBase64: string;
+  transcript: string;
+  duration: number;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [audioEl] = useState(() => {
+    if (!audioBase64) return null;
+    const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+    audio.addEventListener("timeupdate", () => {
+      if (audio.duration) setProgress(audio.currentTime / audio.duration);
+    });
+    audio.addEventListener("ended", () => {
+      setIsPlaying(false);
+      setProgress(0);
+    });
+    return audio;
+  });
+
+  const togglePlay = () => {
+    if (!audioEl) return;
+    if (isPlaying) {
+      audioEl.pause();
+      setIsPlaying(false);
+    } else {
+      audioEl.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  // Generate pseudo-waveform bars
+  const barCount = 32;
+  const bars = Array.from({ length: barCount }, (_, i) => {
+    const seed = (i * 7 + 3) % 17;
+    return 0.2 + (seed / 17) * 0.8;
+  });
+
+  const currentTime = audioEl ? audioEl.currentTime : 0;
+  const totalDuration = audioEl?.duration || duration || 0;
+
+  return (
+    <div
+      className="py-2 animate-slide-up"
+      onMouseEnter={() => setShowTranscript(true)}
+      onMouseLeave={() => setShowTranscript(false)}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+          style={{
+            background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(79, 70, 229, 0.08))",
+            border: "1px solid rgba(99, 102, 241, 0.15)",
+          }}
+        >
+          <Volume2 className="w-3.5 h-3.5" style={{ color: "#818cf8" }} />
+        </div>
+        <div className="flex-1 min-w-0 max-w-sm">
+          {/* Audio player bubble */}
+          <div
+            className="rounded-2xl rounded-tl-lg px-4 py-3"
+            style={{
+              background: "linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(79, 70, 229, 0.06))",
+              border: "1px solid rgba(99, 102, 241, 0.15)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              {/* Play/Pause button */}
+              <button
+                onClick={togglePlay}
+                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-105"
+                style={{
+                  background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                  boxShadow: "0 2px 8px rgba(99, 102, 241, 0.3)",
+                }}
+              >
+                {isPlaying ? (
+                  <Pause className="w-4 h-4 text-white" />
+                ) : (
+                  <Play className="w-4 h-4 text-white ml-0.5" />
+                )}
+              </button>
+
+              {/* Waveform */}
+              <div className="flex-1 flex items-center gap-[2px] h-8">
+                {bars.map((height, i) => {
+                  const barProgress = i / barCount;
+                  const isActive = barProgress <= progress;
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 rounded-full transition-colors duration-150"
+                      style={{
+                        height: `${height * 100}%`,
+                        minWidth: "2px",
+                        background: isActive
+                          ? "rgba(99, 102, 241, 0.8)"
+                          : "rgba(107, 114, 128, 0.25)",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Duration */}
+              <span className="text-[11px] text-gray-500 font-mono flex-shrink-0 w-10 text-right">
+                {isPlaying
+                  ? formatTime(currentTime)
+                  : formatTime(totalDuration)}
+              </span>
+            </div>
+          </div>
+
+          {/* Hover-to-read transcript */}
+          {showTranscript && transcript && (
+            <div
+              className="mt-2 px-3 py-2 rounded-xl animate-fade-in"
+              style={{
+                background: "rgba(17, 24, 39, 0.8)",
+                border: "1px solid rgba(107, 114, 128, 0.15)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <div className="flex items-center gap-1.5 mb-1">
+                <FileText className="w-3 h-3 text-gray-500" />
+                <span className="text-[10px] text-gray-500 font-medium">Transcript</span>
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed">{transcript}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MessageBubble({ message, send }: Props) {
   const { role, content, tool_calls } = message;
 
@@ -585,6 +736,26 @@ export function MessageBubble({ message, send }: Props) {
   // ── Assistant message ──
   if (role === "assistant") {
     const safeContent = typeof content === "string" ? content : String(content || "");
+
+    // Voice memo from the speak tool
+    if (safeContent.startsWith("__VOICE_MEMO__:")) {
+      const rest = safeContent.replace("__VOICE_MEMO__:", "");
+      const firstColon = rest.indexOf(":");
+      const durationStr = firstColon >= 0 ? rest.slice(0, firstColon) : "0";
+      const afterDuration = firstColon >= 0 ? rest.slice(firstColon + 1) : rest;
+      const secondColon = afterDuration.indexOf(":");
+      const transcript = secondColon >= 0 ? afterDuration.slice(0, secondColon) : "";
+      const audioB64 = secondColon >= 0 ? afterDuration.slice(secondColon + 1) : "";
+      const duration = parseInt(durationStr, 10) || 0;
+
+      return (
+        <VoiceMemoPlayer
+          audioBase64={audioB64}
+          transcript={transcript}
+          duration={duration}
+        />
+      );
+    }
 
     // Worker result
     if (safeContent.startsWith("__WORKER_RESULT__:")) {

@@ -132,4 +132,5 @@ export type WSMessage =
   | { type: "worker_started"; worker: { task_id: string; name: string; model: string } }
   | { type: "worker_completed"; worker: { task_id: string; name: string; result: string } }
   | { type: "worker_status"; worker: Record<string, unknown> }
+  | { type: "voice_message"; audio_base64: string; transcript: string; duration?: number }
   | { type: "pong" };

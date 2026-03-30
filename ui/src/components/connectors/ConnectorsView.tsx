@@ -45,10 +45,12 @@ import { useAppStore } from "../../stores/appStore";
 interface ConnectorField {
   name: string;
   label: string;
-  type: "text" | "password" | "number";
+  type: "text" | "password" | "number" | "select" | "toggle";
   required: boolean;
-  placeholder: string;
+  placeholder?: string;
   help: string;
+  options?: { value: string; label: string }[];
+  default?: any;
 }
 
 interface ConnectorData {
@@ -522,7 +524,16 @@ function ConfigureModal({
   useEffect(() => {
     const initial: Record<string, string> = {};
     (connector.config_schema ?? []).forEach((field) => {
-      initial[field.name] = (connector.config ?? {})[field.name] || "";
+      const saved = (connector.config ?? {})[field.name];
+      if (field.type === "toggle") {
+        // Booleans: use saved value, fall back to field default, then "true"
+        const val = saved !== undefined && saved !== "" ? saved : (field.default ?? true);
+        initial[field.name] = String(val);
+      } else if (field.type === "select") {
+        initial[field.name] = saved || field.default || (field.options?.[0]?.value ?? "");
+      } else {
+        initial[field.name] = saved || "";
+      }
     });
     setFormData(initial);
   }, [connector]);
@@ -928,8 +939,80 @@ function ConfigureModal({
                 const effectivePlaceholder =
                   hasSaved && !currentVal
                     ? `${field.label} saved — enter new value to replace`
-                    : field.placeholder;
+                    : field.placeholder || "";
 
+                // ── Toggle field ──
+                if (field.type === "toggle") {
+                  const isOn = currentVal === "true" || currentVal === "1";
+                  return (
+                    <div key={field.name} className="flex items-center justify-between py-2">
+                      <div className="flex-1 mr-4">
+                        <label className="text-xs font-medium text-gray-300 block">
+                          {field.label}
+                        </label>
+                        {field.help && (
+                          <p className="text-[10px] text-gray-600 mt-0.5">{field.help}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            [field.name]: isOn ? "false" : "true",
+                          }))
+                        }
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none ${
+                          isOn ? "bg-plutus-500" : "bg-gray-700"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                            isOn ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  );
+                }
+
+                // ── Select field ──
+                if (field.type === "select" && field.options) {
+                  return (
+                    <div key={field.name}>
+                      <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                        {field.label}
+                      </label>
+                      <select
+                        className={`w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 text-sm text-gray-200 focus:outline-none transition-all appearance-none cursor-pointer ${
+                          isAI
+                            ? "focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20"
+                            : "focus:border-plutus-500/50 focus:ring-1 focus:ring-plutus-500/20"
+                        }`}
+                        value={currentVal}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            [field.name]: e.target.value,
+                          }))
+                        }
+                      >
+                        {field.options.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      {field.help && (
+                        <p className="text-[10px] text-gray-600 mt-1.5 pl-0.5">
+                          {field.help}
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+
+                // ── Text / Password / Number field ──
                 return (
                 <div key={field.name}>
                   <label className="text-xs font-medium text-gray-400 mb-1.5 block">

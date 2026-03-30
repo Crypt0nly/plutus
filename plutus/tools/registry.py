@@ -129,6 +129,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.subprocess_tool import SubprocessTool
     from plutus.tools.system_info import SystemInfoTool
     from plutus.tools.tool_creator import ToolCreatorTool
+    from plutus.tools.speak import SpeakTool
     from plutus.tools.transcription import TranscriptionTool
     from plutus.tools.video_gen import VideoGenTool
     from plutus.tools.web_search import WebSearchTool
@@ -169,6 +170,7 @@ def create_default_registry() -> ToolRegistry:
     # ═══════════════════════════════════════════════════════════
     registry.register(ImageGenTool())
     registry.register(VideoGenTool())
+    registry.register(SpeakTool())
     registry.register(TranscriptionTool())
 
     # ═══════════════════════════════════════════════════════════

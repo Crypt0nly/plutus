@@ -1648,6 +1648,22 @@ class AgentRuntime:
                 if not result_text or not result_text.strip():
                     result_text = "(no output)"
 
+                # If the speak tool returned audio, emit a voice_message
+                # event so the UI can render a playable voice memo.
+                if (
+                    tc.name == "speak"
+                    and isinstance(result, dict)
+                    and result.get("voice_message")
+                ):
+                    yield AgentEvent(
+                        "voice_message",
+                        {
+                            "audio_base64": result["audio_base64"],
+                            "transcript": result.get("transcript", ""),
+                            "duration": result.get("duration_estimate", 0),
+                        },
+                    )
+
                 yield AgentEvent(
                     "tool_result",
                     {"id": tc.id, "tool": tc.name, "result": result_text},

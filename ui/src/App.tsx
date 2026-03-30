@@ -388,6 +388,18 @@ export default function App() {
           setWhatsappPairingCode(null);
           break;
 
+        case "voice_message": {
+          // Voice memo from the speak tool — render as a playable audio message
+          const transcript = msg.transcript || "";
+          const audioB64 = msg.audio_base64 || "";
+          const duration = msg.duration || 0;
+          addMessage({
+            role: "assistant",
+            content: `__VOICE_MEMO__:${duration}:${transcript}:${audioB64}`,
+          }, sid);
+          break;
+        }
+
         case "stall_warning":
           // Agent has been silent for too long — surface a warning in chat
           addMessage({
