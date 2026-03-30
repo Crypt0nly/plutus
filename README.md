@@ -404,4 +404,4 @@ The cloud backend is **open-source** and available to the community. Contributio
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+AGPL-3.0 License — see [LICENSE](LICENSE) for details.
