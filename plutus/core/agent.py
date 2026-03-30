@@ -1148,6 +1148,40 @@ class AgentRuntime:
                         "Telegram, Email, WhatsApp, Discord, GitHub, and Google services "
                         "in the Connectors tab."
                     )
+
+                # Inject voice mode awareness when ElevenLabs is configured
+                elevenlabs = self._connector_manager.get("elevenlabs")
+                if elevenlabs and elevenlabs.is_configured:
+                    voice_enabled = getattr(elevenlabs, 'voice_mode_enabled', False)
+                    if voice_enabled:
+                        parts.append(
+                            "\n## Voice Mode (ElevenLabs TTS + Transcription)\n"
+                            "Voice mode is **active**. You can both receive and send voice messages.\n\n"
+                            "### Incoming Voice Memos\n"
+                            "When a user sends a voice memo via Telegram or WhatsApp, it is "
+                            "automatically transcribed to text before reaching you. The metadata "
+                            "will include `voice_memo: true`. Treat the transcribed text as the "
+                            "user's message — no special handling is needed on your end.\n\n"
+                            "### Choosing Text vs Voice Responses\n"
+                            "When the user's message came via a **voice memo** (metadata shows "
+                            "`voice_memo: true`), your text response will AUTOMATICALLY be "
+                            "converted to a voice reply and sent back. You do not need to do "
+                            "anything special — just write your response as normal text.\n\n"
+                            "However, adapt your **writing style** based on the response format:\n\n"
+                            "**Respond in a voice-friendly style when the input was a voice memo:**\n"
+                            "- Keep responses concise and conversational (1-3 sentences when possible)\n"
+                            "- Avoid markdown formatting, bullet points, code blocks, tables, or URLs\n"
+                            "- Use natural spoken language — write as if you are speaking aloud\n"
+                            "- Spell out abbreviations and avoid special characters\n"
+                            "- For complex answers, give a brief spoken summary and mention that "
+                            "you are sending the full details as a follow-up text message\n\n"
+                            "**Respond in normal text style when the input was typed text:**\n"
+                            "- Use full markdown formatting, code blocks, tables, and links as usual\n"
+                            "- Be as detailed and structured as needed\n"
+                            "- This is the standard response mode — no changes needed\n\n"
+                            "**Key principle:** Match the user's communication style. Voice in → "
+                            "voice-friendly out. Text in → rich text out."
+                        )
             except Exception:
                 pass  # Don't break the prompt if connector listing fails
 
