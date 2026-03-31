@@ -7,9 +7,11 @@ import {
   Search,
   MoreHorizontal,
   Loader2,
+  MessageSquare,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppStore, PENDING_NEW_SESSION_ID, DEFAULT_SESSION_ID } from "../../stores/appStore";
+import { ConnectorLogo } from "../connectors/ConnectorLogos";
 import type { Conversation } from "../../lib/types";
 
 interface Props {
@@ -312,6 +314,20 @@ export function ConversationHistory({ send }: Props) {
                                 {/* Active indicator bar */}
                                 {isActive && (
                                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 rounded-r-full bg-plutus-500 shadow-sm shadow-plutus-500/50" />
+                                )}
+
+                                {/* Connector platform icon */}
+                                {conv.metadata?.connector_name ? (
+                                  <span className="flex-shrink-0 opacity-70">
+                                    <ConnectorLogo
+                                      name={conv.metadata.connector_name as string}
+                                      size={14}
+                                    />
+                                  </span>
+                                ) : (
+                                  <span className="flex-shrink-0 opacity-40">
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                  </span>
                                 )}
 
                                 {/* Title + meta inline */}

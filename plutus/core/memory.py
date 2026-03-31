@@ -152,12 +152,18 @@ class MemoryStore:
 
     # -- Conversations --
 
-    async def create_conversation(self, conv_id: str, title: str | None = None) -> None:
+    async def create_conversation(
+        self,
+        conv_id: str,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         assert self._db
         now = time.time()
+        meta_json = json.dumps(metadata) if metadata else "{}"
         await self._db.execute(
-            "INSERT INTO conversations (id, created_at, title, last_activity) VALUES (?, ?, ?, ?)",
-            (conv_id, now, title, now),
+            "INSERT INTO conversations (id, created_at, title, metadata, last_activity) VALUES (?, ?, ?, ?, ?)",
+            (conv_id, now, title, meta_json, now),
         )
         await self._db.commit()
 

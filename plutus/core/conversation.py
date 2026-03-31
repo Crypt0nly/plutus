@@ -95,9 +95,13 @@ class ConversationManager:
     def conversation_id(self) -> str | None:
         return self._active_conversation_id
 
-    async def start_conversation(self, title: str | None = None) -> str:
+    async def start_conversation(
+        self,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
         conv_id = str(uuid.uuid4())
-        await self._memory.create_conversation(conv_id, title)
+        await self._memory.create_conversation(conv_id, title, metadata=metadata)
         self._active_conversation_id = conv_id
         self._current_summary = None
         self._summarized_up_to = 0

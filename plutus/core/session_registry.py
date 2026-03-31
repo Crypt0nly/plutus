@@ -124,8 +124,15 @@ class SessionRegistry:
                 connector_name=connector_name,
             )
 
-            # Start a fresh conversation for this session
-            conv_id = await agent.conversation.start_conversation()
+            # Start a fresh conversation for this session, tagging
+            # connector conversations with their platform name so the
+            # conversation history list can display the right icon.
+            conv_metadata = (
+                {"connector_name": connector_name} if connector_name else None
+            )
+            conv_id = await agent.conversation.start_conversation(
+                metadata=conv_metadata,
+            )
 
             session = Session(
                 session_id=session_id,
@@ -207,7 +214,14 @@ class SessionRegistry:
         session = self._sessions.get(session_id)
         if not session:
             return None
-        conv_id = await session.agent.conversation.start_conversation()
+        conv_metadata = (
+            {"connector_name": session.connector_name}
+            if session.connector_name
+            else None
+        )
+        conv_id = await session.agent.conversation.start_conversation(
+            metadata=conv_metadata,
+        )
         session.conversation_id = conv_id
         session.touch()
         logger.info(
