@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import warnings
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import litellm
@@ -44,6 +44,18 @@ class ToolDefinition(BaseModel):
     name: str
     description: str
     parameters: dict[str, Any]
+
+
+class LLMOverloadedError(Exception):
+    """Raised when all retries are exhausted due to provider overload (e.g. 529)."""
+
+    def __init__(self, provider: str, original: Exception | None = None):
+        self.provider = provider
+        self.original = original
+        super().__init__(
+            f"{provider.capitalize()} is temporarily overloaded and all retries "
+            f"have been exhausted. Original error: {original}"
+        )
 
 
 class ToolCall(BaseModel):
@@ -759,6 +771,7 @@ class LLMClient:
         self,
         messages: list[dict[str, Any]],
         tools: list[ToolDefinition] | None = None,
+        on_retry: Callable[[int, int, str], Any] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """Send a completion request to the LLM.
@@ -766,6 +779,11 @@ class LLMClient:
         When the model supports native computer use (e.g. GPT-5.4), this
         routes through the OpenAI Responses API instead of LiteLLM so that
         the ``{"type": "computer"}`` tool is available natively.
+
+        Args:
+            on_retry: Optional callback ``(attempt, wait_seconds, message)``
+                called before each retry sleep so the caller can surface
+                progress to the user.
         """
         if self.supports_native_computer_use:
             return await self._complete_openai_native(messages, tools, **kwargs)
@@ -796,12 +814,26 @@ class LLMClient:
                 if attempt >= len(_retry_waits):
                     break  # exhausted all retries
                 wait = _retry_waits[attempt]
-                logger.warning(
-                    f"LLM transient error (attempt {attempt + 1}/{len(_retry_waits) + 1}), "
-                    f"retrying in {wait}s: {type(exc).__name__}: {exc}"
+                provider = self._config.provider.capitalize()
+                msg = (
+                    f"{provider} is temporarily overloaded. "
+                    f"Retrying in {wait}s (attempt {attempt + 1}/{len(_retry_waits) + 1})..."
                 )
+                logger.warning(msg)
+                if on_retry:
+                    try:
+                        result = on_retry(attempt, wait, msg)
+                        if asyncio.iscoroutine(result):
+                            await result
+                    except Exception:
+                        pass  # never let callback errors break the retry loop
                 await asyncio.sleep(wait)
-        raise last_exc  # type: ignore[misc]
+
+        # Wrap the final exception with provider info for fallback handling
+        raise LLMOverloadedError(
+            provider=self._config.provider,
+            original=last_exc,
+        )
 
     async def stream(
         self,

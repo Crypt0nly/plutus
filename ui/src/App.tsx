@@ -175,6 +175,10 @@ export default function App() {
           }, sid);
           break;
 
+        case "system_message":
+          addMessage({ role: "system", content: msg.message }, sid);
+          break;
+
         case "error":
           addMessage({ role: "system", content: `Error: ${msg.message}` }, sid);
           setProcessing(false, sid);

@@ -23,7 +23,13 @@ from typing import Any
 
 from plutus.config import PlutusConfig, SecretsStore
 from plutus.core.conversation import ConversationManager
-from plutus.core.llm import NATIVE_COMPUTER_USE_TOOL, LLMClient, LLMResponse, ToolDefinition
+from plutus.core.llm import (
+    NATIVE_COMPUTER_USE_TOOL,
+    LLMClient,
+    LLMOverloadedError,
+    LLMResponse,
+    ToolDefinition,
+)
 from plutus.core.memory import MemoryStore
 from plutus.core.planner import PlanManager
 from plutus.core.summarizer import ConversationSummarizer
@@ -1067,6 +1073,60 @@ class AgentRuntime:
         """Store a reference to the ConnectorManager for system-prompt injection."""
         self._connector_manager = manager
 
+    async def _try_fallback_provider(
+        self,
+        failed_provider: str,
+        messages: list[dict[str, Any]],
+        system_prompt: str,
+        tool_defs: list[ToolDefinition] | None,
+    ) -> LLMResponse | None:
+        """Attempt a single LLM call using a fallback provider.
+
+        Returns an LLMResponse on success, or None if no fallback is available
+        or the fallback also fails.
+        """
+        from plutus.config import ModelConfig
+
+        # Determine fallback: anthropic -> openai, openai -> anthropic
+        _fallbacks: dict[str, tuple[str, str, str]] = {
+            "anthropic": ("openai", "gpt-4.1", "OPENAI_API_KEY"),
+            "openai": ("anthropic", "claude-sonnet-4-6", "ANTHROPIC_API_KEY"),
+        }
+        fallback = _fallbacks.get(failed_provider.lower())
+        if not fallback:
+            return None
+
+        fb_provider, fb_model, fb_env = fallback
+
+        # Check if the fallback key is available
+        fb_key = self._secrets.get_key(fb_provider) or os.environ.get(fb_env)
+        if not fb_key:
+            logger.info(
+                f"No API key for fallback provider {fb_provider}, skipping fallback."
+            )
+            return None
+
+        logger.info(
+            f"Attempting fallback: {failed_provider} -> {fb_provider}/{fb_model}"
+        )
+
+        fb_config = ModelConfig(
+            provider=fb_provider,
+            model=fb_model,
+            api_key_env=fb_env,
+            temperature=self._config.model.temperature,
+            max_tokens=self._config.model.max_tokens,
+        )
+        fb_client = LLMClient(fb_config, secrets=self._secrets)
+
+        try:
+            return await fb_client.complete(messages, tools=tool_defs)
+        except Exception as fb_exc:
+            logger.warning(
+                f"Fallback provider {fb_provider} also failed: {fb_exc}"
+            )
+            return None
+
     def _build_system_prompt(self) -> str:
         """Build the system prompt with tool awareness and current context."""
         parts = [SYSTEM_PROMPT]
@@ -1482,12 +1542,56 @@ class AgentRuntime:
             else:
                 messages.insert(0, {"role": "system", "content": system_prompt})
 
+            # Collect system messages from retry callbacks to yield after
+            _retry_events: list[AgentEvent] = []
+
+            def _on_retry(attempt: int, wait: int, msg: str) -> None:
+                _retry_events.append(
+                    AgentEvent("system_message", {"message": msg})
+                )
+
             try:
-                response = await self._llm.complete(messages, tools=tool_defs or None)
+                response = await self._llm.complete(
+                    messages, tools=tool_defs or None, on_retry=_on_retry
+                )
+            except LLMOverloadedError as e:
+                # Yield any retry notifications that were queued
+                for evt in _retry_events:
+                    yield evt
+
+                # Attempt automatic fallback to the other provider
+                fallback_response = await self._try_fallback_provider(
+                    e.provider, messages, system_prompt, tool_defs
+                )
+                if fallback_response is not None:
+                    yield AgentEvent("system_message", {
+                        "message": (
+                            f"{e.provider.capitalize()} is temporarily unavailable. "
+                            f"Switched to a fallback model for this response."
+                        )
+                    })
+                    response = fallback_response
+                else:
+                    self._processing = False
+                    yield AgentEvent("error", {
+                        "message": (
+                            f"{e.provider.capitalize()} is temporarily overloaded "
+                            f"and no fallback model is available. Please try again "
+                            f"in a few minutes."
+                        )
+                    })
+                    return
             except Exception as e:
+                for evt in _retry_events:
+                    yield evt
                 self._processing = False
                 yield AgentEvent("error", {"message": f"LLM error: {e}"})
                 return
+
+            # Yield any retry notifications (in case retries succeeded)
+            for evt in _retry_events:
+                yield evt
+            _retry_events.clear()
 
             # Update activity timestamp after every LLM response
             self._last_activity = _time.monotonic()
