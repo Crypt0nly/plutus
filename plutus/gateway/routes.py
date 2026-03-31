@@ -835,9 +835,20 @@ def create_router() -> APIRouter:
                     if real_key:
                         _os.environ[env_var] = real_key
 
+            # Reload the global agent
             agent = state.get("agent")
             if agent is not None:
                 agent.reload_model()
+
+            # Reload ALL session agents (each session has its own
+            # AgentRuntime with its own LLMClient — without this,
+            # only the global agent picks up the new provider/model).
+            from plutus.core.session_registry import get_registry
+            try:
+                registry = get_registry()
+                registry.reload_all_models()
+            except Exception as _reg_err:
+                logger.warning(f"Failed to reload session agents: {_reg_err}")
 
         return {"message": "Config updated"}
 

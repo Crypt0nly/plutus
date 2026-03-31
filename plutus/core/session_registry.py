@@ -229,6 +229,24 @@ class SessionRegistry:
         )
         return conv_id
 
+    def reload_all_models(self) -> None:
+        """Hot-reload model config on ALL session agents.
+
+        Called by the config update route when the user changes the model
+        via the CommandCenter.  Without this, only the global agent would
+        be reloaded while session agents keep using the old provider/model.
+        """
+        count = 0
+        for session in self._sessions.values():
+            try:
+                session.agent.reload_model()
+                count += 1
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to reload model for session {session.session_id!r}: {exc}"
+                )
+        logger.info(f"Reloaded model config on {count} session agent(s)")
+
     async def ensure_connector_sessions(self) -> None:
         """Create all connector sessions if they don't already exist."""
         for connector_name, session_id in CONNECTOR_SESSIONS.items():
