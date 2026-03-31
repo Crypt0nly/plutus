@@ -950,6 +950,7 @@ class AgentRuntime:
         tool_registry: Any = None,  # ToolRegistry, set after import
         secrets: SecretsStore | None = None,
         is_connector: bool = False,
+        connector_name: str | None = None,
     ):
         self._config = config
         self._max_tool_rounds = config.agent.max_tool_rounds
@@ -969,6 +970,7 @@ class AgentRuntime:
             planner=self._planner,
             summarizer=self._summarizer,
             is_connector=is_connector,
+            connector_name=connector_name,
         )
         self._tool_registry = tool_registry
         self._connector_manager = None  # Set via set_connector_manager()

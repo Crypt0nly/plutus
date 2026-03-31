@@ -71,6 +71,7 @@ class ConversationManager:
         planner: Any = None,
         summarizer: Any = None,
         is_connector: bool = False,
+        connector_name: str | None = None,
     ):
         self._memory = memory
         self._context_window = context_window
@@ -91,6 +92,10 @@ class ConversationManager:
         # (enables auto-trim of old messages)
         self._is_connector = is_connector
 
+        # Connector platform name (e.g. "telegram", "whatsapp") — stored in
+        # every conversation's metadata so the UI can show the right icon.
+        self._connector_name = connector_name
+
     @property
     def conversation_id(self) -> str | None:
         return self._active_conversation_id
@@ -101,6 +106,12 @@ class ConversationManager:
         metadata: dict[str, Any] | None = None,
     ) -> str:
         conv_id = str(uuid.uuid4())
+        # Auto-inject connector_name into metadata for connector sessions
+        # so every conversation created by this manager is tagged.
+        if self._connector_name:
+            if metadata is None:
+                metadata = {}
+            metadata.setdefault("connector_name", self._connector_name)
         await self._memory.create_conversation(conv_id, title, metadata=metadata)
         self._active_conversation_id = conv_id
         self._current_summary = None

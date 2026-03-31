@@ -933,6 +933,7 @@ async def lifespan(app: FastAPI):
                 tool_registry=tool_registry,
                 secrets=secrets,
                 is_connector=connector_name is not None,
+                connector_name=connector_name,
             )
             await new_agent.initialize()
             new_agent.set_connector_manager(connector_manager)
