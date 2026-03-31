@@ -71,6 +71,23 @@ The agent can write new Python tools at runtime:
 
 ### Installation
 
+**Linux & macOS:**
+
+```bash
+curl -fsSL https://useplutus.ai/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+iwr -useb https://useplutus.ai/install.ps1 | iex
+```
+
+That's it — the installer handles everything (dependencies, setup wizard, and first launch).
+
+<details>
+<summary>Manual installation</summary>
+
 ```bash
 # Clone the repository
 git clone https://github.com/Crypt0nly/plutus.git
@@ -82,6 +99,8 @@ pip install -e .
 # Run setup wizard
 plutus setup
 ```
+
+</details>
 
 ### First Run
 
