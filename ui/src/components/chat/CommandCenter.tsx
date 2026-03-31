@@ -16,6 +16,7 @@ import {
   Users,
   ArrowUpRight,
   Loader2,
+  Volume2,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/appStore";
@@ -88,7 +89,7 @@ interface HeartbeatStatus {
   max_consecutive: number;
 }
 
-type Tab = "quick" | "model" | "behavior";
+type Tab = "quick" | "model" | "behavior" | "voice";
 
 /* ─── Toggle Switch ─────────────────────────────────────────────────────── */
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
@@ -147,12 +148,14 @@ export function CommandCenter() {
   const [heartbeat, setHeartbeat] = useState<HeartbeatStatus | null>(null);
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
+  const [elevenLabs, setElevenLabs] = useState<Record<string, any> | null>(null);
   const panelRef              = useRef<HTMLDivElement>(null);
   const { currentTier, setCurrentTier } = useAppStore();
 
   const fetchAll = useCallback(() => {
     api.getConfig().then(setConfig).catch(() => {});
     api.getHeartbeatStatus().then((s) => setHeartbeat(s as HeartbeatStatus)).catch(() => {});
+    api.getConnector("elevenlabs").then(setElevenLabs).catch(() => setElevenLabs(null));
   }, []);
 
   useEffect(() => {
@@ -180,6 +183,23 @@ export function CommandCenter() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [open]);
+
+  const handleVoiceSave = async (key: string, value: any) => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const current = elevenLabs?.config ?? {};
+      await api.updateConnectorConfig("elevenlabs", { ...current, [key]: value });
+      setSaved(true);
+      const updated = await api.getConnector("elevenlabs");
+      setElevenLabs(updated);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      console.error("Failed to save voice setting:", e);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSave = async (patch: Record<string, any>) => {
     setSaving(true);
@@ -238,6 +258,7 @@ export function CommandCenter() {
     { id: "quick",    label: "Quick" },
     { id: "model",    label: "Model" },
     { id: "behavior", label: "Behavior" },
+    { id: "voice",    label: "Voice" },
   ];
 
   return (
@@ -624,6 +645,155 @@ export function CommandCenter() {
                       </button>
                     }
                   />
+                </div>
+              )}
+              {/* ── VOICE TAB ── */}
+              {tab === "voice" && (
+                <div className="p-4 space-y-4">
+                  {!elevenLabs?.configured ? (
+                    <div className="text-center py-8">
+                      <Volume2 className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+                      <p className="text-sm text-gray-400 mb-1">Voice mode not configured</p>
+                      <p className="text-[11px] text-gray-600 mb-4">
+                        Connect your ElevenLabs API key in the Connectors tab to enable voice mode.
+                      </p>
+                      <button
+                        onClick={() => { setOpen(false); useAppStore.getState().setView("connectors"); }}
+                        className="text-xs text-plutus-400 hover:text-plutus-300 flex items-center gap-1 mx-auto transition-colors"
+                      >
+                        Go to Connectors <ArrowUpRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Voice Mode Toggle */}
+                      <div className="flex items-center justify-between py-1">
+                        <div className="flex items-center gap-3">
+                          <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                            <Volume2 className="w-3.5 h-3.5 text-violet-400" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-gray-200">Voice Mode</div>
+                            <div className="text-[11px] text-gray-500">
+                              {(elevenLabs?.config?.voice_mode_enabled !== false) ? "Enabled" : "Disabled"}
+                            </div>
+                          </div>
+                        </div>
+                        <Toggle
+                          checked={elevenLabs?.config?.voice_mode_enabled !== false}
+                          onChange={() => handleVoiceSave("voice_mode_enabled", !(elevenLabs?.config?.voice_mode_enabled !== false))}
+                        />
+                      </div>
+
+                      <div style={{ height: "1px", background: "rgba(255,255,255,0.05)", margin: "2px 0" }} />
+
+                      {/* Voice Selection */}
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Voice</label>
+                        <div className="relative">
+                          <select
+                            value={elevenLabs?.config?.voice_name || "Rachel"}
+                            onChange={(e) => handleVoiceSave("voice_name", e.target.value)}
+                            className="w-full appearance-none rounded-xl px-3.5 py-2.5 pr-9 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30 cursor-pointer transition-all"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+                          >
+                            {(elevenLabs?.available_voices || []).map((v: string) => (
+                              <option key={v} value={v} style={{ background: "#0f1222" }}>{v}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="w-3.5 h-3.5 text-gray-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Speed */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Speed</label>
+                          <span className="text-xs font-mono text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-md">
+                            {(parseFloat(elevenLabs?.config?.speed ?? "1.0")).toFixed(2)}
+                          </span>
+                        </div>
+                        <input
+                          type="range" min="0.7" max="1.2" step="0.05"
+                          value={elevenLabs?.config?.speed ?? 1.0}
+                          onChange={(e) => handleVoiceSave("speed", parseFloat(e.target.value))}
+                          className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                          <span>Slower</span><span>Faster</span>
+                        </div>
+                      </div>
+
+                      {/* Stability */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Stability</label>
+                          <span className="text-xs font-mono text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-md">
+                            {(parseFloat(elevenLabs?.config?.stability ?? "0.5")).toFixed(2)}
+                          </span>
+                        </div>
+                        <input
+                          type="range" min="0" max="1" step="0.05"
+                          value={elevenLabs?.config?.stability ?? 0.5}
+                          onChange={(e) => handleVoiceSave("stability", parseFloat(e.target.value))}
+                          className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                          <span>Expressive</span><span>Stable</span>
+                        </div>
+                      </div>
+
+                      {/* Clarity + Similarity */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Clarity + Similarity</label>
+                          <span className="text-xs font-mono text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-md">
+                            {(parseFloat(elevenLabs?.config?.similarity_boost ?? "0.75")).toFixed(2)}
+                          </span>
+                        </div>
+                        <input
+                          type="range" min="0" max="1" step="0.05"
+                          value={elevenLabs?.config?.similarity_boost ?? 0.75}
+                          onChange={(e) => handleVoiceSave("similarity_boost", parseFloat(e.target.value))}
+                          className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                          <span>Low</span><span>High</span>
+                        </div>
+                      </div>
+
+                      {/* Style */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Style Exaggeration</label>
+                          <span className="text-xs font-mono text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-md">
+                            {(parseFloat(elevenLabs?.config?.style ?? "0.0")).toFixed(2)}
+                          </span>
+                        </div>
+                        <input
+                          type="range" min="0" max="1" step="0.05"
+                          value={elevenLabs?.config?.style ?? 0.0}
+                          onChange={(e) => handleVoiceSave("style", parseFloat(e.target.value))}
+                          className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                          <span>Neutral</span><span>Dramatic</span>
+                        </div>
+                      </div>
+
+                      {/* Speaker Boost */}
+                      <div className="flex items-center justify-between py-1">
+                        <div>
+                          <div className="text-xs font-medium text-gray-300">Speaker Boost</div>
+                          <div className="text-[10px] text-gray-600">Enhances speaker similarity</div>
+                        </div>
+                        <Toggle
+                          checked={elevenLabs?.config?.use_speaker_boost !== false}
+                          onChange={() => handleVoiceSave("use_speaker_boost", !(elevenLabs?.config?.use_speaker_boost !== false))}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
               </>

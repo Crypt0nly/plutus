@@ -7,6 +7,7 @@ connectors tab. The connector provides:
   - Text-to-speech synthesis via the ElevenLabs API
   - Voice selection (configurable default voice)
   - Model selection (multilingual_v2, flash, turbo)
+  - Fine-grained voice settings: stability, similarity, style, speed
   - Audio output in mp3/ogg format for messaging platforms
 
 The connector follows the AIProviderConnector pattern: it stores the API key
@@ -89,6 +90,13 @@ DEFAULT_VOICES = {
 DEFAULT_VOICE_NAME = "Rachel"
 DEFAULT_VOICE_ID = DEFAULT_VOICES[DEFAULT_VOICE_NAME]
 
+# Default voice settings
+DEFAULT_STABILITY = 0.5
+DEFAULT_SIMILARITY_BOOST = 0.75
+DEFAULT_STYLE = 0.0
+DEFAULT_SPEED = 1.0
+DEFAULT_SPEAKER_BOOST = True
+
 
 class ElevenLabsConnector(AIProviderConnector):
     """ElevenLabs text-to-speech connector.
@@ -113,8 +121,9 @@ class ElevenLabsConnector(AIProviderConnector):
     def config_schema(self) -> list[dict[str, Any]]:
         """Configuration fields for the UI.
 
-        Uses 'select' and 'toggle' types so the frontend renders proper
-        dropdowns and switches instead of raw text inputs.
+        Uses 'select', 'toggle', and 'slider' types so the frontend renders
+        proper dropdowns, switches, and range sliders instead of raw text
+        inputs.
         """
         voice_options = [
             {"value": name, "label": name}
@@ -163,10 +172,86 @@ class ElevenLabsConnector(AIProviderConnector):
                 "default": "eleven_multilingual_v2",
                 "help": "The model used for speech synthesis.",
             },
+            {
+                "name": "stability",
+                "label": "Stability",
+                "type": "slider",
+                "required": False,
+                "default": DEFAULT_STABILITY,
+                "min": 0.0,
+                "max": 1.0,
+                "step": 0.05,
+                "help": (
+                    "Controls voice consistency. Lower values produce more "
+                    "expressive and emotional speech, higher values are more "
+                    "monotone and stable."
+                ),
+                "labels": ["Expressive", "Stable"],
+            },
+            {
+                "name": "similarity_boost",
+                "label": "Clarity + Similarity",
+                "type": "slider",
+                "required": False,
+                "default": DEFAULT_SIMILARITY_BOOST,
+                "min": 0.0,
+                "max": 1.0,
+                "step": 0.05,
+                "help": (
+                    "Controls how closely the output matches the original "
+                    "voice. Higher values increase similarity but may "
+                    "amplify artifacts."
+                ),
+                "labels": ["Low", "High"],
+            },
+            {
+                "name": "style",
+                "label": "Style Exaggeration",
+                "type": "slider",
+                "required": False,
+                "default": DEFAULT_STYLE,
+                "min": 0.0,
+                "max": 1.0,
+                "step": 0.05,
+                "help": (
+                    "Controls expressiveness and style intensity. Higher "
+                    "values produce more dramatic and expressive delivery. "
+                    "Can increase latency."
+                ),
+                "labels": ["Neutral", "Dramatic"],
+            },
+            {
+                "name": "speed",
+                "label": "Speed",
+                "type": "slider",
+                "required": False,
+                "default": DEFAULT_SPEED,
+                "min": 0.7,
+                "max": 1.2,
+                "step": 0.05,
+                "help": (
+                    "Playback speed of the generated speech. Only supported "
+                    "on some models."
+                ),
+                "labels": ["Slower", "Faster"],
+            },
+            {
+                "name": "use_speaker_boost",
+                "label": "Speaker Boost",
+                "type": "toggle",
+                "required": False,
+                "default": DEFAULT_SPEAKER_BOOST,
+                "help": (
+                    "Enhances speaker similarity and clarity. May slightly "
+                    "affect generation quality."
+                ),
+            },
         ]
 
     def _sensitive_fields(self) -> list[str]:
         return ["api_key"]
+
+    # ── Property accessors for voice settings ─────────────────────────────
 
     @property
     def voice_mode_enabled(self) -> bool:
@@ -186,10 +271,8 @@ class ElevenLabsConnector(AIProviderConnector):
     def default_model(self) -> str:
         """Get the configured TTS model ID."""
         model_key = self._config.get("model", "eleven_multilingual_v2")
-        # Accept both the model ID directly or legacy short names
         if model_key in MODEL_IDS:
             return MODEL_IDS[model_key]
-        # Legacy fallback for old configs
         legacy_map = {
             "multilingual_v2": "eleven_multilingual_v2",
             "flash": "eleven_flash_v2_5",
@@ -197,6 +280,53 @@ class ElevenLabsConnector(AIProviderConnector):
             "multilingual_v1": "eleven_multilingual_v1",
         }
         return legacy_map.get(model_key, "eleven_multilingual_v2")
+
+    @property
+    def stability(self) -> float:
+        """Voice stability setting (0.0 - 1.0)."""
+        return self._float_config("stability", DEFAULT_STABILITY)
+
+    @property
+    def similarity_boost(self) -> float:
+        """Clarity + similarity setting (0.0 - 1.0)."""
+        return self._float_config("similarity_boost", DEFAULT_SIMILARITY_BOOST)
+
+    @property
+    def style(self) -> float:
+        """Style exaggeration setting (0.0 - 1.0)."""
+        return self._float_config("style", DEFAULT_STYLE)
+
+    @property
+    def speed(self) -> float:
+        """Speech speed setting (0.7 - 1.2)."""
+        return self._float_config("speed", DEFAULT_SPEED)
+
+    @property
+    def use_speaker_boost(self) -> bool:
+        """Whether speaker boost is enabled."""
+        val = self._config.get("use_speaker_boost", DEFAULT_SPEAKER_BOOST)
+        if isinstance(val, bool):
+            return val
+        return str(val).lower() in ("true", "1", "yes")
+
+    def _float_config(self, key: str, default: float) -> float:
+        """Safely read a float config value."""
+        val = self._config.get(key, default)
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return default
+
+    def get_voice_settings(self) -> dict[str, Any]:
+        """Return the full voice_settings dict for the ElevenLabs API."""
+        return {
+            "stability": self.stability,
+            "similarity_boost": self.similarity_boost,
+            "style": self.style,
+            "use_speaker_boost": self.use_speaker_boost,
+        }
+
+    # ── API test ──────────────────────────────────────────────────────────
 
     async def _test_with_key(self, key: str) -> dict[str, Any]:
         """Test the ElevenLabs API connection."""
@@ -233,6 +363,8 @@ class ElevenLabsConnector(AIProviderConnector):
                     }
         except Exception as e:
             return {"success": False, "message": f"Connection failed: {e}"}
+
+    # ── TTS synthesis ─────────────────────────────────────────────────────
 
     async def synthesize(
         self,
@@ -283,6 +415,21 @@ class ElevenLabsConnector(AIProviderConnector):
                 AUDIO_OUTPUT_DIR / f"tts_{int(time.time() * 1000)}.{ext}"
             )
 
+        # Build voice settings from user config
+        voice_settings = self.get_voice_settings()
+
+        # Build request body
+        body: dict[str, Any] = {
+            "text": text,
+            "model_id": tts_model,
+            "voice_settings": voice_settings,
+        }
+
+        # Speed is a top-level parameter (not inside voice_settings)
+        speed = self.speed
+        if speed != 1.0:
+            body["speed"] = speed
+
         try:
             import httpx
 
@@ -294,16 +441,7 @@ class ElevenLabsConnector(AIProviderConnector):
                         "Content-Type": "application/json",
                         "Accept": "audio/mpeg",
                     },
-                    json={
-                        "text": text,
-                        "model_id": tts_model,
-                        "voice_settings": {
-                            "stability": 0.5,
-                            "similarity_boost": 0.75,
-                            "style": 0.0,
-                            "use_speaker_boost": True,
-                        },
-                    },
+                    json=body,
                     params={"output_format": output_format},
                 )
 

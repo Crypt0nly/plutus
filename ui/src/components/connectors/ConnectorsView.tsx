@@ -37,6 +37,7 @@ import {
   ChevronUp,
   Rocket,
   Upload,
+  Volume2,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { ConnectorLogo, CONNECTOR_LOGO_MAP } from "./ConnectorLogos";
@@ -45,12 +46,16 @@ import { useAppStore } from "../../stores/appStore";
 interface ConnectorField {
   name: string;
   label: string;
-  type: "text" | "password" | "number" | "select" | "toggle";
+  type: "text" | "password" | "number" | "select" | "toggle" | "slider";
   required: boolean;
   placeholder?: string;
   help: string;
   options?: { value: string; label: string }[];
   default?: any;
+  min?: number;
+  max?: number;
+  step?: number;
+  labels?: string[];
 }
 
 interface ConnectorData {
@@ -83,6 +88,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Globe: Globe,
   Rocket: Rocket,
   Upload: Upload,
+  Volume2: Volume2,
 };
 
 /* ─── AI Provider Card ─── */
@@ -531,6 +537,9 @@ function ConfigureModal({
         initial[field.name] = String(val);
       } else if (field.type === "select") {
         initial[field.name] = saved || field.default || (field.options?.[0]?.value ?? "");
+      } else if (field.type === "slider") {
+        const val = saved !== undefined && saved !== "" ? saved : (field.default ?? field.min ?? 0);
+        initial[field.name] = String(val);
       } else {
         initial[field.name] = saved || "";
       }
@@ -1003,6 +1012,54 @@ function ConfigureModal({
                           </option>
                         ))}
                       </select>
+                      {field.help && (
+                        <p className="text-[10px] text-gray-600 mt-1.5 pl-0.5">
+                          {field.help}
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+
+                // ── Slider field ──
+                if (field.type === "slider") {
+                  const numVal = parseFloat(currentVal) || field.default || 0;
+                  return (
+                    <div key={field.name}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-medium text-gray-400">
+                          {field.label}
+                        </label>
+                        <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${
+                          isAI
+                            ? "text-violet-400 bg-violet-500/10"
+                            : "text-plutus-400 bg-plutus-500/10"
+                        }`}>
+                          {numVal.toFixed(2)}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={field.min ?? 0}
+                        max={field.max ?? 1}
+                        step={field.step ?? 0.05}
+                        value={numVal}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            [field.name]: e.target.value,
+                          }))
+                        }
+                        className={`w-full h-1.5 rounded-full cursor-pointer ${
+                          isAI ? "accent-violet-500" : "accent-plutus-500"
+                        }`}
+                      />
+                      {field.labels && field.labels.length === 2 && (
+                        <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                          <span>{field.labels[0]}</span>
+                          <span>{field.labels[1]}</span>
+                        </div>
+                      )}
                       {field.help && (
                         <p className="text-[10px] text-gray-600 mt-1.5 pl-0.5">
                           {field.help}
