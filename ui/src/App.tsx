@@ -414,6 +414,27 @@ export default function App() {
             setProcessing(false, sid);
           }
           break;
+
+        case "ui_customization_updated": {
+          // Hot-reload custom CSS without page refresh
+          const changed = msg.changed || "all";
+          if (changed === "theme" || changed === "css" || changed === "all") {
+            const existing = document.querySelector('link[href*="/api/customization/theme.css"]') as HTMLLinkElement;
+            if (existing) {
+              existing.href = `/api/customization/theme.css?t=${Date.now()}`;
+            } else {
+              const link = document.createElement('link');
+              link.rel = 'stylesheet';
+              link.href = `/api/customization/theme.css?t=${Date.now()}`;
+              document.head.appendChild(link);
+            }
+          }
+          if (changed === "layout" || changed === "all") {
+            // Dispatch a custom event that Sidebar listens for
+            window.dispatchEvent(new CustomEvent('plutus-layout-updated'));
+          }
+          break;
+        }
       }
     },
     [addMessage, setProcessing, setConversationId, clearMessages, setSessions, addSession, removeSession, setActiveSessionId, setWhatsappPairingCode, updateSession]

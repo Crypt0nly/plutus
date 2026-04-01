@@ -30,6 +30,23 @@ from plutus.tools.base import Tool
 
 logger = logging.getLogger("plutus.tools.ui_customizer")
 
+
+async def _broadcast_ui_update(changed: str) -> None:
+    """Notify all connected frontends that UI customization changed.
+
+    The frontend listens for 'ui_customization_updated' WS events and
+    hot-reloads the custom CSS / sidebar config without a page refresh.
+    """
+    try:
+        from plutus.gateway.ws import manager
+        await manager.broadcast({
+            "type": "ui_customization_updated",
+            "changed": changed,  # "theme", "layout", "css", or "all"
+        })
+    except Exception:
+        # WS not available (e.g. running in tests) -- silently skip
+        pass
+
 # -- Customization directory --------------------------------------------------
 
 def _customization_dir() -> Path:
@@ -338,10 +355,12 @@ class UICustomizerTool(Tool):
             for v in [variables, dark_vars, light_vars]
         ))
 
+        await _broadcast_ui_update("theme")
+
         return (
             f"Theme updated successfully with variable overrides.\n"
             f"File: {css_path}\n"
-            f"The user needs to refresh the page (F5) to see changes."
+            f"Changes are being applied live."
         )
 
     async def _set_layout(self, **kwargs: Any) -> str:
@@ -376,10 +395,12 @@ class UICustomizerTool(Tool):
         config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
         logger.info("Updated UI layout config")
+        await _broadcast_ui_update("layout")
+
         return (
             f"Layout updated successfully.\n"
             f"File: {config_path}\n"
-            f"The user needs to refresh the page (F5) to see changes."
+            f"Changes are being applied live."
         )
 
     async def _inject_css(self, **kwargs: Any) -> str:
@@ -404,10 +425,12 @@ class UICustomizerTool(Tool):
         css_path.write_text(final, encoding="utf-8")
 
         logger.info("Injected custom CSS (%d chars)", len(css))
+        await _broadcast_ui_update("css")
+
         return (
             f"Custom CSS injected successfully ({len(css)} chars).\n"
             f"File: {css_path}\n"
-            f"The user needs to refresh the page (F5) to see changes."
+            f"Changes are being applied live."
         )
 
     async def _get_current(self, **kwargs: Any) -> str:
@@ -450,9 +473,11 @@ class UICustomizerTool(Tool):
         if not removed:
             return "No customizations to reset - already using defaults."
 
+        await _broadcast_ui_update("all")
+
         return (
             f"Reset complete. Removed: {', '.join(removed)}\n"
-            f"The user needs to refresh the page (F5) to see the default theme."
+            f"Changes are being applied live."
         )
 
     async def _list_variables(self, **kwargs: Any) -> str:

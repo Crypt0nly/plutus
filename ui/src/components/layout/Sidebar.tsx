@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   MessageSquare,
   LayoutDashboard,
@@ -176,10 +176,13 @@ export function Sidebar({ send }: SidebarProps) {
   const [logoText, setLogoText] = useState("Plutus");
   const [showStatus, setShowStatus] = useState(true);
 
-  // Load custom UI config from backend on mount
-  useEffect(() => {
-    fetch("/api/customization/ui-config.json")
-      .then((res) => res.json())
+  // Fetch and apply custom UI config from backend
+  const loadConfig = useCallback(() => {
+    fetch(`/api/customization/ui-config.json?t=${Date.now()}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('no config');
+        return res.json();
+      })
       .then((config: UIConfig) => {
         if (config && (config.sections || config.sidebar_width || config.sidebar_logo_text)) {
           const resolved = resolveConfig(config);
@@ -190,9 +193,25 @@ export function Sidebar({ send }: SidebarProps) {
         }
       })
       .catch(() => {
-        // No custom config — use defaults
+        // No custom config or reset -- restore defaults
+        setNavSections(DEFAULT_SECTIONS);
+        setSidebarWidth("16rem");
+        setLogoText("Plutus");
+        setShowStatus(true);
       });
   }, []);
+
+  // Load on mount
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
+
+  // Listen for live layout updates from the backend (via WS -> App.tsx -> custom event)
+  useEffect(() => {
+    const handler = () => loadConfig();
+    window.addEventListener('plutus-layout-updated', handler);
+    return () => window.removeEventListener('plutus-layout-updated', handler);
+  }, [loadConfig]);
 
   const toggleSection = (label: string) => {
     setCollapsedSections((prev) => {
