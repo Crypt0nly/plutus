@@ -11,8 +11,6 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <!-- Custom theme overrides (loaded from backend, no-cache) -->
-    <link rel="stylesheet" href="/api/customization/theme.css" />
     <script>
       // Apply theme before first paint to prevent flash of wrong theme
       (function() {
@@ -25,5 +23,14 @@
   <body class="bg-gray-950 text-gray-100 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- Custom theme: injected AFTER all other CSS to guarantee cascade priority -->
+    <script>
+      (function() {
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = '/api/customization/theme.css?t=' + Date.now();
+        document.head.appendChild(link);
+      })();
+    </script>
   </body>
 </html>

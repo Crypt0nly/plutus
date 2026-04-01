@@ -285,7 +285,7 @@ class UICustomizerTool(Tool):
             for key, value in variables.items():
                 if not key.startswith("--"):
                     key = f"--{key}"
-                lines.append(f"  {key}: {value};")
+                lines.append(f"  {key}: {value} !important;")
             if lines:
                 css_parts.append(
                     "/* Custom theme — applied to both light and dark */\n"
@@ -299,7 +299,7 @@ class UICustomizerTool(Tool):
             for key, value in dark_vars.items():
                 if not key.startswith("--"):
                     key = f"--{key}"
-                lines.append(f"  {key}: {value};")
+                lines.append(f"  {key}: {value} !important;")
             css_parts.append(
                 "/* Custom dark theme */\n"
                 ".dark {\n" + "\n".join(lines) + "\n}"
@@ -311,7 +311,7 @@ class UICustomizerTool(Tool):
             for key, value in light_vars.items():
                 if not key.startswith("--"):
                     key = f"--{key}"
-                lines.append(f"  {key}: {value};")
+                lines.append(f"  {key}: {value} !important;")
             css_parts.append(
                 "/* Custom light theme */\n"
                 ":root {\n" + "\n".join(lines) + "\n}"

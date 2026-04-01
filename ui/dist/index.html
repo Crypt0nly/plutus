@@ -19,10 +19,19 @@
         if (isDark) document.documentElement.classList.add('dark');
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index--XG7R6hW.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CI-j4B-m.css">
+    <script type="module" crossorigin src="/assets/index-Cl4pPoFk.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DtA7Ra4o.css">
   </head>
   <body class="bg-gray-950 text-gray-100 antialiased">
     <div id="root"></div>
+    <!-- Custom theme: injected AFTER all other CSS to guarantee cascade priority -->
+    <script>
+      (function() {
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = '/api/customization/theme.css?t=' + Date.now();
+        document.head.appendChild(link);
+      })();
+    </script>
   </body>
 </html>
