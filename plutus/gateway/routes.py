@@ -2612,6 +2612,38 @@ def create_router() -> APIRouter:
             "restart_required": True,
         }
 
+    # ── UI Customization endpoints ────────────────────────────────────────
+
+    @router.get("/customization/theme.css")
+    async def get_custom_theme_css():
+        """Serve the custom theme CSS file (if it exists)."""
+        from pathlib import Path
+        from fastapi.responses import Response
+
+        css_path = Path.home() / ".plutus" / "customization" / "custom-theme.css"
+        if css_path.exists():
+            return Response(
+                content=css_path.read_text(),
+                media_type="text/css",
+                headers={"Cache-Control": "no-cache"},
+            )
+        return Response(content="/* no custom theme */", media_type="text/css")
+
+    @router.get("/customization/ui-config.json")
+    async def get_ui_config():
+        """Serve the UI layout config (if it exists)."""
+        import json as _json
+        from pathlib import Path
+
+        config_path = Path.home() / ".plutus" / "customization" / "ui-config.json"
+        if config_path.exists():
+            try:
+                data = _json.loads(config_path.read_text())
+                return data
+            except _json.JSONDecodeError:
+                return {}
+        return {}
+
     return router
 
 

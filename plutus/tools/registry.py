@@ -132,6 +132,7 @@ def create_default_registry() -> ToolRegistry:
     from plutus.tools.speak import SpeakTool
     from plutus.tools.transcription import TranscriptionTool
     from plutus.tools.video_gen import VideoGenTool
+    from plutus.tools.ui_customizer import UICustomizerTool
     from plutus.tools.web_search import WebSearchTool
     from plutus.tools.wsl import WSLTool
 
@@ -182,6 +183,11 @@ def create_default_registry() -> ToolRegistry:
     # OPENAI COMPUTER USE — GPT-5.4 desktop control bridge
     # ═══════════════════════════════════════════════════════════
     registry.register(OpenAIComputerTool())
+
+    # ═══════════════════════════════════════════════════════════
+    # UI CUSTOMIZATION — self-modify the Plutus frontend
+    # ═══════════════════════════════════════════════════════════
+    registry.register(UICustomizerTool())
 
     # ═══════════════════════════════════════════════════════════
     # LEGACY TOOLS — kept for backward compatibility

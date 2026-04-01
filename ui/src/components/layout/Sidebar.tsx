@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   MessageSquare,
   LayoutDashboard,
@@ -12,8 +12,84 @@ import {
   Plug,
   ChevronDown,
   Layers,
+  Home,
+  Star,
+  Heart,
+  Zap,
+  Globe,
+  Code,
+  Terminal,
+  Palette,
+  Music,
+  Camera,
+  Video,
+  Mic,
+  Bell,
+  Calendar,
+  Clock,
+  Map,
+  Compass,
+  Bookmark,
+  Flag,
+  Award,
+  Target,
+  TrendingUp,
+  BarChart,
+  PieChart,
+  Database,
+  Server,
+  Cloud,
+  Lock,
+  Unlock,
+  Key,
+  User,
+  Users,
+  Mail,
+  Send,
+  Download,
+  Upload,
+  File,
+  Folder,
+  Image,
+  Monitor,
+  Smartphone,
+  Wifi,
 } from "lucide-react";
 import { useAppStore, PENDING_NEW_SESSION_ID, type View } from "../../stores/appStore";
+
+// ── Icon registry — maps string names to Lucide components ──────────────────
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  MessageSquare, LayoutDashboard, Shield, Settings, Plus, Wrench, Cpu,
+  Sparkles, Brain, Plug, Layers, Home, Star, Heart, Zap, Globe, Code,
+  Terminal, Palette, Music, Camera, Video, Mic, Bell, Calendar, Clock,
+  Map, Compass, Bookmark, Flag, Award, Target, TrendingUp, BarChart,
+  PieChart, Database, Server, Cloud, Lock, Unlock, Key, User, Users,
+  Mail, Send, Download, Upload, File, Folder, Image, Monitor, Smartphone, Wifi,
+};
+
+// ── Types ───────────────────────────────────────────────────────────────────
+
+interface NavItemConfig {
+  id: View;
+  label: string;
+  icon: string;       // Lucide icon name (string, resolved at runtime)
+  visible?: boolean;
+  badge?: string;
+}
+
+interface NavSectionConfig {
+  label: string;
+  collapsible?: boolean;
+  items: NavItemConfig[];
+}
+
+interface UIConfig {
+  sections?: NavSectionConfig[];
+  sidebar_width?: string;
+  sidebar_logo_text?: string;
+  sidebar_show_status?: boolean;
+}
 
 interface NavSection {
   label: string;
@@ -21,7 +97,9 @@ interface NavSection {
   items: { id: View; label: string; icon: React.ElementType; badge?: string }[];
 }
 
-const navSections: NavSection[] = [
+// ── Default navigation (used when no custom config exists) ──────────────────
+
+const DEFAULT_SECTIONS: NavSection[] = [
   {
     label: "Main",
     items: [
@@ -52,6 +130,40 @@ const navSections: NavSection[] = [
   },
 ];
 
+// ── Convert config JSON to resolved NavSection[] ────────────────────────────
+
+function resolveConfig(config: UIConfig): {
+  sections: NavSection[];
+  sidebarWidth: string;
+  logoText: string;
+  showStatus: boolean;
+} {
+  const sidebarWidth = config.sidebar_width || "16rem";
+  const logoText = config.sidebar_logo_text || "Plutus";
+  const showStatus = config.sidebar_show_status !== false;
+
+  if (!config.sections || config.sections.length === 0) {
+    return { sections: DEFAULT_SECTIONS, sidebarWidth, logoText, showStatus };
+  }
+
+  const sections: NavSection[] = config.sections.map((sec) => ({
+    label: sec.label,
+    collapsible: sec.collapsible,
+    items: sec.items
+      .filter((item) => item.visible !== false)
+      .map((item) => ({
+        id: item.id as View,
+        label: item.label,
+        icon: ICON_MAP[item.icon] || MessageSquare,
+        badge: item.badge,
+      })),
+  }));
+
+  return { sections, sidebarWidth, logoText, showStatus };
+}
+
+// ── Component ───────────────────────────────────────────────────────────────
+
 interface SidebarProps {
   send?: (data: Record<string, unknown>) => void;
 }
@@ -59,6 +171,28 @@ interface SidebarProps {
 export function Sidebar({ send }: SidebarProps) {
   const { view, setView, connected, currentTier, setPendingNewSession, setActiveSessionId } = useAppStore();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [navSections, setNavSections] = useState<NavSection[]>(DEFAULT_SECTIONS);
+  const [sidebarWidth, setSidebarWidth] = useState("16rem");
+  const [logoText, setLogoText] = useState("Plutus");
+  const [showStatus, setShowStatus] = useState(true);
+
+  // Load custom UI config from backend on mount
+  useEffect(() => {
+    fetch("/api/customization/ui-config.json")
+      .then((res) => res.json())
+      .then((config: UIConfig) => {
+        if (config && (config.sections || config.sidebar_width || config.sidebar_logo_text)) {
+          const resolved = resolveConfig(config);
+          setNavSections(resolved.sections);
+          setSidebarWidth(resolved.sidebarWidth);
+          setLogoText(resolved.logoText);
+          setShowStatus(resolved.showStatus);
+        }
+      })
+      .catch(() => {
+        // No custom config — use defaults
+      });
+  }, []);
 
   const toggleSection = (label: string) => {
     setCollapsedSections((prev) => {
@@ -70,17 +204,16 @@ export function Sidebar({ send }: SidebarProps) {
   };
 
   const handleNewChat = () => {
-    // Switch immediately to the pending-new-session sentinel so the chat
-    // view shows the empty state right away (messages.length === 0).
-    // The actual backend session is created lazily when the user sends
-    // their first message — this avoids creating empty sessions.
     setPendingNewSession(true);
     setActiveSessionId(PENDING_NEW_SESSION_ID);
     setView("chat");
   };
 
   return (
-    <aside className="sidebar-root w-64 flex flex-col h-full relative overflow-hidden">
+    <aside
+      className="sidebar-root flex flex-col h-full relative overflow-hidden"
+      style={{ width: sidebarWidth }}
+    >
       {/* Subtle ambient glow at top */}
       <div className="sidebar-glow-top absolute top-0 left-0 right-0 h-32 pointer-events-none" />
 
@@ -91,26 +224,30 @@ export function Sidebar({ send }: SidebarProps) {
           <div className="relative w-9 h-9 flex-shrink-0">
             <img
               src="/logo.svg"
-              alt="Plutus"
+              alt={logoText}
               className="w-9 h-9 object-contain"
             />
             {/* Online indicator */}
-            <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-950 ${
-              connected ? "bg-emerald-400" : "bg-red-400"
-            }`} />
+            {showStatus && (
+              <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-gray-950 ${
+                connected ? "bg-emerald-400" : "bg-red-400"
+              }`} />
+            )}
           </div>
 
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-[15px] leading-none text-gray-100 tracking-tight">
-              Plutus
+              {logoText}
             </h1>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <span className={`text-[10px] font-medium ${connected ? "text-emerald-500 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
-                {connected ? "Online" : "Offline"}
-              </span>
-              <span className="text-gray-600 text-[10px]">·</span>
-              <span className="text-[10px] text-gray-400 capitalize">{currentTier}</span>
-            </div>
+            {showStatus && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className={`text-[10px] font-medium ${connected ? "text-emerald-500 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                  {connected ? "Online" : "Offline"}
+                </span>
+                <span className="text-gray-600 text-[10px]">·</span>
+                <span className="text-[10px] text-gray-400 capitalize">{currentTier}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -213,7 +350,7 @@ export function Sidebar({ send }: SidebarProps) {
       {/* Bottom version badge */}
       <div className="relative px-4 py-3 border-t border-gray-700/30">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-gray-500 font-mono">Plutus AI</span>
+          <span className="text-[10px] text-gray-500 font-mono">{logoText} AI</span>
           <div className="flex items-center gap-1.5">
             <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-500 status-dot-online" : "bg-red-500"}`} />
             <span className="text-[10px] text-gray-500">{connected ? "Connected" : "Offline"}</span>
