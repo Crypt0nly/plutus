@@ -1,7 +1,7 @@
 """Allow running plutus as `python -m plutus`.
 
 On Windows, also detects if the Scripts directory (where pip places
-``plutus.exe``) is missing from PATH and offers to fix it automatically.
+``plutus.exe``) is missing from PATH and fixes it automatically.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ def _ensure_windows_path() -> None:
     installs).  When that happens, ``plutus start`` fails with
     "not recognized as a cmdlet".
 
-    This helper detects the situation and adds the directory to the user's
-    persistent PATH so that future terminal sessions just work.
+    This helper detects the situation and silently adds the directory to
+    the user's persistent PATH so that future terminal sessions just work.
     """
     if sys.platform != "win32":
         return
@@ -71,66 +71,47 @@ def _ensure_windows_path() -> None:
     # Normalise for comparison
     path_entries = [p.strip().rstrip("\\").lower() for p in current_path.split(";") if p.strip()]
     if scripts_str.rstrip("\\").lower() in path_entries:
-        # Already registered but the current terminal session is stale.
-        print(
-            f"\n  Note: '{scripts_str}' is already in your PATH.\n"
-            "  Please restart your terminal for the 'plutus' command to work.\n"
-        )
+        # Already registered but the current terminal session is stale — nothing to do.
         return
 
-    # Offer to add it
-    print(
-        f"\n  The 'plutus' command was not found on your PATH.\n"
-        f"  The executable is at: {scripts_str}\\plutus.exe\n"
-    )
+    # Silently add the Scripts directory to the user's PATH.
+    # No interactive prompt — the user clearly wants to use Plutus, and
+    # blocking on input() causes problems when launched from a hidden
+    # console (VBS shortcut) where stdin raises EOFError.
     try:
-        answer = input("  Add this directory to your PATH automatically? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        answer = "n"
+        import winreg
 
-    if answer in ("", "y", "yes"):
+        new_path = f"{current_path};{scripts_str}" if current_path else scripts_str
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Environment",
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, new_path)
+
+        # Broadcast WM_SETTINGCHANGE so new terminals pick it up
         try:
-            import winreg
+            import ctypes
 
-            new_path = f"{current_path};{scripts_str}" if current_path else scripts_str
-
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Environment",
-                0,
-                winreg.KEY_SET_VALUE,
-            ) as key:
-                winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, new_path)
-
-            # Broadcast WM_SETTINGCHANGE so new terminals pick it up
-            try:
-                import ctypes
-
-                ctypes.windll.user32.SendMessageTimeoutW(
-                    0xFFFF, 0x001A, 0,  # HWND_BROADCAST, WM_SETTINGCHANGE
-                    "Environment", 0x0002, 5000, None,  # SMTO_ABORTIFHUNG
-                )
-            except Exception:
-                pass
-
-            # Also add to current process PATH so this session works
-            os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + scripts_str
-
-            print(
-                f"\n  Added '{scripts_str}' to your user PATH.\n"
-                "  Restart your terminal, then 'plutus start' will work directly.\n"
-                "  For now, 'python -m plutus start' works immediately.\n"
+            ctypes.windll.user32.SendMessageTimeoutW(
+                0xFFFF, 0x001A, 0,  # HWND_BROADCAST, WM_SETTINGCHANGE
+                "Environment", 0x0002, 5000, None,  # SMTO_ABORTIFHUNG
             )
-        except OSError as exc:
-            print(f"\n  Could not update PATH automatically: {exc}")
-            print(f"  Please add this directory to your PATH manually:\n    {scripts_str}\n")
-    else:
+        except Exception:
+            pass
+
+        # Also add to current process PATH so this session works
+        os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + scripts_str
+
         print(
-            f"\n  Skipped. You can always run Plutus with:\n"
-            f"    python -m plutus start\n"
-            f"\n  Or add this to your PATH manually:\n"
-            f"    {scripts_str}\n"
+            f"\n  Added '{scripts_str}' to your user PATH.\n"
+            "  The 'plutus' command will work in new terminal windows.\n"
         )
+    except OSError:
+        # Non-critical — the user can still run `python -m plutus start`
+        pass
 
 
 if __name__ == "__main__":

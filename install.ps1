@@ -355,49 +355,66 @@ if (-not (Test-Path $workspaceDir)) {
 #
 # NOTE: --no-browser is passed because the VBS launcher handles opening
 # the browser itself, preventing a duplicate tab.
+#
+# IMPORTANT: We avoid PowerShell here-strings (@"..."@) because
+# ScriptBlock.ToString() (used by the pipeline-safe re-launch at the
+# top of this script) can mangle them, causing silent failures.
 
 $vbsPath = "$plutusDir\start.vbs"
 $batPath = "$plutusDir\start_plutus.bat"
 $logPath = "$plutusDir\plutus.log"
 
 # ── .bat launcher ──
-$batContent = @"
-@echo off
-"$pythonFull" -m plutus start --no-browser > "$logPath" 2>&1
-"@
-Set-Content -Path $batPath -Value $batContent -Encoding ASCII
+$batLines = @(
+    '@echo off',
+    ('"' + $pythonFull + '" -m plutus start --no-browser > "' + $logPath + '" 2>&1')
+)
+$batLines -join "`r`n" | Set-Content -Path $batPath -Encoding ASCII
 
-# ── .vbs launcher (calls the .bat) ──
-$vbsContent = @"
-' Plutus Launcher
-' Double-click to start Plutus or open it in your browser.
+# Verify the .bat was created (antivirus may silently block .bat files)
+if (-not (Test-Path $batPath)) {
+    Write-Host "       [WARN] Could not create .bat launcher (antivirus may have blocked it)." -ForegroundColor Yellow
+    Write-Host "       The VBS launcher will call Python directly as a fallback." -ForegroundColor DarkGray
+}
 
-Set WshShell = CreateObject("WScript.Shell")
-
-' Check if Plutus is already running
-alreadyRunning = False
-On Error Resume Next
-Set http = CreateObject("MSXML2.XMLHTTP")
-http.Open "GET", "http://localhost:7777/api/config", False
-http.Send
-If Err.Number = 0 Then
-    If http.Status = 200 Then alreadyRunning = True
-End If
-On Error GoTo 0
-
-If alreadyRunning Then
-    ' Already running - just open the browser
-    WshShell.Run "http://localhost:7777"
-Else
-    ' Start Plutus via the .bat launcher (hidden window)
-    WshShell.Run """$batPath""", 0, False
-
-    ' Wait a moment, then open the browser
-    WScript.Sleep 2000
-    WshShell.Run "http://localhost:7777"
-End If
-"@
-Set-Content -Path $vbsPath -Value $vbsContent -Encoding ASCII
+# ── .vbs launcher (calls the .bat, with direct-Python fallback) ──
+$vbsLines = @(
+    "' Plutus Launcher",
+    "' Double-click to start Plutus or open it in your browser.",
+    "",
+    'Set WshShell = CreateObject("WScript.Shell")',
+    "",
+    "' Check if Plutus is already running",
+    "alreadyRunning = False",
+    "On Error Resume Next",
+    'Set http = CreateObject("MSXML2.XMLHTTP")',
+    'http.Open "GET", "http://localhost:7777/api/config", False',
+    "http.Send",
+    "If Err.Number = 0 Then",
+    "    If http.Status = 200 Then alreadyRunning = True",
+    "End If",
+    "On Error GoTo 0",
+    "",
+    "If alreadyRunning Then",
+    "    ' Already running - just open the browser",
+    '    WshShell.Run "http://localhost:7777"',
+    "Else",
+    "    ' Try the .bat launcher first (gives Python a real console)",
+    ('    batFile = "' + $batPath + '"'),
+    '    Set fso = CreateObject("Scripting.FileSystemObject")',
+    "    If fso.FileExists(batFile) Then",
+    '        WshShell.Run """" & batFile & """", 0, False',
+    "    Else",
+    "        ' Fallback: call Python directly if .bat is missing",
+    ('        WshShell.Run """' + $pythonFull + '"" -m plutus start --no-browser", 0, False'),
+    "    End If",
+    "",
+    "    ' Wait a moment, then open the browser",
+    "    WScript.Sleep 3000",
+    '    WshShell.Run "http://localhost:7777"',
+    "End If"
+)
+$vbsLines -join "`r`n" | Set-Content -Path $vbsPath -Encoding ASCII
 
 # Create Desktop shortcut
 $shortcutCreated = $false
