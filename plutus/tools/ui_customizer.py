@@ -1,14 +1,14 @@
-"""UI Customization tool — lets the agent fully restyle and restructure the Plutus frontend.
+"""UI Customization tool - lets the agent fully restyle and restructure the Plutus frontend.
 
 Architecture:
   Plutus's frontend uses CSS variables for all colors, surfaces, and component styles.
   The sidebar navigation is data-driven from a JSON config.  This tool writes:
 
-    ~/.plutus/customization/custom-theme.css   — CSS variable overrides + custom styles
-    ~/.plutus/customization/ui-config.json     — layout config (sidebar order, labels, visibility)
+    ~/.plutus/customization/custom-theme.css   - CSS variable overrides + custom styles
+    ~/.plutus/customization/ui-config.json     - layout config (sidebar order, labels, visibility)
 
   The frontend loads these at startup via /api/customization/* endpoints and applies
-  them dynamically — no rebuild, no Node.js, instant effect on page refresh.
+  them dynamically - no rebuild, no Node.js, instant effect on page refresh.
 
 Operations:
   - set_theme:      Override CSS variables (colors, fonts, spacing, shadows)
@@ -30,7 +30,7 @@ from plutus.tools.base import Tool
 
 logger = logging.getLogger("plutus.tools.ui_customizer")
 
-# ── Customization directory ──────────────────────────────────────────────────
+# -- Customization directory --------------------------------------------------
 
 def _customization_dir() -> Path:
     d = Path.home() / ".plutus" / "customization"
@@ -46,7 +46,7 @@ def _ui_config_path() -> Path:
     return _customization_dir() / "ui-config.json"
 
 
-# ── Default CSS variables (for reference) ────────────────────────────────────
+# -- Default CSS variables (for reference) ------------------------------------
 
 DEFAULT_DARK_VARIABLES = {
     # Gray scale (text/surface)
@@ -185,14 +185,14 @@ class UICustomizerTool(Tool):
         return (
             "Customize the Plutus web interface: change colors, fonts, spacing, "
             "sidebar layout, section order, labels, icons, and visibility. "
-            "Changes take effect on page refresh — no rebuild needed.\n\n"
+            "Changes take effect on page refresh - no rebuild needed.\n\n"
             "Operations:\n"
-            "  set_theme     — Override CSS variables (colors, fonts, shadows, spacing)\n"
-            "  set_layout    — Configure sidebar sections, item order, visibility, labels, icons\n"
-            "  inject_css    — Write arbitrary CSS for advanced design changes\n"
-            "  get_current   — Read the current customization state\n"
-            "  reset         — Remove all customizations and restore defaults\n"
-            "  list_variables — Show all available CSS variables with defaults"
+            "  set_theme     - Override CSS variables (colors, fonts, shadows, spacing)\n"
+            "  set_layout    - Configure sidebar sections, item order, visibility, labels, icons\n"
+            "  inject_css    - Write arbitrary CSS for advanced design changes\n"
+            "  get_current   - Read the current customization state\n"
+            "  reset         - Remove all customizations and restore defaults\n"
+            "  list_variables - Show all available CSS variables with defaults"
         )
 
     @property
@@ -288,7 +288,7 @@ class UICustomizerTool(Tool):
                 lines.append(f"  {key}: {value} !important;")
             if lines:
                 css_parts.append(
-                    "/* Custom theme — applied to both light and dark */\n"
+                    "/* Custom theme -- applied to both light and dark */\n"
                     ":root {\n" + "\n".join(lines) + "\n}\n"
                     ".dark {\n" + "\n".join(lines) + "\n}"
                 )
@@ -321,9 +321,9 @@ class UICustomizerTool(Tool):
         css_path = _theme_css_path()
         existing_custom = ""
         if css_path.exists():
-            content = css_path.read_text()
+            content = css_path.read_text(encoding="utf-8")
             # Preserve everything after the CUSTOM CSS marker
-            marker = "/* ── Custom injected CSS ── */"
+            marker = "/* -- Custom injected CSS -- */"
             if marker in content:
                 existing_custom = content[content.index(marker):]
 
@@ -332,7 +332,7 @@ class UICustomizerTool(Tool):
         if existing_custom:
             final_css += "\n\n" + existing_custom
 
-        css_path.write_text(final_css)
+        css_path.write_text(final_css, encoding="utf-8")
         logger.info("Updated custom theme CSS with %d variable overrides", sum(
             len(v) if isinstance(v, dict) else 1
             for v in [variables, dark_vars, light_vars]
@@ -368,12 +368,12 @@ class UICustomizerTool(Tool):
         existing = {}
         if config_path.exists():
             try:
-                existing = json.loads(config_path.read_text())
+                existing = json.loads(config_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 pass
 
         existing.update(layout)
-        config_path.write_text(json.dumps(existing, indent=2))
+        config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
         logger.info("Updated UI layout config")
         return (
@@ -388,12 +388,12 @@ class UICustomizerTool(Tool):
             return "[ERROR] 'css' parameter is required for inject_css"
 
         css_path = _theme_css_path()
-        marker = "/* ── Custom injected CSS ── */"
+        marker = "/* -- Custom injected CSS -- */"
 
         # Read existing content
         existing = ""
         if css_path.exists():
-            existing = css_path.read_text()
+            existing = css_path.read_text(encoding="utf-8")
 
         # Remove old custom CSS section
         if marker in existing:
@@ -401,7 +401,7 @@ class UICustomizerTool(Tool):
 
         # Append new custom CSS
         final = existing + f"\n\n{marker}\n{css}\n" if existing else f"{marker}\n{css}\n"
-        css_path.write_text(final)
+        css_path.write_text(final, encoding="utf-8")
 
         logger.info("Injected custom CSS (%d chars)", len(css))
         return (
@@ -415,12 +415,12 @@ class UICustomizerTool(Tool):
 
         css_path = _theme_css_path()
         if css_path.exists():
-            result["theme_css"] = css_path.read_text()
+            result["theme_css"] = css_path.read_text(encoding="utf-8")
 
         config_path = _ui_config_path()
         if config_path.exists():
             try:
-                result["layout"] = json.loads(config_path.read_text())
+                result["layout"] = json.loads(config_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 result["layout"] = "[ERROR] Invalid JSON in ui-config.json"
 
@@ -429,9 +429,9 @@ class UICustomizerTool(Tool):
 
         parts = []
         if result["theme_css"]:
-            parts.append(f"── Custom Theme CSS ──\n{result['theme_css']}")
+            parts.append(f"-- Custom Theme CSS --\n{result['theme_css']}")
         if result["layout"]:
-            parts.append(f"── Layout Config ──\n{json.dumps(result['layout'], indent=2)}")
+            parts.append(f"-- Layout Config --\n{json.dumps(result['layout'], indent=2)}")
 
         return "\n\n".join(parts)
 
@@ -448,7 +448,7 @@ class UICustomizerTool(Tool):
             removed.append("ui-config.json")
 
         if not removed:
-            return "No customizations to reset — already using defaults."
+            return "No customizations to reset - already using defaults."
 
         return (
             f"Reset complete. Removed: {', '.join(removed)}\n"
@@ -456,18 +456,18 @@ class UICustomizerTool(Tool):
         )
 
     async def _list_variables(self, **kwargs: Any) -> str:
-        lines = ["── Dark Mode CSS Variables (defaults) ──\n"]
+        lines = ["-- Dark Mode CSS Variables (defaults) --\n"]
         for key, value in DEFAULT_DARK_VARIABLES.items():
             lines.append(f"  {key}: {value}")
 
-        lines.append("\n── Light Mode CSS Variables (defaults) ──\n")
+        lines.append("\n-- Light Mode CSS Variables (defaults) --\n")
         for key, value in DEFAULT_LIGHT_VARIABLES.items():
             lines.append(f"  {key}: {value}")
 
-        lines.append("\n── Available Sidebar Icons ──\n")
+        lines.append("\n-- Available Sidebar Icons --\n")
         lines.append(f"  {', '.join(AVAILABLE_ICONS)}")
 
-        lines.append("\n── Default Layout Structure ──\n")
+        lines.append("\n-- Default Layout Structure --\n")
         lines.append(json.dumps(DEFAULT_LAYOUT, indent=2))
 
         return "\n".join(lines)
