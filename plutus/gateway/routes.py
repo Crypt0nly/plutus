@@ -2644,6 +2644,32 @@ def create_router() -> APIRouter:
                 return {}
         return {}
 
+    @router.post("/customization/reset")
+    async def reset_customization():
+        """Delete all custom theme/layout files and broadcast a live reload."""
+        from pathlib import Path
+
+        customization_dir = Path.home() / ".plutus" / "customization"
+        removed = []
+        for fname in ("custom-theme.css", "ui-config.json"):
+            p = customization_dir / fname
+            if p.exists():
+                p.unlink()
+                removed.append(fname)
+
+        # Broadcast live reload to all connected frontends
+        try:
+            from plutus.gateway.ws import manager
+            import asyncio
+            await manager.broadcast({
+                "type": "ui_customization_updated",
+                "changed": "all",
+            })
+        except Exception:
+            pass
+
+        return {"status": "ok", "removed": removed}
+
     return router
 
 

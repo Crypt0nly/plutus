@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X, Minus, Plus, Check, Globe, Cloud } from "lucide-react";
+import { Bot, Server, Database, Info, Sun, Moon, Monitor, BatteryCharging, FileText, ArrowUpCircle, CheckCircle, RefreshCw, ExternalLink, X, Minus, Plus, Check, Globe, Cloud, RotateCcw } from "lucide-react";
 import WorkspaceSyncView from "./WorkspaceSyncView";
 import { api } from "../../lib/api";
 import { ModelConfig } from "./ModelConfig";
@@ -596,6 +596,59 @@ function AppearanceSection() {
           );
         })}
       </div>
+
+      {/* Reset UI Customization */}
+      <div className="mt-5 pt-4" style={{ borderTop: "1px solid rgb(var(--gray-700) / 0.3)" }}>
+        <ResetCustomizationButton />
+      </div>
+    </div>
+  );
+}
+
+function ResetCustomizationButton() {
+  const [resetting, setResetting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const handleReset = async () => {
+    setResetting(true);
+    setDone(false);
+    try {
+      await fetch("/api/customization/reset", { method: "POST" });
+      setDone(true);
+      setTimeout(() => setDone(false), 3000);
+    } catch (e) {
+      console.error("Failed to reset customization:", e);
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-sm text-gray-300">UI Customization</p>
+        <p className="text-xs text-gray-500 mt-0.5">
+          Reset all custom colors, layout, and styling to defaults
+        </p>
+      </div>
+      <button
+        onClick={handleReset}
+        disabled={resetting || done}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200"
+        style={
+          done
+            ? { background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.2)", color: "#34d399" }
+            : { background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.15)", color: "#f87171" }
+        }
+      >
+        {done ? (
+          <><Check className="w-3.5 h-3.5" /> Restored</>
+        ) : resetting ? (
+          <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Resetting...</>
+        ) : (
+          <><RotateCcw className="w-3.5 h-3.5" /> Reset to Default</>
+        )}
+      </button>
     </div>
   );
 }
