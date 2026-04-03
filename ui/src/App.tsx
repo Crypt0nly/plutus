@@ -232,19 +232,40 @@ export default function App() {
         // ── Session management events ──────────────────────────────────
         case "sessions_list":
           if (Array.isArray(msg.sessions)) {
-            setSessions(
-              msg.sessions.map((s: any) => ({
-                id: s.session_id || s.id,
-                display_name: s.display_name,
-                icon: s.icon,
-                is_connector: s.is_connector,
-                connector_name: s.connector_name,
-                conversation_id: s.conversation_id,
-                is_processing: s.is_processing ?? false,
-                created_at: s.created_at,
-                last_active: s.last_active,
-              }))
-            );
+            const mapped = msg.sessions.map((s: any) => ({
+              id: s.session_id || s.id,
+              display_name: s.display_name,
+              icon: s.icon,
+              is_connector: s.is_connector,
+              connector_name: s.connector_name,
+              conversation_id: s.conversation_id,
+              is_processing: s.is_processing ?? false,
+              created_at: s.created_at,
+              last_active: s.last_active,
+            }));
+            setSessions(mapped);
+            // Auto-hydrate connector sessions that have a persisted conversation
+            for (const s of mapped) {
+              if (s.is_connector && s.conversation_id) {
+                setConversationId(s.conversation_id, s.id);
+                (async () => {
+                  try {
+                    const msgs = await api.getMessages(s.conversation_id) as any[];
+                    if (Array.isArray(msgs) && msgs.length > 0) {
+                      clearMessages(s.id);
+                      msgs.forEach((m: any) => {
+                        addMessage(
+                          { role: m.role, content: m.content, tool_calls: m.tool_calls },
+                          s.id
+                        );
+                      });
+                    }
+                  } catch (err) {
+                    console.warn("Failed to hydrate connector session:", err);
+                  }
+                })();
+              }
+            }
           }
           break;
 
@@ -279,6 +300,27 @@ export default function App() {
                 const { [PENDING_NEW_SESSION_ID]: _removed, ...rest } = currentStates;
                 useAppStore.setState({ sessionStates: rest });
               }
+            }
+            // Auto-hydrate connector sessions: if the backend provides a
+            // conversation_id, fetch the persisted messages so the connector
+            // chat is not empty after a page refresh.
+            if (s.is_connector && s.conversation_id) {
+              (async () => {
+                try {
+                  const msgs = await api.getMessages(s.conversation_id) as any[];
+                  if (Array.isArray(msgs) && msgs.length > 0) {
+                    clearMessages(newId);
+                    msgs.forEach((m: any) => {
+                      addMessage(
+                        { role: m.role, content: m.content, tool_calls: m.tool_calls },
+                        newId
+                      );
+                    });
+                  }
+                } catch (err) {
+                  console.warn("Failed to hydrate connector session:", err);
+                }
+              })();
             }
             // Fire the one-shot callback registered by ChatView so the first
             // message is sent to the correct session even if the user switched
