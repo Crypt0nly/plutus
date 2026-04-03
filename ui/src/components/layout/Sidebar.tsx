@@ -104,7 +104,6 @@ const DEFAULT_SECTIONS: NavSection[] = [
     label: "Main",
     items: [
       { id: "chat", label: "Chat", icon: MessageSquare },
-      { id: "sessions", label: "Sessions", icon: Layers },
       { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },

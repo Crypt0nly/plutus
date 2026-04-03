@@ -8,14 +8,30 @@ import {
   MoreHorizontal,
   Loader2,
   MessageSquare,
+  ChevronDown,
+  Plug,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAppStore, PENDING_NEW_SESSION_ID, DEFAULT_SESSION_ID } from "../../stores/appStore";
-import { ConnectorLogo } from "../connectors/ConnectorLogos";
+import { ConnectorLogo, CONNECTOR_LOGO_MAP } from "../connectors/ConnectorLogos";
 import type { Conversation } from "../../lib/types";
 
 interface Props {
   send: (data: Record<string, unknown>) => void;
+}
+
+// Connector display metadata
+const CONNECTOR_META: Record<string, { label: string; color: string }> = {
+  telegram: { label: "Telegram", color: "#38bdf8" },
+  whatsapp: { label: "WhatsApp", color: "#34d399" },
+  discord: { label: "Discord", color: "#818cf8" },
+  email: { label: "Email", color: "#fbbf24" },
+};
+
+function getConnectorKey(session: { id: string; connector_name?: string | null }): string {
+  if (session.connector_name) return session.connector_name.toLowerCase();
+  const parts = session.id.split("_");
+  return parts[parts.length - 1].toLowerCase();
 }
 
 export function ConversationHistory({ send }: Props) {
@@ -26,18 +42,31 @@ export function ConversationHistory({ send }: Props) {
   const [editTitle, setEditTitle] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [connectorsOpen, setConnectorsOpen] = useState(true);
   const editInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  // Read conversationId from sessionStates directly so Zustand can track it
-  // as a reactive dependency (computed getters on the store are not tracked).
-  const { activeSessionId, sessionStates, setConversationId, clearMessages, setView, connected, conversationRefreshTick } =
-    useAppStore();
+
+  const {
+    activeSessionId,
+    sessionStates,
+    sessions,
+    setConversationId,
+    clearMessages,
+    setView,
+    setActiveSessionId,
+    connected,
+    conversationRefreshTick,
+  } = useAppStore();
   const conversationId = sessionStates[activeSessionId]?.conversationId ?? null;
 
+  // Connector sessions from the sessions store
+  const connectorSessions = useMemo(
+    () => sessions.filter((s) => s.is_connector),
+    [sessions]
+  );
+
   // Build a set of conversation IDs that are currently being processed
-  // across ALL sessions (not just the active one) so we can show spinners
-  // on any chat that Plutus is working in right now.
   const processingConvIds = useMemo(() => {
     const ids = new Set<string>();
     for (const state of Object.values(sessionStates)) {
@@ -49,7 +78,7 @@ export function ConversationHistory({ send }: Props) {
   }, [sessionStates]);
 
   const fetchConversations = useCallback(() => {
-    if (!connected) return; // Don't poll when backend is down
+    if (!connected) return;
     api
       .getConversations(50)
       .then((data) => setConversations(data as unknown as Conversation[]))
@@ -60,8 +89,6 @@ export function ConversationHistory({ send }: Props) {
     fetchConversations();
   }, [fetchConversations, conversationId, conversationRefreshTick]);
 
-  // Re-fetch when any session finishes processing so newly created chats
-  // appear in the history list as soon as Plutus sends its first response.
   const anyProcessing = useMemo(
     () => Object.values(sessionStates).some((s) => s.isProcessing),
     [sessionStates]
@@ -71,7 +98,7 @@ export function ConversationHistory({ send }: Props) {
   }, [anyProcessing, fetchConversations]);
 
   useEffect(() => {
-    if (!connected) return; // Don't start poll timer when disconnected
+    if (!connected) return;
     const interval = setInterval(fetchConversations, 30000);
     return () => clearInterval(interval);
   }, [fetchConversations, connected]);
@@ -83,7 +110,6 @@ export function ConversationHistory({ send }: Props) {
     }
   }, [editingId]);
 
-  // Close menu on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -94,14 +120,19 @@ export function ConversationHistory({ send }: Props) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpenId]);
 
+  // Filter out connector conversations from the main list
+  const nonConnectorConversations = useMemo(() => {
+    return conversations.filter((c) => !c.metadata?.connector_name);
+  }, [conversations]);
+
   const filteredConversations = useMemo(() => {
-    if (!searchQuery.trim()) return conversations;
+    if (!searchQuery.trim()) return nonConnectorConversations;
     const q = searchQuery.toLowerCase();
-    return conversations.filter((c) => {
+    return nonConnectorConversations.filter((c) => {
       const title = c.title || getDefaultTitle(c);
       return title.toLowerCase().includes(q);
     });
-  }, [conversations, searchQuery]);
+  }, [nonConnectorConversations, searchQuery]);
 
   const grouped = useMemo(
     () => groupConversations(filteredConversations),
@@ -110,23 +141,24 @@ export function ConversationHistory({ send }: Props) {
 
   const handleLoadConversation = (conv: Conversation) => {
     if (conv.id === conversationId) return;
-    // If we're on the pending-new-session sentinel, route to the main session
-    // since no real session has been created yet.
-    const targetSession = activeSessionId === PENDING_NEW_SESSION_ID
-      ? DEFAULT_SESSION_ID
-      : activeSessionId;
-    // Always include session_id so the backend routes to the correct session
-    // and the frontend receives conversation_resumed tagged with the right sid.
+    const targetSession =
+      activeSessionId === PENDING_NEW_SESSION_ID
+        ? DEFAULT_SESSION_ID
+        : activeSessionId;
     send({
       type: "resume_conversation",
       conversation_id: conv.id,
       session_id: targetSession,
     });
-    // Clear the pending-new-session state since the user chose an existing chat
     if (activeSessionId === PENDING_NEW_SESSION_ID) {
       useAppStore.getState().setPendingNewSession(false);
       useAppStore.getState().setActiveSessionId(DEFAULT_SESSION_ID);
     }
+    setView("chat");
+  };
+
+  const handleConnectorClick = (sessionId: string) => {
+    setActiveSessionId(sessionId);
     setView("chat");
   };
 
@@ -169,7 +201,10 @@ export function ConversationHistory({ send }: Props) {
     setMenuOpenId(null);
   };
 
-  if (conversations.length === 0) return null;
+  const hasConnectors = connectorSessions.length > 0;
+  const hasConversations = conversations.length > 0;
+
+  if (!hasConnectors && !hasConversations) return null;
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
@@ -204,15 +239,128 @@ export function ConversationHistory({ send }: Props) {
         </div>
       </div>
 
-      {/* Conversation list */}
+      {/* Scrollable area for connector dropdown + conversation list */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 sidebar-scroll">
-        {filteredConversations.length === 0 ? (
-          <div className="px-3 py-4 text-center">
-            <Search className="w-4 h-4 text-gray-700 mx-auto mb-1.5" />
-            <p className="text-[11px] text-gray-600">
-              {searchQuery ? "No matches found" : "No conversations yet"}
-            </p>
+        {/* ── Connector Chats dropdown ─────────────────────────────────── */}
+        {hasConnectors && (
+          <div className="mb-2">
+            {/* Dropdown header */}
+            <button
+              onClick={() => setConnectorsOpen(!connectorsOpen)}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-800/40 transition-colors group"
+            >
+              <Plug className="w-3 h-3 text-gray-600" />
+              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex-1 text-left">
+                Connector Chats
+              </span>
+              <span className="text-[10px] text-gray-600 tabular-nums mr-1">
+                {connectorSessions.length}
+              </span>
+              <ChevronDown
+                className={`w-3 h-3 text-gray-600 transition-transform duration-200 ${
+                  connectorsOpen ? "" : "-rotate-90"
+                }`}
+              />
+            </button>
+
+            {/* Connector list (collapsible) */}
+            <div
+              className={`overflow-hidden transition-all duration-200 ease-in-out ${
+                connectorsOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+              }`}
+            >
+              <div className="space-y-0.5 pt-1">
+                {connectorSessions.map((session) => {
+                  const key = getConnectorKey(session);
+                  const meta = CONNECTOR_META[key] ?? {
+                    label: session.display_name || key,
+                    color: "#9ca3af",
+                  };
+                  const isActive = session.id === activeSessionId;
+                  const processing =
+                    sessionStates[session.id]?.isProcessing ?? false;
+                  const msgCount =
+                    sessionStates[session.id]?.messages?.length ?? 0;
+
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => handleConnectorClick(session.id)}
+                      className={`w-full flex items-center gap-2.5 pl-2.5 pr-2 py-1.5 rounded-md text-left transition-all duration-150 ${
+                        isActive
+                          ? "bg-plutus-600/10"
+                          : "hover:bg-gray-800/60"
+                      }`}
+                    >
+                      {/* Active indicator */}
+                      {isActive && (
+                        <div className="absolute left-0 w-[2px] h-4 rounded-r-full bg-plutus-500 shadow-sm shadow-plutus-500/50" />
+                      )}
+
+                      {/* Connector icon */}
+                      <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                        {CONNECTOR_LOGO_MAP[key] ? (
+                          <ConnectorLogo name={key} size={16} />
+                        ) : (
+                          <Plug
+                            className="w-3.5 h-3.5"
+                            style={{ color: meta.color }}
+                          />
+                        )}
+                      </div>
+
+                      {/* Label + status */}
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={`text-xs font-medium truncate leading-snug ${
+                            isActive
+                              ? "text-plutus-300"
+                              : "text-gray-400"
+                          }`}
+                        >
+                          {meta.label}
+                        </p>
+                        <span className="text-[10px] text-gray-600 leading-none">
+                          {processing ? "Processing..." : msgCount > 0 ? `${msgCount} msgs` : "No messages"}
+                        </span>
+                      </div>
+
+                      {/* Status indicators */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {processing ? (
+                          <Loader2
+                            className="w-3 h-3 animate-spin"
+                            style={{ color: meta.color }}
+                          />
+                        ) : (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ background: "#34d399" }}
+                            title="Connected"
+                          />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Divider between connectors and regular chats */}
+            {hasConversations && (
+              <div className="h-px bg-gray-800/60 mt-2" />
+            )}
           </div>
+        )}
+
+        {/* ── Regular conversation list ───────────────────────────────── */}
+        {filteredConversations.length === 0 ? (
+          nonConnectorConversations.length === 0 ? null : (
+            <div className="px-3 py-4 text-center">
+              <Search className="w-4 h-4 text-gray-700 mx-auto mb-1.5" />
+              <p className="text-[11px] text-gray-600">No matches found</p>
+            </div>
+          )
         ) : (
           <div className="space-y-3">
             {grouped.map(
@@ -242,7 +390,6 @@ export function ConversationHistory({ send }: Props) {
                             className="conv-item animate-fade-in"
                           >
                             {isEditing ? (
-                              /* Editing mode */
                               <div className="flex items-center gap-1.5 px-2 py-2 rounded-lg bg-gray-800/80 border border-gray-700/50">
                                 <input
                                   ref={editInputRef}
@@ -275,7 +422,6 @@ export function ConversationHistory({ send }: Props) {
                                 </button>
                               </div>
                             ) : isConfirmingDelete ? (
-                              /* Delete confirmation */
                               <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
                                 <span className="text-xs text-red-400 font-medium">
                                   Delete this chat?
@@ -302,7 +448,6 @@ export function ConversationHistory({ send }: Props) {
                                 </div>
                               </div>
                             ) : (
-                              /* Normal conversation card — compact single row */
                               <div
                                 onClick={() => handleLoadConversation(conv)}
                                 className={`group relative flex items-center gap-2 pl-2.5 pr-1.5 py-1.5 rounded-md cursor-pointer transition-all duration-150 ${
@@ -311,26 +456,14 @@ export function ConversationHistory({ send }: Props) {
                                     : "hover:bg-gray-800/60"
                                 }`}
                               >
-                                {/* Active indicator bar */}
                                 {isActive && (
                                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 rounded-r-full bg-plutus-500 shadow-sm shadow-plutus-500/50" />
                                 )}
 
-                                {/* Connector platform icon */}
-                                {conv.metadata?.connector_name ? (
-                                  <span className="flex-shrink-0 opacity-70">
-                                    <ConnectorLogo
-                                      name={conv.metadata.connector_name as string}
-                                      size={14}
-                                    />
-                                  </span>
-                                ) : (
-                                  <span className="flex-shrink-0 opacity-40">
-                                    <MessageSquare className="w-3.5 h-3.5" />
-                                  </span>
-                                )}
+                                <span className="flex-shrink-0 opacity-40">
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                </span>
 
-                                {/* Title + meta inline */}
                                 <div className="flex-1 min-w-0">
                                   <p
                                     className={`text-xs truncate font-medium leading-snug ${
@@ -351,8 +484,6 @@ export function ConversationHistory({ send }: Props) {
                                   </span>
                                 </div>
 
-                                {/* Processing spinner — shown when Plutus is actively working in this chat.
-                                     Replaces the context-menu button while processing so they don't overlap. */}
                                 {isWorking ? (
                                   <span
                                     className="flex-shrink-0"
@@ -365,8 +496,10 @@ export function ConversationHistory({ send }: Props) {
                                   </span>
                                 ) : null}
 
-                                {/* Context menu trigger — hidden while processing to avoid overlap */}
-                                <div className="relative shrink-0" ref={isMenuOpen ? menuRef : undefined}>
+                                <div
+                                  className="relative shrink-0"
+                                  ref={isMenuOpen ? menuRef : undefined}
+                                >
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -383,7 +516,6 @@ export function ConversationHistory({ send }: Props) {
                                     <MoreHorizontal className="w-3.5 h-3.5" />
                                   </button>
 
-                                  {/* Dropdown menu */}
                                   {isMenuOpen && (
                                     <div className="absolute right-0 top-full mt-1 w-32 py-1 bg-gray-800 border border-gray-700/80 rounded-lg shadow-xl shadow-black/30 z-50 animate-fade-in">
                                       <button
