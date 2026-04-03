@@ -141,8 +141,16 @@ export function ConversationHistory({ send }: Props) {
 
   const handleLoadConversation = (conv: Conversation) => {
     if (conv.id === conversationId) return;
+    // Always target a non-connector session.  If the user is currently
+    // viewing a connector session (e.g. Telegram) and clicks a conversation
+    // from history, we must NOT send resume_conversation to the connector's
+    // session — that would hijack the connector agent's active conversation
+    // and cause subsequent connector messages to land in the wrong thread.
+    const currentIsConnector = sessions.find(
+      (s) => s.id === activeSessionId && s.is_connector
+    );
     const targetSession =
-      activeSessionId === PENDING_NEW_SESSION_ID
+      activeSessionId === PENDING_NEW_SESSION_ID || currentIsConnector
         ? DEFAULT_SESSION_ID
         : activeSessionId;
     send({
@@ -150,7 +158,7 @@ export function ConversationHistory({ send }: Props) {
       conversation_id: conv.id,
       session_id: targetSession,
     });
-    if (activeSessionId === PENDING_NEW_SESSION_ID) {
+    if (activeSessionId === PENDING_NEW_SESSION_ID || currentIsConnector) {
       useAppStore.getState().setPendingNewSession(false);
       useAppStore.getState().setActiveSessionId(DEFAULT_SESSION_ID);
     }

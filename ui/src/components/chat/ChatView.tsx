@@ -9,9 +9,12 @@ interface Props {
 }
 
 export function ChatView({ send }: Props) {
-  const { keyConfigured, activeSessionId, sessionStates, pendingNewSession, setPendingNewSession, setPendingSessionCallback } = useAppStore();
+  const { keyConfigured, activeSessionId, sessionStates, sessions, pendingNewSession, setPendingNewSession, setPendingSessionCallback } = useAppStore();
   const messages = sessionStates[activeSessionId]?.messages ?? [];
   const isProcessing = sessionStates[activeSessionId]?.isProcessing ?? false;
+  const isConnectorSession = sessions.some(
+    (s) => s.id === activeSessionId && s.is_connector
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -118,7 +121,13 @@ export function ChatView({ send }: Props) {
       </div>
 
       {/* Input area */}
-      <ChatInput onSend={handleSend} onStop={handleStop} disabled={isProcessing || !keyConfigured} />
+      {isConnectorSession ? (
+        <div className="px-6 py-3 text-center text-xs text-gray-500 border-t border-gray-800/50">
+          Messages from this connector are handled automatically.
+        </div>
+      ) : (
+        <ChatInput onSend={handleSend} onStop={handleStop} disabled={isProcessing || !keyConfigured} />
+      )}
     </div>
   );
 }

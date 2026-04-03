@@ -275,6 +275,18 @@ async def _handle_chat(ws: WebSocket, message: dict[str, Any]) -> None:
     registry = get_registry()
     session = registry.get(session_id)
 
+    # Block UI chat messages from being routed to connector sessions.
+    # Connector sessions are managed exclusively by their bridge loops;
+    # allowing UI messages to reach them would corrupt the connector's
+    # active conversation and cause message bleed.
+    if session and session.is_connector:
+        logger.warning(
+            f"Blocked chat message to connector session {session_id!r}, "
+            f"redirecting to {_DEFAULT_SESSION_ID!r}"
+        )
+        session_id = _DEFAULT_SESSION_ID
+        session = registry.get(session_id)
+
     if session is None:
         # Fall back to the global agent for backwards compatibility
         agent = state.get("agent")
@@ -640,6 +652,19 @@ async def _handle_resume_conversation(ws: WebSocket, message: dict[str, Any]) ->
 
     registry = get_registry()
     session = registry.get(session_id)
+
+    # Never allow resume_conversation on a connector session — that would
+    # hijack the connector agent's active conversation and cause subsequent
+    # connector messages (Telegram, WhatsApp, etc.) to land in the wrong
+    # thread.  Redirect to the default session instead.
+    if session and session.is_connector:
+        logger.warning(
+            f"Blocked resume_conversation on connector session {session_id!r}, "
+            f"redirecting to {_DEFAULT_SESSION_ID!r}"
+        )
+        session_id = _DEFAULT_SESSION_ID
+        session = registry.get(session_id)
+
     agent = session.agent if session else state.get("agent")
 
     # Cancel any running task in this session to prevent streamed events
