@@ -202,13 +202,10 @@ export default function App() {
           // sid comes from the backend (which echoes back the session_id we sent).
           if (sid) setActiveSessionId(sid);
           setConversationId(msg.conversation_id, sid);
-          // Only clear isProcessing if this session is NOT currently working.
-          // If the user switches away and back while Plutus is still running,
-          // we must preserve isProcessing=true so the dot-pulse stays visible.
-          // We only clear it to remove stale flags from previously finished tasks.
-          if (sid && !useAppStore.getState().sessionStates[sid]?.isProcessing) {
-            setProcessing(false, sid);
-          }
+          // Always clear isProcessing when resuming a conversation.
+          // The backend cancels any running task in the session before
+          // sending conversation_resumed, so no stale events will arrive.
+          setProcessing(false, sid);
           clearMessages(sid);
           msg.messages.forEach((m: any) => {
             // Remap internal/system messages that were stored as "user" role

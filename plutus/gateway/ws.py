@@ -642,6 +642,24 @@ async def _handle_resume_conversation(ws: WebSocket, message: dict[str, Any]) ->
     session = registry.get(session_id)
     agent = session.agent if session else state.get("agent")
 
+    # Cancel any running task in this session to prevent streamed events
+    # from the old conversation leaking into the newly resumed one.
+    bg_task = _active_tasks.get(session_id)
+    if bg_task and not bg_task.done():
+        bg_task.cancel()
+        logger.info(f"Cancelled running task in session {session_id} before resuming conversation {conv_id}")
+
+    if session and session.agent:
+        session.agent.cancel()
+    elif not session:
+        fallback_agent = state.get("agent")
+        if fallback_agent:
+            fallback_agent.cancel()
+
+    cu_agent = state.get("cu_agent")
+    if cu_agent and getattr(cu_agent, "is_running", False):
+        cu_agent.stop()
+
     if agent and conv_id:
         await agent.conversation.resume_conversation(conv_id)
         messages = await state["memory"].get_messages(conv_id, limit=200)
