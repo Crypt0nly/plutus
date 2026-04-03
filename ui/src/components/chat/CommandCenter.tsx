@@ -125,7 +125,7 @@ function Row({
   right: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-white/[0.02] transition-colors group">
+    <div className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-gray-800/30 transition-colors group">
       <div className="flex items-center gap-3 min-w-0">
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${iconColor}`}>
           <Icon className="w-3.5 h-3.5" />
@@ -281,16 +281,16 @@ export function CommandCenter() {
         <div
           className="absolute bottom-[52px] left-0 w-[400px] rounded-2xl overflow-hidden z-50 animate-slide-up"
           style={{
-            background: "rgba(10, 12, 22, 0.97)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow: "0 -4px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.08)",
+            background: "var(--cc-bg)",
+            border: `1px solid var(--cc-border)`,
+            boxShadow: "var(--cc-shadow)",
             backdropFilter: "blur(20px)",
           }}
         >
           {/* Header */}
           <div
             className="px-4 pt-4 pb-3"
-            style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+            style={{ borderBottom: `1px solid var(--cc-divider)` }}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2.5">
@@ -307,14 +307,14 @@ export function CommandCenter() {
               </div>
               <button
                 onClick={() => setOpen(false)}
-                className="w-6 h-6 rounded-md flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                className="w-6 h-6 rounded-md flex items-center justify-center text-gray-500 hover:text-gray-200 hover:bg-gray-700/40 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "var(--cc-subtle-bg)" }}>
               {tabs.map((t) => (
                 <button
                   key={t.id}
@@ -345,7 +345,7 @@ export function CommandCenter() {
                   {/* Active model summary */}
                   <div
                     className="flex items-center justify-between px-3 py-2.5 mb-2 rounded-xl"
-                    style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.12)" }}
+                    style={{ background: "var(--cc-accent-bg)", border: `1px solid var(--cc-accent-border)` }}
                   >
                     <div className="flex items-center gap-2">
                       <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${providers.find(p => p.id === provider)?.logoBg || "bg-gray-800"}`}>
@@ -452,7 +452,7 @@ export function CommandCenter() {
                             className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all duration-150 ${
                               active
                                 ? "border-plutus-500/40 bg-plutus-500/8 shadow-sm shadow-plutus-500/10"
-                                : "border-gray-800/50 bg-gray-800/20 hover:border-gray-700/60 hover:bg-gray-800/30"
+                                : "border-gray-700/50 bg-gray-800/20 hover:border-gray-600/60 hover:bg-gray-800/30"
                             }`}
                           >
                             <div className={`w-7 h-7 rounded-lg ${p.logoBg} flex items-center justify-center shadow-sm`}>
@@ -473,10 +473,10 @@ export function CommandCenter() {
                         value={model}
                         onChange={(e) => handleSave({ model: { model: e.target.value } })}
                         className="w-full appearance-none rounded-xl px-3.5 py-2.5 pr-9 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-plutus-500/30 cursor-pointer transition-all"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+                        style={{ background: "var(--cc-input-bg)", border: `1px solid var(--cc-input-border)` }}
                       >
                         {models.map((m) => (
-                          <option key={m.id} value={m.id} style={{ background: "#0f1222" }}>
+                          <option key={m.id} value={m.id} style={{ background: "var(--cc-option-bg)" }}>
                             {m.label} — {m.desc}
                           </option>
                         ))}
@@ -525,7 +525,7 @@ export function CommandCenter() {
                             className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-150 text-left ${
                               active
                                 ? "border-plutus-500/40 bg-plutus-500/8 text-gray-100"
-                                : "border-gray-800/50 bg-gray-800/20 text-gray-400 hover:border-gray-700/60 hover:text-gray-300"
+                                : "border-gray-700/50 bg-gray-800/20 text-gray-400 hover:border-gray-600/60 hover:text-gray-300"
                             }`}
                           >
                             <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? "bg-plutus-400" : "bg-gray-600"}`} />
@@ -565,7 +565,7 @@ export function CommandCenter() {
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 transition-all duration-150 text-left ${
                               active
                                 ? t.accent
-                                : "border-gray-800/40 bg-gray-800/10 text-gray-500 hover:border-gray-700/50 hover:text-gray-400"
+                                : "border-gray-700/40 bg-gray-800/10 text-gray-500 hover:border-gray-600/50 hover:text-gray-400"
                             }`}
                           >
                             <div className={`w-2 h-2 rounded-full shrink-0 ${active ? t.dot : "bg-gray-700"}`} />
@@ -582,7 +582,7 @@ export function CommandCenter() {
                     </div>
                   </div>
 
-                  <div style={{ height: "1px", background: "rgba(255,255,255,0.05)", margin: "4px 12px" }} />
+                  <div className="mx-3 my-1" style={{ height: "1px", background: "var(--cc-divider)" }} />
 
                   {/* Web Search */}
                   <Row
@@ -685,7 +685,7 @@ export function CommandCenter() {
                         />
                       </div>
 
-                      <div style={{ height: "1px", background: "rgba(255,255,255,0.05)", margin: "2px 0" }} />
+                      <div className="my-0.5" style={{ height: "1px", background: "var(--cc-divider)" }} />
 
                       {/* Voice Selection */}
                       <div>
@@ -695,10 +695,10 @@ export function CommandCenter() {
                             value={elevenLabs?.config?.voice_name || "Rachel"}
                             onChange={(e) => handleVoiceSave("voice_name", e.target.value)}
                             className="w-full appearance-none rounded-xl px-3.5 py-2.5 pr-9 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30 cursor-pointer transition-all"
-                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+                            style={{ background: "var(--cc-input-bg)", border: `1px solid var(--cc-input-border)` }}
                           >
                             {(elevenLabs?.available_voices || []).map((v: string) => (
-                              <option key={v} value={v} style={{ background: "#0f1222" }}>{v}</option>
+                              <option key={v} value={v} style={{ background: "var(--cc-option-bg)" }}>{v}</option>
                             ))}
                           </select>
                           <ChevronDown className="w-3.5 h-3.5 text-gray-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -803,7 +803,7 @@ export function CommandCenter() {
           {/* Footer */}
           <div
             className="px-4 py-2.5 flex items-center justify-between"
-            style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
+            style={{ borderTop: `1px solid var(--cc-divider)` }}
           >
             <button
               onClick={() => { setOpen(false); useAppStore.getState().setView("settings"); }}

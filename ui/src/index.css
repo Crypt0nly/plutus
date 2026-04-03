@@ -84,6 +84,18 @@
     /* Light-mode toggle off state */
     --toggle-off-bg: rgba(203,213,225,0.9);
     --toggle-off-border: rgba(148,163,184,0.5);
+
+    /* Light-mode command center */
+    --cc-bg: rgba(248, 250, 252, 0.97);
+    --cc-border: rgba(0,0,0,0.10);
+    --cc-shadow: 0 -4px 40px rgba(0,0,0,0.10), 0 0 0 1px rgba(99,102,241,0.08);
+    --cc-divider: rgba(0,0,0,0.06);
+    --cc-subtle-bg: rgba(0,0,0,0.03);
+    --cc-input-bg: rgba(0,0,0,0.04);
+    --cc-input-border: rgba(0,0,0,0.10);
+    --cc-option-bg: #f1f5f9;
+    --cc-accent-bg: rgba(99,102,241,0.06);
+    --cc-accent-border: rgba(99,102,241,0.14);
   }
 
   .dark {
@@ -155,6 +167,18 @@
     /* Dark-mode toggle off state */
     --toggle-off-bg: rgba(55,65,81,0.8);
     --toggle-off-border: rgba(75,85,99,0.5);
+
+    /* Dark-mode command center */
+    --cc-bg: rgba(10, 12, 22, 0.97);
+    --cc-border: rgba(255,255,255,0.08);
+    --cc-shadow: 0 -4px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(99,102,241,0.08);
+    --cc-divider: rgba(255,255,255,0.05);
+    --cc-subtle-bg: rgba(255,255,255,0.04);
+    --cc-input-bg: rgba(255,255,255,0.04);
+    --cc-input-border: rgba(255,255,255,0.08);
+    --cc-option-bg: #0f1222;
+    --cc-accent-bg: rgba(99,102,241,0.06);
+    --cc-accent-border: rgba(99,102,241,0.12);
   }
 
   * {
