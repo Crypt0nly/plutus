@@ -4,7 +4,7 @@
 #
 # What this script does:
 #   1. Ensures Python 3.14+ is available (auto-installs via Homebrew/apt/dnf if needed)
-#   2. Installs Plutus via pip
+#   2. Creates a virtual environment and installs Plutus into it
 #   3. Creates a launcher shortcut (macOS .app / Linux .desktop)
 #   4. Launches Plutus in the background and opens the browser
 #
@@ -165,15 +165,30 @@ PY_VER=$($PYTHON_CMD --version 2>&1)
 PYTHON_FULL_PATH=$(command -v "$PYTHON_CMD")
 echo "[1/4] $PY_VER found."
 
-# ── Step 2: Install Plutus ────────────────────────────────
+# ── Step 2: Install Plutus (inside a virtual environment) ─
 
 echo "[2/4] Installing Plutus..."
 
-$PYTHON_CMD -m pip install --upgrade pip >/dev/null 2>&1 || true
-$PYTHON_CMD -m pip install --upgrade "plutus-ai" 2>/tmp/plutus_install_err.txt || {
+PLUTUS_DIR="$HOME/.plutus"
+VENV_DIR="$PLUTUS_DIR/venv"
+mkdir -p "$PLUTUS_DIR"
+
+# Create (or re-use) a virtual environment so we never hit
+# PEP 668 "externally-managed-environment" errors on macOS/Homebrew
+# or modern Linux distros.
+if [ ! -d "$VENV_DIR/bin" ]; then
+    echo "       Creating virtual environment..."
+    $PYTHON_CMD -m venv "$VENV_DIR"
+fi
+
+# From here on, use the venv Python for all pip operations
+VENV_PYTHON="$VENV_DIR/bin/python"
+
+$VENV_PYTHON -m pip install --upgrade pip >/dev/null 2>&1 || true
+$VENV_PYTHON -m pip install --upgrade "plutus-ai" 2>/tmp/plutus_install_err.txt || {
     if grep -qi "no RECORD file" /tmp/plutus_install_err.txt 2>/dev/null; then
         echo "       Retrying with --force-reinstall (missing package metadata)..."
-        $PYTHON_CMD -m pip install --force-reinstall --upgrade "plutus-ai"
+        $VENV_PYTHON -m pip install --force-reinstall --upgrade "plutus-ai"
     else
         cat /tmp/plutus_install_err.txt >&2
         rm -f /tmp/plutus_install_err.txt
@@ -184,9 +199,9 @@ rm -f /tmp/plutus_install_err.txt
 
 # Ensure ffmpeg is available (needed for voice memo transcription).
 # imageio-ffmpeg ships a bundled static binary — no OS package needed.
-if ! $PYTHON_CMD -c "import imageio_ffmpeg" >/dev/null 2>&1; then
+if ! $VENV_PYTHON -c "import imageio_ffmpeg" >/dev/null 2>&1; then
     echo "       Installing ffmpeg support..."
-    $PYTHON_CMD -m pip install --upgrade "imageio-ffmpeg>=0.5.1" >/dev/null 2>&1 || true
+    $VENV_PYTHON -m pip install --upgrade "imageio-ffmpeg>=0.5.1" >/dev/null 2>&1 || true
 fi
 
 echo "       Plutus installed."
@@ -195,16 +210,14 @@ echo "       Plutus installed."
 
 echo "[3/4] Creating launcher..."
 
-PLUTUS_DIR="$HOME/.plutus"
-mkdir -p "$PLUTUS_DIR"
-
-# Create shared launcher script used by shortcuts
+# The launcher always uses the venv Python so Plutus and all its
+# dependencies are found regardless of system Python configuration.
 LAUNCHER="$PLUTUS_DIR/start.sh"
 cat > "$LAUNCHER" << LAUNCHER_EOF
 #!/bin/bash
 # Plutus Launcher — double-click or run to start Plutus
 
-PYTHON="$PYTHON_FULL_PATH"
+PYTHON="$VENV_DIR/bin/python"
 
 # Check if Plutus is already running
 if curl -sf http://localhost:7777/api/config > /dev/null 2>&1; then
@@ -221,6 +234,34 @@ else
 fi
 LAUNCHER_EOF
 chmod +x "$LAUNCHER"
+
+# Create a convenience wrapper so `plutus` command works from anywhere
+# by delegating to the venv's entry point.
+PLUTUS_BIN="$PLUTUS_DIR/plutus"
+cat > "$PLUTUS_BIN" << BIN_EOF
+#!/bin/bash
+# Plutus CLI wrapper — delegates to the venv installation
+exec "$VENV_DIR/bin/python" -m plutus "\$@"
+BIN_EOF
+chmod +x "$PLUTUS_BIN"
+
+# Add ~/.plutus to PATH if not already there (for `plutus` command)
+_SHELL_RC=""
+if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
+    _SHELL_RC="$HOME/.zshrc"
+elif [ -f "$HOME/.bashrc" ]; then
+    _SHELL_RC="$HOME/.bashrc"
+elif [ -f "$HOME/.bash_profile" ]; then
+    _SHELL_RC="$HOME/.bash_profile"
+fi
+if [ -n "$_SHELL_RC" ]; then
+    if ! grep -q '\.plutus' "$_SHELL_RC" 2>/dev/null; then
+        echo '' >> "$_SHELL_RC"
+        echo '# Plutus CLI' >> "$_SHELL_RC"
+        echo 'export PATH="$HOME/.plutus:$PATH"' >> "$_SHELL_RC"
+    fi
+fi
+export PATH="$PLUTUS_DIR:$PATH"
 
 SHORTCUT_CREATED=false
 
