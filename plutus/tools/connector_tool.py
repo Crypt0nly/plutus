@@ -437,6 +437,23 @@ class ConnectorTool(Tool):
                         "(default true)."
                     ),
                 },
+                "offset": {
+                    "type": "integer",
+                    "description": (
+                        "Starting line number (0-based) for reading file content "
+                        "with get_file. Use this to paginate through large files. "
+                        "Default 0 (start of file)."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of lines to return for get_file. "
+                        "Default 0 means auto (returns as many lines as fit "
+                        "within the response size limit). Use with offset "
+                        "to paginate large files."
+                    ),
+                },
                 "per_page": {
                     "type": "integer",
                     "description": (
@@ -1406,12 +1423,87 @@ class ConnectorTool(Tool):
                 path = kwargs.get("path", "")
                 if not path:
                     return "Error: 'path' is required (file path in the repo)"
-                result = await connector.get_file(
+                file_result = await connector.get_file(
                     path,
                     ref=kwargs.get("ref"),
                     owner=owner,
                     repo=repo,
                 )
+                if not file_result.get("success"):
+                    return (
+                        f"GitHub error: "
+                        f"{file_result.get('message', 'Unknown error')}"
+                    )
+
+                # Directory listings are small — return as JSON directly
+                if file_result.get("type") == "directory":
+                    entries = file_result.get("entries", [])
+                    formatted = _json.dumps(
+                        {"type": "directory", "entries": entries},
+                        indent=2, default=str, ensure_ascii=False,
+                    )
+                    return formatted
+
+                # ── Chunked file reading ──
+                content = file_result.get("content", "")
+                lines = content.split("\n") if content else []
+                total_lines = len(lines)
+
+                offset = int(kwargs.get("offset", 0))
+                limit = int(kwargs.get("limit", 0))
+
+                # Clamp offset
+                if offset < 0:
+                    offset = 0
+                if offset > total_lines:
+                    offset = total_lines
+
+                # Auto-limit: fit as many whole lines as possible
+                # within a character budget
+                max_content_chars = 32000
+                if limit <= 0:
+                    char_count = 0
+                    auto_end = offset
+                    for i in range(offset, total_lines):
+                        line_len = len(lines[i]) + 1  # +1 for newline
+                        if char_count + line_len > max_content_chars:
+                            break
+                        char_count += line_len
+                        auto_end = i + 1
+                    limit = auto_end - offset
+                    # If even the first line exceeds the budget, show at
+                    # least one line so the caller can still make progress
+                    if limit == 0 and offset < total_lines:
+                        limit = 1
+
+                chunk_lines = lines[offset: offset + limit]
+                lines_returned = len(chunk_lines)
+                end_line = offset + lines_returned
+                truncated = end_line < total_lines
+
+                # Build a compact, token-efficient text response
+                file_path_display = file_result.get("path", path)
+                sha = file_result.get("sha", "")
+                header = f"File: {file_path_display} | sha: {sha}"
+                if total_lines > lines_returned or offset > 0:
+                    header += (
+                        f" | lines {offset + 1}-{end_line}"
+                        f" of {total_lines}"
+                    )
+                else:
+                    header += f" | {total_lines} lines"
+
+                parts = [header, ""]
+                parts.append("\n".join(chunk_lines))
+
+                if truncated:
+                    remaining = total_lines - end_line
+                    parts.append(
+                        f"\n... truncated ({remaining} more lines). "
+                        f"Use offset={end_line} to read the next chunk."
+                    )
+
+                return "\n".join(parts)
 
             elif github_action == "create_or_update_file":
                 path = kwargs.get("path", "")
