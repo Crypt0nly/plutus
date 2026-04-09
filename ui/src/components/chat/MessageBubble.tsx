@@ -387,7 +387,7 @@ function ToolResultContent({ content }: { content: string }) {
   const isLong = content.length > 300;
   const isDiff = content.includes("@@") || content.includes("--- ") || content.includes("+++ ");
   const isJson = content.trim().startsWith("{") || content.trim().startsWith("[");
-  const isError = content.startsWith("[ERROR]") || content.toLowerCase().includes("error:");
+  const isError = content.startsWith("[ERROR]") || content.startsWith("[DENIED]") || content.startsWith("[REJECTED]") || content.startsWith("Error:") || content.startsWith("Error ") || /^GitHub error:/i.test(content);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -509,7 +509,7 @@ function CollapsibleToolResult({ content }: { content: string }) {
   const isSnapshot = !isScreenshot && !isAttachmentImage && !isAttachmentFile &&
     content.includes("[ref=") && (content.includes("button") || content.includes("link") ||
       content.includes("textbox") || content.includes("heading"));
-  const isError = content.startsWith("[ERROR]") || content.toLowerCase().includes("error:");
+  const isError = content.startsWith("[ERROR]") || content.startsWith("[DENIED]") || content.startsWith("[REJECTED]") || content.startsWith("Error:") || content.startsWith("Error ") || /^GitHub error:/i.test(content);
   const isJson = content.trim().startsWith("{") || content.trim().startsWith("[");
   const isDiff = content.includes("@@") || content.includes("--- ") || content.includes("+++ ");
 
