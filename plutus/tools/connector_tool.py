@@ -953,7 +953,8 @@ class ConnectorTool(Tool):
             elif discord_action == "create_channel":
                 if not name:
                     return "Error: 'name' is required to create a channel"
-                result = await connector.create_channel(name, **kwargs)
+                channel_kwargs = {k: v for k, v in kwargs.items() if k != "name"}
+                result = await connector.create_channel(name, **channel_kwargs)
             elif discord_action == "delete_channel":
                 if not target_id:
                     return "Error: 'target_id' (channel_id) is required"
@@ -981,7 +982,8 @@ class ConnectorTool(Tool):
             elif discord_action == "create_role":
                 if not name:
                     return "Error: 'name' is required to create a role"
-                result = await connector.create_role(name, **kwargs)
+                role_kwargs = {k: v for k, v in kwargs.items() if k != "name"}
+                result = await connector.create_role(name, **role_kwargs)
             elif discord_action == "delete_role":
                 if not target_id:
                     return "Error: 'target_id' (role_id) is required"
