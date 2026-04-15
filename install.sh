@@ -263,13 +263,32 @@ if [ -n "$_SHELL_RC" ]; then
 fi
 export PATH="$PLUTUS_DIR:$PATH"
 
+# Stage branded launcher icons. Prefer repo-bundled assets when the installer is
+# run from disk, and fall back to the hosted copies when needed.
+ICON_PNG="$PLUTUS_DIR/plutus-icon.png"
+ICON_ICNS="$PLUTUS_DIR/plutus-icon.icns"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)"
+
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/assets/plutus-icon.png" ]; then
+    cp "$SCRIPT_DIR/assets/plutus-icon.png" "$ICON_PNG"
+else
+    curl -fsSL "https://useplutus.ai/plutus-icon.png" -o "$ICON_PNG" 2>/dev/null || true
+fi
+
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/assets/plutus-icon.icns" ]; then
+    cp "$SCRIPT_DIR/assets/plutus-icon.icns" "$ICON_ICNS"
+else
+    curl -fsSL "https://useplutus.ai/plutus-icon.icns" -o "$ICON_ICNS" 2>/dev/null || true
+fi
+
 SHORTCUT_CREATED=false
 
 if [ "$OS" = "Darwin" ]; then
     # ── macOS: Create a .app bundle ──
     APP_DIR="$HOME/Applications/Plutus.app"
     MACOS_DIR="$APP_DIR/Contents/MacOS"
-    mkdir -p "$MACOS_DIR"
+    RESOURCES_DIR="$APP_DIR/Contents/Resources"
+    mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
     # Info.plist
     cat > "$APP_DIR/Contents/Info.plist" << 'PLIST_EOF'
@@ -292,6 +311,8 @@ if [ "$OS" = "Darwin" ]; then
     <string>1.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>plutus-icon</string>
     <key>LSBackgroundOnly</key>
     <true/>
 </dict>
@@ -304,6 +325,10 @@ PLIST_EOF
 exec "$LAUNCHER"
 EXEC_EOF
     chmod +x "$MACOS_DIR/plutus-launcher"
+
+    if [ -f "$ICON_ICNS" ]; then
+        cp "$ICON_ICNS" "$RESOURCES_DIR/plutus-icon.icns"
+    fi
 
     SHORTCUT_CREATED=true
     echo "       App created at ~/Applications/Plutus.app"
@@ -319,6 +344,7 @@ else
 Name=Plutus
 Comment=Autonomous AI Agent
 Exec=bash "$LAUNCHER"
+Icon=$ICON_PNG
 Terminal=false
 Type=Application
 Categories=Utility;Development;

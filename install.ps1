@@ -342,6 +342,30 @@ if (-not (Test-Path $workspaceDir)) {
     Write-Host "       Workspace created at $workspaceDir" -ForegroundColor Green
 }
 
+# Stage the branded Plutus shortcut icon. Prefer the repo-bundled asset when
+# the installer is run from disk, and fall back to the hosted copy when the
+# shortcut is created from a standalone script.
+$iconPath = Join-Path $plutusDir "plutus-icon.ico"
+$localIconSource = $null
+if ($PSCommandPath) {
+    $installerDir = Split-Path -Parent $PSCommandPath
+    $candidateIcon = Join-Path $installerDir "assets\plutus-icon.ico"
+    if (Test-Path $candidateIcon) {
+        $localIconSource = $candidateIcon
+    }
+}
+
+try {
+    if ($localIconSource) {
+        Copy-Item -Path $localIconSource -Destination $iconPath -Force
+    } else {
+        Invoke-WebRequest -Uri "https://useplutus.ai/plutus-icon.ico" -OutFile $iconPath -UseBasicParsing -ErrorAction Stop | Out-Null
+    }
+} catch {
+    Write-Host "       Could not stage the custom Plutus icon; using the default shortcut icon." -ForegroundColor Yellow
+}
+
+
 # Create launcher scripts.
 # Two-file approach for reliability:
 #   start_plutus.bat  — runs Python and redirects ALL output to the log file
@@ -428,6 +452,9 @@ try {
     $shortcut.Arguments = "`"$vbsPath`""
     $shortcut.Description = "Launch Plutus AI Agent"
     $shortcut.WorkingDirectory = $plutusDir
+    if (Test-Path $iconPath) {
+        $shortcut.IconLocation = "$iconPath,0"
+    }
     $shortcut.Save()
 
     # Start Menu shortcut
@@ -437,6 +464,9 @@ try {
     $startShortcut.Arguments = "`"$vbsPath`""
     $startShortcut.Description = "Launch Plutus AI Agent"
     $startShortcut.WorkingDirectory = $plutusDir
+    if (Test-Path $iconPath) {
+        $startShortcut.IconLocation = "$iconPath,0"
+    }
     $startShortcut.Save()
 
     $shortcutCreated = $true
