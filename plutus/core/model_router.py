@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from plutus.config import SecretsStore
@@ -32,7 +32,7 @@ logger = logging.getLogger("plutus.model_router")
 
 # ── Complexity tiers (used for worker model selection) ───────────────────────
 
-class Complexity(str, Enum):
+class Complexity(StrEnum):
     SIMPLE = "simple"      # Quick lookups, summaries, classification, chat
     MODERATE = "moderate"   # Standard tasks, browsing, file ops, tool use
     COMPLEX = "complex"     # Multi-step planning, code architecture, deep analysis
@@ -59,11 +59,14 @@ class ModelSpec:
 AVAILABLE_MODELS: dict[str, ModelSpec] = {
     # Anthropic
     "claude-opus": ModelSpec(
-        id="claude-opus-4-6",
+        id="claude-opus-4-7",
         provider="anthropic",
         display_name="Claude Opus",
         complexity_tier=Complexity.COMPLEX,
-        description="Most intelligent. Best for complex reasoning, architecture, deep analysis, long-form writing.",
+        description=(
+            "Most intelligent. Best for complex reasoning, architecture, "
+            "deep analysis, long-form writing."
+        ),
         max_tokens=4096,
         cost_per_1k_input=0.015,
         cost_per_1k_output=0.075,
@@ -83,7 +86,10 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         provider="anthropic",
         display_name="Claude Haiku",
         complexity_tier=Complexity.SIMPLE,
-        description="Fastest and cheapest. Great for summaries, lookups, classification, simple tasks.",
+        description=(
+            "Fastest and cheapest. Great for summaries, lookups, "
+            "classification, simple tasks."
+        ),
         max_tokens=4096,
         cost_per_1k_input=0.00025,
         cost_per_1k_output=0.00125,
@@ -262,16 +268,27 @@ class ModelRouter:
         if model_key and model_key != "auto":
             spec = self.get_model(model_key)
             if spec:
-                logger.info(f"Worker model (explicit): {spec.display_name} for '{task_description[:50]}'")
+                logger.info(
+                    "Worker model (explicit): %s for '%s'",
+                    spec.display_name,
+                    task_description[:50],
+                )
                 return spec
-            logger.warning(f"Requested model '{model_key}' not available, falling back to auto")
+            logger.warning(
+                "Requested model '%s' not available, falling back to auto",
+                model_key,
+            )
 
         # Check if there's a default worker model set (not "auto")
         default_key = self._config.default_worker_model
         if default_key and default_key != "auto":
             spec = self.get_model(default_key)
             if spec:
-                logger.info(f"Worker model (default): {spec.display_name} for '{task_description[:50]}'")
+                logger.info(
+                    "Worker model (default): %s for '%s'",
+                    spec.display_name,
+                    task_description[:50],
+                )
                 return spec
 
         # Auto-select based on task complexity
