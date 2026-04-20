@@ -45,7 +45,7 @@ export function PermissionToggle({
   const perm = permissionLabels[effectivePermission] || permissionLabels.denied;
 
   return (
-    <div className={`flex items-center gap-4 p-3.5 rounded-xl border transition-all duration-200 ${
+    <div className={`flex items-start gap-4 p-3.5 rounded-xl border transition-all duration-200 ${
       isEnabled
         ? "bg-gray-800/40 border-gray-700/50 hover:border-gray-600/50"
         : "bg-gray-800/20 border-gray-800/40 opacity-60 hover:opacity-80"
@@ -67,11 +67,13 @@ export function PermissionToggle({
             {perm.label}
           </span>
         </div>
-        <p className="text-xs text-gray-500 truncate mt-0.5">{description}</p>
+        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed whitespace-normal break-words" title={description}>
+          {description}
+        </p>
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-2.5 flex-shrink-0">
+      <div className="flex items-center gap-2.5 flex-shrink-0 pt-0.5">
         {/* Approval toggle */}
         {isEnabled && (
           <button
