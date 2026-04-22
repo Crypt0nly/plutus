@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def plutus_dir() -> Path:
@@ -148,6 +148,16 @@ class CloudSyncConfig(BaseModel):
 
 
 class PlutusConfig(BaseSettings):
+    # Use a unique env prefix so common OS environment variables like BROWSER,
+    # MODEL, GATEWAY, MEMORY, AGENT, etc. don't collide with config field names.
+    # Without this prefix, pydantic-settings reads *every* env var that matches
+    # a field name (case-insensitive), causing silent crashes on Windows where
+    # BROWSER is almost always set.
+    model_config = SettingsConfigDict(
+        env_prefix="PLUTUS_",
+        extra="ignore",  # tolerate old/removed fields in config.json
+    )
+
     model: ModelConfig = Field(default_factory=ModelConfig)
     guardrails: GuardrailsConfig = Field(default_factory=GuardrailsConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
@@ -178,13 +188,23 @@ class PlutusConfig(BaseSettings):
             try:
                 data = json.loads(path.read_text())
                 return cls(**data)
-            except (json.JSONDecodeError, ValueError, TypeError) as e:
+            except (json.JSONDecodeError, ValueError, TypeError, Exception) as e:
                 import logging
                 logging.getLogger("plutus.config").warning(
                     f"Corrupted config file ({e}), using defaults. "
                     f"Fix or delete {path} to silence this warning."
                 )
-        return cls()
+        try:
+            return cls()
+        except Exception:
+            # Last resort: if even defaults fail (e.g. a rogue env var still
+            # slips through), construct with model_construct to bypass all
+            # validation and env-var reading entirely.
+            import logging
+            logging.getLogger("plutus.config").warning(
+                "Failed to construct default config — using raw defaults"
+            )
+            return cls.model_construct()
 
     def save(self) -> None:
         """Persist config to disk."""
