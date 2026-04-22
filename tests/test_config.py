@@ -44,7 +44,7 @@ class TestConfig:
     def test_model_config_defaults(self):
         mc = ModelConfig()
         assert mc.temperature == 0.7
-        assert mc.max_tokens == 50_000_000
+        assert mc.max_tokens == 16384
         assert mc.base_url is None
 
     def test_guardrails_config_defaults(self):

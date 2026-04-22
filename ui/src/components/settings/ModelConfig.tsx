@@ -70,7 +70,7 @@ export function ModelConfig({ config, onSave, saving, keyStatus, onKeyStatusChan
   const [model, setModel] = useState(config.model || "");
   const [baseUrl, setBaseUrl] = useState(config.base_url || "");
   const [temperature, setTemperature] = useState(config.temperature ?? 0.7);
-  const [maxTokens, setMaxTokens] = useState(config.max_tokens ?? 50_000_000);
+  const [maxTokens, setMaxTokens] = useState(config.max_tokens ?? 4096);
   const [customModel, setCustomModel] = useState("");
 
   // API key state
@@ -306,7 +306,7 @@ export function ModelConfig({ config, onSave, saving, keyStatus, onKeyStatusChan
               <input
                 type="number"
                 value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 50_000_000)}
+                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 4096)}
                 className="text-sm text-gray-200 py-2 w-24"
                 min={256}
                 step={1024}
