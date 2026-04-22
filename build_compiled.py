@@ -39,9 +39,8 @@ PROTECTED_MODULES = [
     # CLI — installer, onboarding wizard, setup commands, auto-configuration
     "plutus/cli.py",
 
-    # Gateway — server startup orchestration, API surface, WebSocket handling
+    # Gateway — server startup orchestration, WebSocket handling
     "plutus/gateway/server.py",
-    "plutus/gateway/routes.py",
     "plutus/gateway/ws.py",
 
     # Product features — monitoring and scheduling that make it "just work"

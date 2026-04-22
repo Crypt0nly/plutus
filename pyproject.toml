@@ -100,9 +100,8 @@ artifacts = ["plutus/**/*.so", "plutus/**/*.pyd"]
 exclude = [
     # CLI — installer, onboarding wizard, setup commands
     "plutus/cli.py",
-    # Gateway — server startup, API routes, WebSocket orchestration
+    # Gateway — server startup, WebSocket orchestration
     "plutus/gateway/server.py",
-    "plutus/gateway/routes.py",
     "plutus/gateway/ws.py",
     # Product features — heartbeat monitoring, task scheduler
     "plutus/core/heartbeat.py",
