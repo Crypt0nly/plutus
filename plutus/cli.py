@@ -150,9 +150,11 @@ def start(
             sys.exit(1)
 
     console.print(BANNER)
+    console.print(f"  [dim]v{__version__}[/dim]\n")
 
     # Show current configuration
     table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_row("Version", f"[bold]{__version__}[/bold]")
     table.add_row("Tier", f"[bold]{config.guardrails.tier}[/bold]")
     table.add_row("Model", f"{config.model.provider}/{config.model.model}")
     table.add_row("Interface", f"http://{bind_host}:{bind_port}")
