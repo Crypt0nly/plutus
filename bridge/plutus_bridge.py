@@ -26,7 +26,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Lazy dependency bootstrap – install missing packages automatically
@@ -47,16 +47,13 @@ def _ensure_packages() -> None:
             missing.append(spec)
     if missing:
         print(f"Installing missing packages: {', '.join(missing)}")
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "--quiet", *missing]
-        )
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", *missing])
 
 
 _ensure_packages()
 
 import websockets  # noqa: E402
 import websockets.exceptions  # noqa: E402
-
 from sync_client import LocalSyncClient, SyncError  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -68,16 +65,17 @@ CONFIG_DIR = Path.home() / ".plutus"
 CONFIG_FILE = CONFIG_DIR / "bridge_config.json"
 LOG_FILE = CONFIG_DIR / "bridge.log"
 
-HEARTBEAT_INTERVAL = 30       # seconds between heartbeats
-SYNC_INTERVAL = 60            # seconds between sync cycles
-RECONNECT_DELAY_INIT = 5      # initial reconnect back-off
-RECONNECT_DELAY_MAX = 300     # cap at 5 minutes
-TASK_OUTPUT_LIMIT = 10_000    # max chars for stdout in task results
-TASK_STDERR_LIMIT = 5_000     # max chars for stderr in task results
+HEARTBEAT_INTERVAL = 30  # seconds between heartbeats
+SYNC_INTERVAL = 60  # seconds between sync cycles
+RECONNECT_DELAY_INIT = 5  # initial reconnect back-off
+RECONNECT_DELAY_MAX = 300  # cap at 5 minutes
+TASK_OUTPUT_LIMIT = 10_000  # max chars for stdout in task results
+TASK_STDERR_LIMIT = 5_000  # max chars for stderr in task results
 
 # ---------------------------------------------------------------------------
 # Logging  – dual handler: console (INFO) + rotating file (DEBUG)
 # ---------------------------------------------------------------------------
+
 
 def _setup_logging() -> logging.Logger:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -113,7 +111,8 @@ log = _setup_logging()
 # Configuration helpers
 # ---------------------------------------------------------------------------
 
-def load_config() -> Dict[str, Any]:
+
+def load_config() -> dict[str, Any]:
     """Load bridge configuration from ~/.plutus/bridge_config.json."""
     if CONFIG_FILE.exists():
         try:
@@ -123,14 +122,14 @@ def load_config() -> Dict[str, Any]:
     return {}
 
 
-def save_config(config: Dict[str, Any]) -> None:
+def save_config(config: dict[str, Any]) -> None:
     """Persist bridge configuration."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2), encoding="utf-8")
     log.info("Config saved to %s", CONFIG_FILE)
 
 
-def run_setup() -> Dict[str, Any]:
+def run_setup() -> dict[str, Any]:
     """Interactive first-time setup wizard."""
     print("\n╔══════════════════════════════════════╗")
     print("║     Plutus Bridge – Initial Setup    ║")
@@ -142,9 +141,7 @@ def run_setup() -> Dict[str, Any]:
     if token:
         config["token"] = token
 
-    server = input(
-        f"  Server URL [{config.get('server', DEFAULT_SERVER)}]: "
-    ).strip()
+    server = input(f"  Server URL [{config.get('server', DEFAULT_SERVER)}]: ").strip()
     if server:
         config["server"] = server
     elif "server" not in config:
@@ -167,7 +164,8 @@ def run_setup() -> Dict[str, Any]:
 # System info
 # ---------------------------------------------------------------------------
 
-def get_system_info() -> Dict[str, Any]:
+
+def get_system_info() -> dict[str, Any]:
     """Gather local system information for handshake."""
     return {
         "os": platform.system(),
@@ -184,14 +182,15 @@ def get_system_info() -> Dict[str, Any]:
 # Local task execution
 # ---------------------------------------------------------------------------
 
-async def execute_local_task(task: Dict[str, Any]) -> Dict[str, Any]:
+
+async def execute_local_task(task: dict[str, Any]) -> dict[str, Any]:
     """Execute a task dispatched by the cloud agent.
 
     Supported task types:
         shell, open_app, read_file, write_file, list_files, ping
     """
     task_type: str = task.get("type", "")
-    payload: Dict[str, Any] = task.get("payload", {})
+    payload: dict[str, Any] = task.get("payload", {})
     task_id: str = task.get("task_id", "unknown")
 
     log.info("Executing task %s [%s]", task_id, task_type)
@@ -199,7 +198,7 @@ async def execute_local_task(task: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         result = await _dispatch_task(task_type, payload)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         result = {"success": False, "error": f"Task timed out: {task_type}"}
     except Exception as exc:
         log.exception("Task %s failed with unhandled error", task_id)
@@ -216,7 +215,7 @@ async def execute_local_task(task: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-async def _dispatch_task(task_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def _dispatch_task(task_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Route a task to the correct handler."""
 
     if task_type == "shell":
@@ -235,10 +234,76 @@ async def _dispatch_task(task_type: str, payload: Dict[str, Any]) -> Dict[str, A
     return {"success": False, "error": f"Unknown task type: {task_type}"}
 
 
-async def _task_shell(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def _execute_tool_call(tool: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Execute a cloud agent tool call using local task handlers.
+
+    Maps the cloud tool naming convention (shell_exec, file_read, etc.)
+    to the existing local task functions.
+    """
+    # Map cloud tool names to local task handlers
+    if tool == "shell_exec":
+        return await _task_shell(
+            {
+                "command": args.get("command", ""),
+                "timeout": args.get("timeout", 60),
+                "cwd": args.get("cwd"),
+            }
+        )
+
+    if tool == "python_exec":
+        # Run Python code via shell
+        code = args.get("code", "")
+        timeout = args.get("timeout", 60)
+        return await _task_shell(
+            {
+                "command": f"{sys.executable} -c {json.dumps(code)}",
+                "timeout": timeout,
+            }
+        )
+
+    if tool == "file_read":
+        return _task_read_file(
+            {
+                "path": args.get("path", ""),
+                "max_size": args.get("max_size", 100_000),
+            }
+        )
+
+    if tool == "file_write":
+        return _task_write_file(
+            {
+                "path": args.get("path", ""),
+                "content": args.get("content", ""),
+            }
+        )
+
+    if tool == "file_list":
+        return _task_list_files(
+            {
+                "path": args.get("path", "."),
+                "pattern": args.get("pattern", "*"),
+                "limit": args.get("limit", 500),
+            }
+        )
+
+    if tool == "open_app":
+        return _task_open_app(
+            {
+                "app_name": args.get("app_name", ""),
+            }
+        )
+
+    if tool == "ping":
+        return {"success": True, "message": "pong", "system": get_system_info()}
+
+    # Fallback: try as a legacy task type
+    return await _dispatch_task(tool, args)
+
+
+async def _task_shell(payload: dict[str, Any]) -> dict[str, Any]:
     cmd: str = payload.get("command", "")
     timeout: int = min(payload.get("timeout", 60), 300)  # cap at 5 min
-    cwd: Optional[str] = payload.get("cwd")
+    cwd: str | None = payload.get("cwd")
 
     if not cmd:
         return {"success": False, "error": "Empty command"}
@@ -258,7 +323,7 @@ async def _task_shell(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _task_open_app(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_open_app(payload: dict[str, Any]) -> dict[str, Any]:
     app_name: str = payload.get("app_name", "")
     if not app_name:
         return {"success": False, "error": "No app_name provided"}
@@ -276,7 +341,7 @@ def _task_open_app(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Failed to open {app_name}: {exc}"}
 
 
-def _task_read_file(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_read_file(payload: dict[str, Any]) -> dict[str, Any]:
     raw_path: str = payload.get("path", "")
     if not raw_path:
         return {"success": False, "error": "No path provided"}
@@ -295,7 +360,7 @@ def _task_read_file(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Read failed: {exc}"}
 
 
-def _task_write_file(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_write_file(payload: dict[str, Any]) -> dict[str, Any]:
     raw_path: str = payload.get("path", "")
     content: str = payload.get("content", "")
     if not raw_path:
@@ -310,7 +375,7 @@ def _task_write_file(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Write failed: {exc}"}
 
 
-def _task_list_files(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _task_list_files(payload: dict[str, Any]) -> dict[str, Any]:
     raw_path: str = payload.get("path", ".")
     pattern: str = payload.get("pattern", "*")
     limit: int = min(payload.get("limit", 500), 2000)
@@ -329,6 +394,7 @@ def _task_list_files(payload: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Graceful shutdown coordinator
 # ---------------------------------------------------------------------------
+
 
 class ShutdownCoordinator:
     """Manages graceful shutdown across all async tasks."""
@@ -351,6 +417,7 @@ class ShutdownCoordinator:
 # ---------------------------------------------------------------------------
 # Bridge daemon
 # ---------------------------------------------------------------------------
+
 
 class PlutusBridge:
     """Main bridge daemon – manages WS connection, heartbeat, sync, tasks."""
@@ -375,7 +442,7 @@ class PlutusBridge:
             token=token,
         )
         self.shutdown = ShutdownCoordinator()
-        self._ws: Optional[websockets.WebSocketClientProtocol] = None
+        self._ws: websockets.WebSocketClientProtocol | None = None
         self._tasks: list[asyncio.Task] = []
 
     # ---- Main entry point ------------------------------------------------
@@ -389,15 +456,9 @@ class PlutusBridge:
         log.info("Log    : %s", LOG_FILE)
 
         # Run connection loop and sync loop concurrently
-        connection_task = asyncio.create_task(
-            self._connection_loop(), name="connection_loop"
-        )
-        sync_task = asyncio.create_task(
-            self._sync_loop(), name="sync_loop"
-        )
-        shutdown_task = asyncio.create_task(
-            self.shutdown.wait(), name="shutdown_wait"
-        )
+        connection_task = asyncio.create_task(self._connection_loop(), name="connection_loop")
+        sync_task = asyncio.create_task(self._sync_loop(), name="sync_loop")
+        shutdown_task = asyncio.create_task(self.shutdown.wait(), name="shutdown_wait")
 
         self._tasks = [connection_task, sync_task]
 
@@ -459,19 +520,18 @@ class PlutusBridge:
                     reconnect_delay = RECONNECT_DELAY_INIT
 
                     # Handshake
-                    await self._send(ws, {
-                        "type": "handshake",
-                        "system": get_system_info(),
-                        "version": VERSION,
-                    })
+                    await self._send(
+                        ws,
+                        {
+                            "type": "handshake",
+                            "system": get_system_info(),
+                            "version": VERSION,
+                        },
+                    )
 
                     # Run heartbeat + message receiver concurrently
-                    hb = asyncio.create_task(
-                        self._heartbeat_loop(ws), name="heartbeat"
-                    )
-                    recv = asyncio.create_task(
-                        self._receive_loop(ws), name="receiver"
-                    )
+                    hb = asyncio.create_task(self._heartbeat_loop(ws), name="heartbeat")
+                    recv = asyncio.create_task(self._receive_loop(ws), name="receiver")
 
                     shutdown_wait = asyncio.create_task(self.shutdown.wait())
 
@@ -496,7 +556,12 @@ class PlutusBridge:
             except asyncio.CancelledError:
                 return
             except Exception as exc:
-                log.error("Unexpected WS error: %s. Retrying in %ds…", exc, reconnect_delay, exc_info=True)
+                log.error(
+                    "Unexpected WS error: %s. Retrying in %ds…",
+                    exc,
+                    reconnect_delay,
+                    exc_info=True,
+                )
 
             if self.shutdown.is_shutting_down:
                 return
@@ -533,7 +598,7 @@ class PlutusBridge:
                 if self.shutdown.is_shutting_down:
                     return
                 try:
-                    data: Dict[str, Any] = json.loads(raw)
+                    data: dict[str, Any] = json.loads(raw)
                 except json.JSONDecodeError:
                     log.warning("Received non-JSON message, ignoring.")
                     continue
@@ -542,18 +607,26 @@ class PlutusBridge:
                 log.debug("Received message type=%s", msg_type)
 
                 if msg_type == "task":
-                    # Execute task and send result (non-blocking)
+                    # Legacy task dispatch (non-blocking)
                     asyncio.create_task(
                         self._handle_task(ws, data), name=f"task-{data.get('task_id')}"
                     )
 
-                elif msg_type == "sync_request":
+                elif msg_type == "tool_call":
+                    # Cloud agent tool call — execute locally and return result
                     asyncio.create_task(
-                        self._handle_sync_request(ws, data), name="sync_request"
+                        self._handle_tool_call(ws, data),
+                        name=f"tool-{data.get('call_id')}",
                     )
+
+                elif msg_type == "sync_request":
+                    asyncio.create_task(self._handle_sync_request(ws, data), name="sync_request")
 
                 elif msg_type == "heartbeat_ack":
                     log.debug("Heartbeat ACK received.")
+
+                elif msg_type == "handshake_ack":
+                    log.debug("Handshake acknowledged by server.")
 
                 elif msg_type == "error":
                     log.error("Server error: %s", data.get("message", data))
@@ -576,40 +649,97 @@ class PlutusBridge:
     # ---- Task handler ----------------------------------------------------
 
     async def _handle_task(
-        self, ws: websockets.WebSocketClientProtocol, data: Dict[str, Any]
+        self, ws: websockets.WebSocketClientProtocol, data: dict[str, Any]
     ) -> None:
         task_id = data.get("task_id", "unknown")
         try:
             result = await execute_local_task(data)
-            await self._send(ws, {
-                "type": "task_result",
-                "task_id": task_id,
-                "result": result,
-            })
+            await self._send(
+                ws,
+                {
+                    "type": "task_result",
+                    "task_id": task_id,
+                    "result": result,
+                },
+            )
         except websockets.exceptions.ConnectionClosed:
             log.warning("Cannot send result for task %s – connection closed.", task_id)
         except Exception as exc:
             log.error("Failed to handle task %s: %s", task_id, exc, exc_info=True)
 
+    # ---- Tool call handler (cloud agent → local) ----------------------------
+
+    async def _handle_tool_call(
+        self, ws: websockets.WebSocketClientProtocol, data: dict[str, Any]
+    ) -> None:
+        """Handle a tool_call message from the cloud agent.
+
+        Maps cloud tool names (shell_exec, file_read, etc.) to the existing
+        local task handlers, executes them, and returns a tool_result message.
+        """
+        call_id = data.get("call_id", "unknown")
+        tool = data.get("tool", "")
+        args = data.get("args", {})
+
+        log.info("Tool call %s [%s]", call_id, tool)
+        t0 = time.monotonic()
+
+        try:
+            result = await _execute_tool_call(tool, args)
+        except TimeoutError:
+            result = {"success": False, "error": f"Tool timed out: {tool}"}
+        except Exception as exc:
+            log.exception("Tool call %s failed with unhandled error", call_id)
+            result = {"success": False, "error": f"{type(exc).__name__}: {exc}"}
+
+        elapsed = time.monotonic() - t0
+        log.info(
+            "Tool call %s [%s] finished in %.2fs – success=%s",
+            call_id,
+            tool,
+            elapsed,
+            result.get("success"),
+        )
+
+        try:
+            await self._send(
+                ws,
+                {
+                    "type": "tool_result",
+                    "call_id": call_id,
+                    "result": result,
+                },
+            )
+        except websockets.exceptions.ConnectionClosed:
+            log.warning("Cannot send tool result for %s – connection closed.", call_id)
+        except Exception as exc:
+            log.error("Failed to send tool result %s: %s", call_id, exc, exc_info=True)
+
     # ---- Sync request handler (cloud-initiated) --------------------------
 
     async def _handle_sync_request(
-        self, ws: websockets.WebSocketClientProtocol, data: Dict[str, Any]
+        self, ws: websockets.WebSocketClientProtocol, data: dict[str, Any]
     ) -> None:
         try:
             version = await self.sync_client.full_sync()
-            await self._send(ws, {
-                "type": "sync_response",
-                "success": True,
-                "server_version": version,
-            })
+            await self._send(
+                ws,
+                {
+                    "type": "sync_response",
+                    "success": True,
+                    "server_version": version,
+                },
+            )
         except SyncError as exc:
             log.error("Cloud-initiated sync failed: %s", exc)
-            await self._send(ws, {
-                "type": "sync_response",
-                "success": False,
-                "error": str(exc),
-            })
+            await self._send(
+                ws,
+                {
+                    "type": "sync_response",
+                    "success": False,
+                    "error": str(exc),
+                },
+            )
         except websockets.exceptions.ConnectionClosed:
             pass
 
@@ -637,22 +767,21 @@ class PlutusBridge:
     # ---- Helpers ---------------------------------------------------------
 
     @staticmethod
-    async def _send(
-        ws: websockets.WebSocketClientProtocol, data: Dict[str, Any]
-    ) -> None:
+    async def _send(ws: websockets.WebSocketClientProtocol, data: dict[str, Any]) -> None:
         await ws.send(json.dumps(data))
 
     async def _interruptible_sleep(self, seconds: float) -> None:
         """Sleep that can be interrupted by shutdown."""
         try:
             await asyncio.wait_for(self.shutdown.wait(), timeout=seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass  # Normal – timeout means we slept the full duration
 
 
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
