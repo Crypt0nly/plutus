@@ -33,7 +33,7 @@ class ModelConfig(BaseModel):
     api_key_env: str = "ANTHROPIC_API_KEY"
     base_url: str | None = None
     temperature: float = 0.7
-    max_tokens: int = 16384
+    max_tokens: int = 50_000_000
     web_search: bool = True  # Enable Anthropic server-side web search/fetch tools
 
 
