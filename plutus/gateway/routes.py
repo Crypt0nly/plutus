@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -23,6 +24,92 @@ def _version_newer(latest: str, current: str) -> bool:
         return l_parts > c_parts
     except (ValueError, AttributeError):
         return False
+
+
+def _python_satisfies_requires(
+    requires_python: str | None,
+    python_version: str | None = None,
+) -> bool:
+    """Return True when the current Python version satisfies a PyPI requires_python spec."""
+    if not requires_python:
+        return True
+    try:
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
+
+        version = python_version or (
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        )
+        return Version(version) in SpecifierSet(requires_python)
+    except Exception:
+        return True
+
+
+def _release_has_compatible_wheel(
+    release_files: list[dict[str, Any]] | None,
+    supported_tags: set[Any] | None = None,
+    python_version: str | None = None,
+) -> bool:
+    """Return True if any non-yanked wheel in *release_files* matches this platform."""
+    try:
+        from packaging.tags import sys_tags
+        from packaging.utils import parse_wheel_filename
+    except Exception:
+        return any(
+            isinstance(file, dict)
+            and file.get("packagetype") == "bdist_wheel"
+            and not file.get("yanked", False)
+            for file in (release_files or [])
+        )
+
+    tags = supported_tags or set(sys_tags())
+    for file in release_files or []:
+        if not isinstance(file, dict):
+            continue
+        if file.get("yanked", False) or file.get("packagetype") != "bdist_wheel":
+            continue
+        if not _python_satisfies_requires(file.get("requires_python"), python_version):
+            continue
+        filename = str(file.get("filename", ""))
+        if not filename.endswith(".whl"):
+            continue
+        try:
+            _name, _version, _build, wheel_tags = parse_wheel_filename(filename)
+        except Exception:
+            continue
+        if wheel_tags & tags:
+            return True
+    return False
+
+
+def _latest_compatible_release_version(
+    pypi_data: dict[str, Any],
+    supported_tags: set[Any] | None = None,
+    python_version: str | None = None,
+) -> str | None:
+    """Return the newest PyPI release version that has a compatible wheel."""
+    try:
+        from packaging.version import Version
+    except Exception:
+        info_version = pypi_data.get("info", {}).get("version")
+        return info_version if isinstance(info_version, str) else None
+
+    compatible_versions: list[tuple[Any, str]] = []
+    for version_str, release_files in (pypi_data.get("releases") or {}).items():
+        if not isinstance(version_str, str):
+            continue
+        try:
+            parsed_version = Version(version_str)
+        except Exception:
+            continue
+        if _release_has_compatible_wheel(release_files, supported_tags, python_version):
+            compatible_versions.append((parsed_version, version_str))
+
+    if not compatible_versions:
+        return None
+
+    compatible_versions.sort(key=lambda item: item[0])
+    return compatible_versions[-1][1]
 
 
 # ── Request body models (module-level for proper FastAPI schema generation) ──
@@ -2270,7 +2357,10 @@ def create_router() -> APIRouter:
                 pypi_resp.raise_for_status()
                 pypi_data = pypi_resp.json()
 
-            latest_version = pypi_data.get("info", {}).get("version", __version__)
+            published_version = pypi_data.get("info", {}).get("version", __version__)
+            latest_version = (
+                _latest_compatible_release_version(pypi_data) or published_version
+            )
             project_url = pypi_data.get("info", {}).get("project_url", "")
             update_available = _version_newer(latest_version, __version__)
 
@@ -2337,7 +2427,6 @@ def create_router() -> APIRouter:
     async def apply_update() -> dict[str, Any]:
         """Upgrade Plutus and restart. Works for both pip and git installs."""
         import asyncio
-        import sys
 
         from plutus import __version__
 
@@ -2522,29 +2611,30 @@ def create_router() -> APIRouter:
         # this platform/Python combination.  If PyPI has no newer version
         # either, the user is simply already up to date.
         if new_version == __version__:
-            # Ask PyPI for the latest published version
-            latest_pypi: str | None = None
+            # Ask PyPI for the newest published version and the newest wheel
+            # that actually matches this platform/Python combination.
+            latest_published_pypi: str | None = None
+            latest_compatible_pypi: str | None = None
             try:
-                import urllib.request, json as _json
+                import json as _json
+                import urllib.request
+
                 with urllib.request.urlopen(
                     "https://pypi.org/pypi/plutus-ai/json", timeout=8
                 ) as _resp:
                     _data = _json.loads(_resp.read())
-                    latest_pypi = _data["info"]["version"]
+                    latest_published_pypi = _data.get("info", {}).get("version")
+                    latest_compatible_pypi = _latest_compatible_release_version(_data)
             except Exception:
                 pass
 
-            if latest_pypi and latest_pypi != __version__:
-                # A newer version exists on PyPI but pip returned the old
-                # version. This can happen when the latest release has no
-                # wheel for this platform yet and pip silently falls back to
-                # the newest compatible version.
-                # Retry with an explicit version pin so pip either installs
-                # it or gives a clear error.
+            if latest_compatible_pypi and _version_newer(latest_compatible_pypi, __version__):
+                # Retry with an explicit pin to the newest version that does
+                # have a compatible wheel for this machine.
                 pip_pin_cmd = [
                     sys.executable, "-m", "pip", "install",
                     "--upgrade", "--no-cache-dir",
-                    f"plutus-ai=={latest_pypi}",
+                    f"plutus-ai=={latest_compatible_pypi}",
                 ]
                 pin_code, pin_out, pin_err = await run(pip_pin_cmd, timeout=180)
                 clean_pin_err = _clean_pip_stderr(pin_err)
@@ -2569,27 +2659,35 @@ def create_router() -> APIRouter:
                     # Pinned install succeeded — fall through to restart
                     pass
                 else:
-                    # Still couldn't install — no compatible wheel available
                     return {
                         "success": False,
                         "error": (
-                            f"v{latest_pypi} is available but has no compatible wheel "
-                            f"for your platform yet. A new release with your platform "
-                            f"support is being published. Please try again in a few minutes, "
-                            f"or run: pip install --upgrade plutus-ai"
+                            f"Automatic update to v{latest_compatible_pypi} did not complete. "
+                            f"Please try again, or run: pip install --upgrade plutus-ai=={latest_compatible_pypi}"
                         ),
                         "previous_version": __version__,
-                        "new_version": latest_pypi,
+                        "new_version": latest_compatible_pypi,
                         "steps": steps,
                         "restart_required": False,
                     }
             else:
-                # Already on the latest version
+                # Either we are already on the latest compatible wheel, or a
+                # newer published version exists but its wheel for this platform
+                # has not finished publishing yet.
+                latest_known = latest_compatible_pypi or __version__
+                if latest_published_pypi and _version_newer(latest_published_pypi, latest_known):
+                    error = (
+                        f"Already on the latest version available for your platform ({latest_known}). "
+                        f"The newer release v{latest_published_pypi} is still publishing platform wheels. "
+                        f"Please try again in a few minutes."
+                    )
+                else:
+                    error = f"Already on the latest version ({latest_known})."
                 return {
                     "success": False,
-                    "error": f"Already on the latest version ({__version__}).",
+                    "error": error,
                     "previous_version": __version__,
-                    "new_version": new_version,
+                    "new_version": latest_known,
                     "steps": steps,
                     "restart_required": False,
                 }
