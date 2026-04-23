@@ -168,17 +168,21 @@ export default function WorkspaceSyncView() {
     setPairingMsg(null);
     setCodeCopied(false);
     try {
-      const result = await api.cloudPairInitiate(cloudUrl);
-      setPairingCode(result.code);
-
-      // Also tell the local backend to start polling
-      await fetch("/api/cloud/pair", {
+      // Call the LOCAL backend which proxies to the cloud and starts polling.
+      // This avoids CORS issues and ensures only ONE pairing session is created.
+      const resp = await fetch("/api/cloud/pair", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cloud_url: cloudUrl }),
       });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+        throw new Error(err.detail || `Pairing failed: ${resp.status}`);
+      }
+      const result = await resp.json() as { pairing_id: string; code: string; expires_at: number };
+      setPairingCode(result.code);
 
-      // Poll for completion on the frontend side too (for UI updates)
+      // Poll local backend for completion (it polls the cloud in the background)
       if (pollRef.current) clearInterval(pollRef.current);
       const expiresAt = result.expires_at;
       pollRef.current = setInterval(async () => {
