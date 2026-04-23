@@ -138,12 +138,9 @@ class PlannerConfig(BaseModel):
 
 
 class CloudSyncConfig(BaseModel):
-    url: str = ""  # Cloud Plutus URL, e.g. https://app.plutus.ai
-    token: str = ""  # API token from cloud Settings → Workspace
-    auto_sync: bool = False  # automatically sync on file changes
-    auto_sync_interval: int = 300  # seconds between auto-sync checks (default 5 min)
-    last_push: float = 0.0  # unix timestamp of last successful push
-    last_pull: float = 0.0  # unix timestamp of last successful pull
+    url: str = ""  # (deprecated) Cloud URL — now auto-extracted from token
+    token: str = ""  # Bridge token from cloud Settings → Local Bridge
+    enabled: bool = True  # auto-start bridge when local Plutus starts
     workspace_dir: str = ""  # custom workspace path; empty = ~/plutus-workspace
 
 

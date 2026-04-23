@@ -753,46 +753,51 @@ async def _auto_start_connectors(connector_manager) -> None:
 # ── Cloud bridge auto-start ────────────────────────────────────────────────
 
 async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
-    """Start the cloud bridge daemon if a sync token is configured.
+    """Start the cloud bridge daemon if a bridge token is configured.
 
-    Derives the WebSocket URL from the cloud_sync.url setting and launches
-    the PlutusBridge as a background asyncio task.
+    The server URL is auto-extracted from the token (format:
+    ``plutus_<base64url(server_url)>.<hex_secret>``), so the user only
+    needs to paste a single token string.
     """
-    cloud_url = (config.cloud_sync.url or "").strip().rstrip("/")
     cloud_token = (config.cloud_sync.token or "").strip()
 
-    if not cloud_url or not cloud_token:
-        logger.debug("Cloud bridge not started — no sync URL/token configured.")
+    if not cloud_token:
+        logger.debug("Cloud bridge not started — no bridge token configured.")
+        return None
+
+    if not config.cloud_sync.enabled:
+        logger.debug("Cloud bridge disabled in config.")
         return None
 
     try:
-        # Derive WS URL from the HTTP URL
-        # https://api.useplutus.ai → wss://api.useplutus.ai/api/bridge/ws
-        ws_url = cloud_url.replace("https://", "wss://").replace("http://", "ws://")
-        ws_url = f"{ws_url}/api/bridge/ws"
-
         # Import the bridge module from the bridge/ directory
         import sys as _sys
-        bridge_dir = str(Path(__file__).resolve().parent.parent.parent / "bridge")
+
+        bridge_dir = str(
+            Path(__file__).resolve().parent.parent.parent / "bridge"
+        )
         if bridge_dir not in _sys.path:
             _sys.path.insert(0, bridge_dir)
 
-        from plutus_bridge import PlutusBridge
+        from plutus_bridge import PlutusBridge, extract_server_url
+
+        # Auto-extract server URL from token
+        server_url = extract_server_url(cloud_token)
+        logger.info("Cloud bridge server: %s", server_url)
 
         bridge = PlutusBridge(
-            server_url=ws_url,
+            server_url=server_url,
             token=cloud_token,
-            sync_interval=config.cloud_sync.auto_sync_interval or 300,
         )
 
         task = asyncio.create_task(bridge.run(), name="cloud_bridge")
-        logger.info(
-            "Cloud bridge auto-started — connecting to %s", ws_url
-        )
+        logger.info("Cloud bridge auto-started")
         return task
 
     except Exception as exc:
-        logger.warning("Failed to auto-start cloud bridge: %s", exc, exc_info=True)
+        logger.warning(
+            "Failed to auto-start cloud bridge: %s", exc, exc_info=True
+        )
         return None
 
 
