@@ -750,6 +750,52 @@ async def _auto_start_connectors(connector_manager) -> None:
             logger.error(f"Failed to auto-start connector {connector.name}: {e}")
 
 
+# ── Cloud bridge auto-start ────────────────────────────────────────────────
+
+async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
+    """Start the cloud bridge daemon if a sync token is configured.
+
+    Derives the WebSocket URL from the cloud_sync.url setting and launches
+    the PlutusBridge as a background asyncio task.
+    """
+    cloud_url = (config.cloud_sync.url or "").strip().rstrip("/")
+    cloud_token = (config.cloud_sync.token or "").strip()
+
+    if not cloud_url or not cloud_token:
+        logger.debug("Cloud bridge not started — no sync URL/token configured.")
+        return None
+
+    try:
+        # Derive WS URL from the HTTP URL
+        # https://api.useplutus.ai → wss://api.useplutus.ai/api/bridge/ws
+        ws_url = cloud_url.replace("https://", "wss://").replace("http://", "ws://")
+        ws_url = f"{ws_url}/api/bridge/ws"
+
+        # Import the bridge module from the bridge/ directory
+        import sys as _sys
+        bridge_dir = str(Path(__file__).resolve().parent.parent.parent / "bridge")
+        if bridge_dir not in _sys.path:
+            _sys.path.insert(0, bridge_dir)
+
+        from plutus_bridge import PlutusBridge
+
+        bridge = PlutusBridge(
+            server_url=ws_url,
+            token=cloud_token,
+            sync_interval=config.cloud_sync.auto_sync_interval or 300,
+        )
+
+        task = asyncio.create_task(bridge.run(), name="cloud_bridge")
+        logger.info(
+            "Cloud bridge auto-started — connecting to %s", ws_url
+        )
+        return task
+
+    except Exception as exc:
+        logger.warning("Failed to auto-start cloud bridge: %s", exc, exc_info=True)
+        return None
+
+
 # ── Conversation auto-cleanup ───────────────────────────────────────────────
 
 async def _conversation_cleanup_loop(
@@ -1008,6 +1054,11 @@ async def lifespan(app: FastAPI):
         # Auto-start connectors
         await _auto_start_connectors(connector_manager)
 
+        # Auto-start cloud bridge if sync token is configured
+        bridge_task = await _auto_start_cloud_bridge(config)
+        if bridge_task:
+            _state["cloud_bridge_task"] = bridge_task
+
     except Exception:
         # Startup failed — clean up any resources that were initialized
         logger.exception("Startup failed — cleaning up partial resources")
@@ -1026,6 +1077,7 @@ async def lifespan(app: FastAPI):
 
     # Normal shutdown — each step wrapped individually so one failure
     # doesn't prevent subsequent cleanup from running
+    bridge_task = _state.get("cloud_bridge_task")
     await _cleanup_resources(
         keep_alive=keep_alive,
         cleanup_task=cleanup_task,
@@ -1034,6 +1086,7 @@ async def lifespan(app: FastAPI):
         worker_pool=worker_pool,
         connector_manager=connector_manager,
         agent=agent,
+        bridge_task=bridge_task,
     )
     logger.info("Plutus shut down")
 
@@ -1047,8 +1100,16 @@ async def _cleanup_resources(
     worker_pool: WorkerPool | None = None,
     connector_manager: Any = None,
     agent: AgentRuntime | None = None,
+    bridge_task: asyncio.Task | None = None,
 ) -> None:
     """Clean up server resources safely. Each step is independent."""
+    if bridge_task and not bridge_task.done():
+        bridge_task.cancel()
+        try:
+            await bridge_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        logger.info("Cloud bridge stopped")
     if keep_alive:
         try:
             keep_alive.disable()
