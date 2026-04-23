@@ -788,6 +788,7 @@ async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
         bridge = PlutusBridge(
             server_url=server_url,
             token=cloud_token,
+            embedded=True,
         )
 
         task = asyncio.create_task(bridge.run(), name="cloud_bridge")

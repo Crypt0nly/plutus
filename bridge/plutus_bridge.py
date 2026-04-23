@@ -313,19 +313,22 @@ def _tool_open_app(args: dict[str, Any]) -> dict[str, Any]:
 class PlutusBridge:
     """Main bridge daemon — WebSocket connection + heartbeat + tool execution."""
 
-    def __init__(self, server_url: str, token: str) -> None:
+    def __init__(self, server_url: str, token: str, *, embedded: bool = False) -> None:
         self.server_url = server_url
         self.token = token
         self._ws_url = f"{derive_ws_url(server_url)}/{token}"
         self._shutdown = asyncio.Event()
         self._ws = None
+        self._embedded = embedded
 
     async def run(self) -> None:
         """Start the bridge and block until shutdown."""
-        self._install_signal_handlers()
+        if not self._embedded:
+            self._install_signal_handlers()
         log.info("Plutus Bridge v%s starting…", VERSION)
         log.info("Server: %s", self.server_url)
-        log.info("Log:    %s", LOG_FILE)
+        if not self._embedded:
+            log.info("Log:    %s", LOG_FILE)
         await self._connection_loop()
         log.info("Plutus Bridge stopped.")
 
