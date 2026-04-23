@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Cloud,
   CloudOff,
@@ -8,27 +8,33 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Eye,
-  EyeOff,
   ArrowUpDown,
   Plug,
+  PlugZap,
   Zap,
-  AlertTriangle,
-  Link2,
   Folder,
   FolderOpen,
   RotateCcw,
+  Unplug,
+  Loader2,
+  Copy,
 } from "lucide-react";
-import { api, extractCloudUrlFromToken, extractRawUrlFromToken } from "../../lib/api";
+import { api, extractCloudUrlFromToken } from "../../lib/api";
+
+/* ── Default cloud URL (can be overridden in the pairing input) ── */
+const DEFAULT_CLOUD_URL = "https://api.useplutus.ai";
+
+/* ── Types ── */
 
 interface SyncConfig {
   url: string;
   token: string;
-  auto_sync: boolean;
-  auto_sync_interval: number;
-  last_push: number;
-  last_pull: number;
+  enabled: boolean;
   workspace_dir?: string;
+  auto_sync?: boolean;
+  auto_sync_interval?: number;
+  last_push?: number;
+  last_pull?: number;
 }
 
 interface WorkspaceInfo {
@@ -49,6 +55,12 @@ interface SyncStatus {
   total_cloud: number;
 }
 
+interface CloudStatus {
+  connected: boolean;
+  token_configured: boolean;
+  cloud_url: string;
+}
+
 function formatRelative(ts: number): string {
   if (!ts) return "Never";
   const diff = Math.floor(Date.now() / 1000 - ts);
@@ -65,14 +77,17 @@ function formatBytes(bytes: number): string {
 }
 
 export default function WorkspaceSyncView() {
+  /* ── State ── */
   const [config, setConfig] = useState<SyncConfig>({
     url: "",
     token: "",
-    auto_sync: false,
-    auto_sync_interval: 300,
-    last_push: 0,
-    last_pull: 0,
+    enabled: true,
     workspace_dir: "",
+  });
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>({
+    connected: false,
+    token_configured: false,
+    cloud_url: "",
   });
   const [workspaceInfo, setWorkspaceInfo] = useState<WorkspaceInfo | null>(null);
   const [editingPath, setEditingPath] = useState(false);
@@ -83,24 +98,34 @@ export default function WorkspaceSyncView() {
   const [pushing, setPushing] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
-  const [showToken, setShowToken] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [pullMsg, setPullMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
+  /* Pairing state */
+  const [pairing, setPairing] = useState(false);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingMsg, setPairingMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [cloudUrl, setCloudUrl] = useState(DEFAULT_CLOUD_URL);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* ── Load config + cloud status ── */
   const loadConfig = useCallback(async () => {
     try {
-      const [data, info] = await Promise.all([
+      const [data, info, cs] = await Promise.all([
         api.getConfig(),
         api.getWorkspaceInfo().catch(() => null),
+        api.getCloudBridgeStatus(),
       ]);
       if (data.cloud_sync && typeof data.cloud_sync === "object") {
-        setConfig((prev) => ({
-          ...prev,
-          ...(data.cloud_sync as Partial<SyncConfig>),
-        }));
+        setConfig((prev) => ({ ...prev, ...(data.cloud_sync as Partial<SyncConfig>) }));
+        const syncCfg = data.cloud_sync as Partial<SyncConfig>;
+        if (syncCfg.url) setCloudUrl(syncCfg.url);
       }
       if (info) setWorkspaceInfo(info);
+      setCloudStatus(cs);
     } catch {
       // ignore
     } finally {
@@ -112,19 +137,152 @@ export default function WorkspaceSyncView() {
     loadConfig();
   }, [loadConfig]);
 
-  // Derive the cloud URL from the embedded token automatically
+  /* Poll cloud status every 5s while connected */
+  useEffect(() => {
+    if (!cloudStatus.token_configured) return;
+    const id = setInterval(async () => {
+      try {
+        const cs = await api.getCloudBridgeStatus();
+        setCloudStatus(cs);
+      } catch {
+        // ignore
+      }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [cloudStatus.token_configured]);
+
+  /* Cleanup pairing poll on unmount */
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
   const derivedUrl = extractCloudUrlFromToken(config.token) || config.url;
   const isConfigured = !!(derivedUrl && config.token);
 
-  const saveConfig = async () => {
+  /* ── Pairing flow ── */
+  const startPairing = async () => {
+    setPairing(true);
+    setPairingCode(null);
+    setPairingMsg(null);
+    setCodeCopied(false);
     try {
-      const toSave = { ...config, url: derivedUrl || config.url };
-      await api.updateConfig({ cloud_sync: toSave });
-      setSaveMsg({ text: "Saved successfully", ok: true });
-      setTimeout(() => setSaveMsg(null), 2500);
+      const result = await api.cloudPairInitiate(cloudUrl);
+      setPairingCode(result.code);
+
+      // Also tell the local backend to start polling
+      await fetch("/api/cloud/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cloud_url: cloudUrl }),
+      });
+
+      // Poll for completion on the frontend side too (for UI updates)
+      if (pollRef.current) clearInterval(pollRef.current);
+      const expiresAt = result.expires_at;
+      pollRef.current = setInterval(async () => {
+        if (Date.now() / 1000 > expiresAt) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setPairing(false);
+          setPairingCode(null);
+          setPairingMsg({ text: "Pairing timed out — try again", ok: false });
+          setTimeout(() => setPairingMsg(null), 5000);
+          return;
+        }
+        try {
+          const cs = await api.getCloudBridgeStatus();
+          if (cs.token_configured) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setCloudStatus(cs);
+            setPairing(false);
+            setPairingCode(null);
+            setPairingMsg({ text: "Connected to cloud!", ok: true });
+            setTimeout(() => setPairingMsg(null), 5000);
+            // Reload config to get the saved token
+            const data = await api.getConfig();
+            if (data.cloud_sync && typeof data.cloud_sync === "object") {
+              setConfig((prev) => ({ ...prev, ...(data.cloud_sync as Partial<SyncConfig>) }));
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }, 3000);
+    } catch (e: any) {
+      setPairing(false);
+      setPairingMsg({
+        text: `Failed to start pairing: ${e.message || e}`,
+        ok: false,
+      });
+      setTimeout(() => setPairingMsg(null), 5000);
+    }
+  };
+
+  const cancelPairing = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setPairing(false);
+    setPairingCode(null);
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    try {
+      await api.cloudDisconnect();
+      setCloudStatus({ connected: false, token_configured: false, cloud_url: "" });
+      setConfig((c) => ({ ...c, token: "", url: "", enabled: false }));
     } catch {
-      setSaveMsg({ text: "Failed to save", ok: false });
-      setTimeout(() => setSaveMsg(null), 3000);
+      // ignore
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const copyCode = () => {
+    if (pairingCode) {
+      navigator.clipboard.writeText(pairingCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    }
+  };
+
+  /* ── Workspace sync handlers (same as before) ── */
+  const handlePush = async () => {
+    if (!isConfigured) return;
+    setPushing(true);
+    setPushMsg(null);
+    try {
+      const resp = await api.workspacePush(config.token);
+      const skippedNote = resp.uploaded === 0 ? " (all files already up to date)" : "";
+      setPushMsg({ text: `Pushed ${resp.uploaded} file${resp.uploaded !== 1 ? "s" : ""}${skippedNote}`, ok: true });
+      setTimeout(() => setPushMsg(null), 4000);
+    } catch (e: any) {
+      setPushMsg({ text: `Push failed: ${e.message || e}`, ok: false });
+      setTimeout(() => setPushMsg(null), 5000);
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const handlePull = async () => {
+    if (!isConfigured) return;
+    setPulling(true);
+    setPullMsg(null);
+    try {
+      const resp = await api.workspacePull(config.token);
+      api.getWorkspaceInfo().then((info) => setWorkspaceInfo(info)).catch(() => {});
+      let msg = `Downloaded ${resp.downloaded} file${resp.downloaded !== 1 ? "s" : ""}`;
+      if (resp.downloaded === 0 && (resp.skipped ?? 0) === 0) msg = "All files already up to date";
+      else if (resp.downloaded === 0 && (resp.skipped ?? 0) > 0) msg = `All files already up to date (${resp.skipped} skipped)`;
+      else if ((resp.skipped ?? 0) > 0) msg += ` · ${resp.skipped} already up to date`;
+      if ((resp.failed ?? 0) > 0) msg += ` · ${resp.failed} not found on server`;
+      setPullMsg({ text: msg, ok: true });
+      setTimeout(() => setPullMsg(null), 5000);
+    } catch (e: any) {
+      setPullMsg({ text: `Pull failed: ${e.message || e}`, ok: false });
+      setTimeout(() => setPullMsg(null), 5000);
+    } finally {
+      setPulling(false);
     }
   };
 
@@ -146,64 +304,10 @@ export default function WorkspaceSyncView() {
     }
   };
 
-  const handlePush = async () => {
-    if (!isConfigured) {
-      setPushMsg({ text: "Paste your sync token first", ok: false });
-      setTimeout(() => setPushMsg(null), 3000);
-      return;
-    }
-    setPushing(true);
-    setPushMsg(null);
-    try {
-      const resp = await api.workspacePush(config.token);
-      await api.updateConfig({ cloud_sync: { ...config, url: derivedUrl, last_push: Date.now() / 1000 } });
-      setConfig((c) => ({ ...c, last_push: Date.now() / 1000 }));
-      const skippedNote = resp.uploaded === 0 ? " (all files already up to date)" : "";
-      setPushMsg({ text: `Pushed ${resp.uploaded} file${resp.uploaded !== 1 ? "s" : ""}${skippedNote}`, ok: true });
-      setTimeout(() => setPushMsg(null), 4000);
-    } catch (e: any) {
-      setPushMsg({ text: `Push failed: ${e.message || e}`, ok: false });
-      setTimeout(() => setPushMsg(null), 5000);
-    } finally {
-      setPushing(false);
-    }
-  };
-
-  const handlePull = async () => {
-    if (!isConfigured) {
-      setPullMsg({ text: "Paste your sync token first", ok: false });
-      setTimeout(() => setPullMsg(null), 3000);
-      return;
-    }
-    setPulling(true);
-    setPullMsg(null);
-    try {
-      const resp = await api.workspacePull(config.token);
-      await api.updateConfig({ cloud_sync: { ...config, url: derivedUrl, last_pull: Date.now() / 1000 } });
-      setConfig((c) => ({ ...c, last_pull: Date.now() / 1000 }));
-      // Refresh workspace info after pull
-      api.getWorkspaceInfo().then((info) => setWorkspaceInfo(info)).catch(() => {});
-      let msg = `Downloaded ${resp.downloaded} file${resp.downloaded !== 1 ? "s" : ""}`;
-      if (resp.downloaded === 0 && (resp.skipped ?? 0) === 0) msg = "All files already up to date";
-      else if (resp.downloaded === 0 && (resp.skipped ?? 0) > 0) msg = `All files already up to date (${resp.skipped} skipped)`;
-      else if ((resp.skipped ?? 0) > 0) msg += ` · ${resp.skipped} already up to date`;
-      if ((resp.failed ?? 0) > 0) msg += ` · ${resp.failed} not found on server`;
-      setPullMsg({ text: msg, ok: true });
-      setTimeout(() => setPullMsg(null), 5000);
-    } catch (e: any) {
-      setPullMsg({ text: `Pull failed: ${e.message || e}`, ok: false });
-      setTimeout(() => setPullMsg(null), 5000);
-    } finally {
-      setPulling(false);
-    }
-  };
-
   const handleSavePath = async () => {
     try {
       const result = await api.setWorkspaceDir(newPath.trim());
-      setWorkspaceInfo((prev) =>
-        prev ? { ...prev, path: result.path, custom_path: result.custom_path } : null
-      );
+      setWorkspaceInfo((prev) => prev ? { ...prev, path: result.path, custom_path: result.custom_path } : null);
       setConfig((c) => ({ ...c, workspace_dir: result.custom_path }));
       setEditingPath(false);
       setPathMsg({ text: "Workspace directory updated", ok: true });
@@ -217,9 +321,7 @@ export default function WorkspaceSyncView() {
   const handleResetPath = async () => {
     try {
       const result = await api.setWorkspaceDir("");
-      setWorkspaceInfo((prev) =>
-        prev ? { ...prev, path: result.path, custom_path: "" } : null
-      );
+      setWorkspaceInfo((prev) => prev ? { ...prev, path: result.path, custom_path: "" } : null);
       setConfig((c) => ({ ...c, workspace_dir: "" }));
       setEditingPath(false);
       setNewPath("");
@@ -230,6 +332,8 @@ export default function WorkspaceSyncView() {
       setTimeout(() => setPathMsg(null), 3000);
     }
   };
+
+  /* ── Render ── */
 
   if (loading) {
     return (
@@ -325,244 +429,226 @@ export default function WorkspaceSyncView() {
         )}
       </div>
 
-      {/* ── Connection status banner ── */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 rounded-xl"
-        style={
-          isConfigured
-            ? { background: "rgba(6, 182, 212, 0.06)", border: "1px solid rgba(6, 182, 212, 0.18)" }
-            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }
-        }
-      >
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={
-            isConfigured
-              ? { background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee" }
-              : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
-          }
-        >
-          {isConfigured ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-200">
-            {isConfigured ? "Connected to cloud" : "Not connected"}
-          </p>
-          <p className="text-xs text-gray-500 truncate mt-0.5">
-            {isConfigured
-              ? derivedUrl
-              : "Paste your sync token from the cloud Settings → Workspace tab"}
-          </p>
-        </div>
-        {isConfigured && (
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-cyan-400 flex-shrink-0"
-            style={{ background: "rgba(6, 182, 212, 0.1)", border: "1px solid rgba(6, 182, 212, 0.2)" }}>
-            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            Active
-          </span>
-        )}
-      </div>
-
-      {/* ── API Token input ── */}
+      {/* ── Cloud Connection ── */}
       <div
         className="rounded-xl p-4 space-y-4"
-        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+        style={
+          cloudStatus.connected
+            ? { background: "rgba(6, 182, 212, 0.06)", border: "1px solid rgba(6, 182, 212, 0.18)" }
+            : cloudStatus.token_configured
+            ? { background: "rgba(245,158,11,0.04)", border: "1px solid rgba(245,158,11,0.15)" }
+            : { background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }
+        }
       >
-        <div className="flex items-center gap-2">
-          <Link2 className="w-3.5 h-3.5 text-cyan-400" />
-          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Sync Token</h4>
-        </div>
-
-        <div>
-          <div className="relative">
-            <input
-              type={showToken ? "text" : "password"}
-              value={config.token}
-              onChange={(e) => setConfig((c) => ({ ...c, token: e.target.value }))}
-              placeholder="Paste your token from cloud Settings → Workspace"
-              className="w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 pr-10 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono"
-            />
-            <button
-              onClick={() => setShowToken((s) => !s)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors"
-            >
-              {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          {config.token && !extractCloudUrlFromToken(config.token) && (() => {
-            const raw = extractRawUrlFromToken(config.token);
-            const isLocalhost = raw && (raw.includes("localhost") || raw.includes("127.0.0.1"));
-            return (
-              <p className="text-[11px] text-amber-400/80 mt-2 flex items-center gap-1.5">
-                <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                {isLocalhost
-                  ? "Token embeds localhost — the cloud server's SERVER_BASE_URL is not set. Regenerate the token after configuring it."
-                  : "Legacy token — please regenerate a new one from cloud Settings → Workspace"}
-              </p>
-            );
-          })()}
-          {config.token && extractCloudUrlFromToken(config.token) && (
-            <p className="text-[11px] text-cyan-400/70 mt-2 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
-              Server URL detected automatically from token
-            </p>
-          )}
-        </div>
-
         <div className="flex items-center gap-3">
-          <button
-            onClick={saveConfig}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-medium transition-all active:scale-[0.98]"
-            style={{ background: "rgba(6, 182, 212, 0.8)", boxShadow: "0 4px 14px rgba(6, 182, 212, 0.2)" }}
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={
+              cloudStatus.connected
+                ? { background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee" }
+                : { background: "rgba(255,255,255,0.05)", color: "#6b7280" }
+            }
           >
-            <Plug className="w-3.5 h-3.5" />
-            Save
-          </button>
-          {saveMsg && (
-            <span className={`flex items-center gap-1.5 text-xs ${saveMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
-              {saveMsg.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-              {saveMsg.text}
+            {cloudStatus.connected ? <Cloud className="w-5 h-5" /> : <CloudOff className="w-5 h-5" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-200">
+              {cloudStatus.connected
+                ? "Connected to Plutus Cloud"
+                : cloudStatus.token_configured
+                ? "Connecting to cloud…"
+                : "Not connected to cloud"}
+            </p>
+            <p className="text-xs text-gray-500 truncate mt-0.5">
+              {cloudStatus.connected
+                ? cloudStatus.cloud_url || derivedUrl || "Bridge active"
+                : cloudStatus.token_configured
+                ? "Bridge is reconnecting…"
+                : "Connect to sync files and enable remote control"}
+            </p>
+          </div>
+          {cloudStatus.connected && (
+            <span
+              className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-cyan-400 flex-shrink-0"
+              style={{ background: "rgba(6, 182, 212, 0.1)", border: "1px solid rgba(6, 182, 212, 0.2)" }}
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              Connected
+            </span>
+          )}
+          {cloudStatus.token_configured && !cloudStatus.connected && (
+            <span
+              className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full text-amber-400 flex-shrink-0"
+              style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}
+            >
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Reconnecting
             </span>
           )}
         </div>
-      </div>
 
-      {/* ── Auto-sync toggle ── */}
-      <div
-        className="rounded-xl p-4"
-        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-200">Auto-sync</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Automatically push local changes every{" "}
-              {Math.round(config.auto_sync_interval / 60)} min
-            </p>
+        {/* Not connected — show pairing UI */}
+        {!cloudStatus.token_configured && !pairing && (
+          <div className="space-y-3">
+            <button
+              onClick={startPairing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white text-sm font-medium transition-all active:scale-[0.98]"
+              style={{ background: "rgba(6, 182, 212, 0.8)", boxShadow: "0 4px 14px rgba(6, 182, 212, 0.2)" }}
+            >
+              <PlugZap className="w-4 h-4" />
+              Connect to Plutus Cloud
+            </button>
+
+            {showAdvanced ? (
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-500 uppercase tracking-wider">Cloud Server URL</label>
+                <input
+                  type="text"
+                  value={cloudUrl}
+                  onChange={(e) => setCloudUrl(e.target.value)}
+                  placeholder={DEFAULT_CLOUD_URL}
+                  className="w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono"
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowAdvanced(true)}
+                className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                Advanced: use a custom cloud server
+              </button>
+            )}
           </div>
+        )}
+
+        {/* Pairing in progress — show code */}
+        {pairing && pairingCode && (
+          <div className="space-y-3">
+            <div
+              className="rounded-xl p-4 text-center"
+              style={{ background: "rgba(6, 182, 212, 0.06)", border: "1px solid rgba(6, 182, 212, 0.15)" }}
+            >
+              <p className="text-xs text-gray-400 mb-2">Enter this code in your Plutus Cloud settings:</p>
+              <div className="flex items-center justify-center gap-3">
+                <span className="text-3xl font-mono font-bold text-cyan-400 tracking-[0.2em]">
+                  {pairingCode}
+                </span>
+                <button
+                  onClick={copyCode}
+                  className="p-1.5 rounded-lg hover:bg-white/5 transition-colors text-gray-500 hover:text-gray-300"
+                  title="Copy code"
+                >
+                  {codeCopied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-600 mt-2">Code expires in 5 minutes</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+              <span className="text-xs text-gray-400">Waiting for confirmation from cloud…</span>
+              <button
+                onClick={cancelPairing}
+                className="ml-auto text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {pairing && !pairingCode && (
+          <div className="flex items-center justify-center gap-2 py-4">
+            <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+            <span className="text-xs text-gray-400">Connecting to cloud server…</span>
+          </div>
+        )}
+
+        {/* Connected — show disconnect button */}
+        {cloudStatus.token_configured && (
           <button
-            onClick={() => {
-              const updated = { ...config, auto_sync: !config.auto_sync };
-              setConfig(updated);
-              api.updateConfig({ cloud_sync: updated });
-            }}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              config.auto_sync ? "bg-cyan-500" : "bg-gray-700"
-            }`}
+            onClick={handleDisconnect}
+            disabled={disconnecting}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-red-400 transition-all"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
           >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                config.auto_sync ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
+            {disconnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}
+            Disconnect from cloud
           </button>
-        </div>
+        )}
 
-        {config.auto_sync && (
-          <div className="mt-3 pt-3 flex items-center gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <label className="text-xs text-gray-500">Interval</label>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={Math.round(config.auto_sync_interval / 60)}
-              onChange={(e) => {
-                const updated = {
-                  ...config,
-                  auto_sync_interval: Math.max(1, parseInt(e.target.value) || 5) * 60,
-                };
-                setConfig(updated);
-                api.updateConfig({ cloud_sync: updated });
-              }}
-              className="w-16 bg-gray-900/80 border border-gray-800/60 rounded-lg px-2 py-1 text-sm text-gray-200 text-center focus:outline-none focus:border-cyan-500/50 transition-all"
-            />
-            <span className="text-xs text-gray-500">minutes</span>
-          </div>
+        {pairingMsg && (
+          <p className={`text-[11px] flex items-center gap-1.5 ${pairingMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+            {pairingMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+            {pairingMsg.text}
+          </p>
         )}
       </div>
 
-      {/* ── Push / Pull ── */}
-      <div
-        className="rounded-xl p-4 space-y-4"
-        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
-      >
-        <div className="flex items-center gap-2">
-          <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
-          <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Manual Sync</h4>
-          {(config.last_push > 0 || config.last_pull > 0) && (
-            <div className="ml-auto flex items-center gap-3 text-[11px] text-gray-600">
-              {config.last_push > 0 && (
-                <span className="flex items-center gap-1">
-                  <Upload className="w-3 h-3" />
-                  {formatRelative(config.last_push)}
-                </span>
-              )}
-              {config.last_pull > 0 && (
-                <span className="flex items-center gap-1">
-                  <Download className="w-3 h-3" />
-                  {formatRelative(config.last_pull)}
-                </span>
+      {/* ── Push / Pull (only when connected) ── */}
+      {isConfigured && (
+        <div
+          className="rounded-xl p-4 space-y-4"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}
+        >
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+            <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">File Sync</h4>
+            {((config.last_push ?? 0) > 0 || (config.last_pull ?? 0) > 0) && (
+              <div className="ml-auto flex items-center gap-3 text-[11px] text-gray-600">
+                {(config.last_push ?? 0) > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Upload className="w-3 h-3" />
+                    {formatRelative(config.last_push ?? 0)}
+                  </span>
+                )}
+                {(config.last_pull ?? 0) > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Download className="w-3 h-3" />
+                    {formatRelative(config.last_pull ?? 0)}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <button
+                onClick={handlePush}
+                disabled={pushing}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
+                style={{ background: "rgba(6, 182, 212, 0.08)", border: "1px solid rgba(6, 182, 212, 0.2)", color: "#22d3ee" }}
+              >
+                {pushing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {pushing ? "Pushing…" : "Push to Cloud"}
+              </button>
+              {pushMsg && (
+                <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pushMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                  {pushMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                  {pushMsg.text}
+                </p>
               )}
             </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          {/* Push */}
-          <div className="space-y-2">
-            <button
-              onClick={handlePush}
-              disabled={pushing || !isConfigured}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
-              style={
-                isConfigured
-                  ? { background: "rgba(6, 182, 212, 0.08)", border: "1px solid rgba(6, 182, 212, 0.2)", color: "#22d3ee" }
-                  : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#6b7280" }
-              }
-            >
-              {pushing ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Upload className="w-4 h-4" />
+            <div className="space-y-2">
+              <button
+                onClick={handlePull}
+                disabled={pulling}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
+                style={{ background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)", color: "#34d399" }}
+              >
+                {pulling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {pulling ? "Pulling…" : "Pull from Cloud"}
+              </button>
+              {pullMsg && (
+                <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pullMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+                  {pullMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                  {pullMsg.text}
+                </p>
               )}
-              {pushing ? "Pushing…" : "Push to Cloud"}
-            </button>
-            {pushMsg && (
-              <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pushMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
-                {pushMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                {pushMsg.text}
-              </p>
-            )}
-          </div>
-
-          {/* Pull */}
-          <div className="space-y-2">
-            <button
-              onClick={handlePull}
-              disabled={pulling || !isConfigured}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
-              style={
-                isConfigured
-                  ? { background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)", color: "#34d399" }
-                  : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#6b7280" }
-              }
-            >
-              {pulling ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-              {pulling ? "Pulling…" : "Pull from Cloud"}
-            </button>
-            {pullMsg && (
-              <p className={`text-[11px] text-center flex items-center justify-center gap-1 ${pullMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
-                {pullMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                {pullMsg.text}
-              </p>
-            )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Sync status ── */}
       {isConfigured && (
@@ -619,27 +705,29 @@ export default function WorkspaceSyncView() {
         </div>
       )}
 
-      {/* ── How to get a token ── */}
-      <div
-        className="rounded-xl p-4"
-        style={{ background: "rgba(6, 182, 212, 0.03)", border: "1px solid rgba(6, 182, 212, 0.1)" }}
-      >
-        <p className="text-xs font-semibold text-cyan-400/70 mb-2.5 uppercase tracking-wider">How to connect</p>
-        <ol className="space-y-2 text-xs text-gray-500">
-          <li className="flex gap-2">
-            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">1</span>
-            Open <span className="text-gray-300 mx-1">cloud Plutus → Settings → Workspace Sync</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">2</span>
-            Click <span className="text-gray-300 mx-1">Generate Token</span> and copy it
-          </li>
-          <li className="flex gap-2">
-            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">3</span>
-            Paste it above — the server URL is embedded automatically
-          </li>
-        </ol>
-      </div>
+      {/* ── How it works (only when not connected) ── */}
+      {!cloudStatus.token_configured && !pairing && (
+        <div
+          className="rounded-xl p-4"
+          style={{ background: "rgba(6, 182, 212, 0.03)", border: "1px solid rgba(6, 182, 212, 0.1)" }}
+        >
+          <p className="text-xs font-semibold text-cyan-400/70 mb-2.5 uppercase tracking-wider">How it works</p>
+          <ol className="space-y-2 text-xs text-gray-500">
+            <li className="flex gap-2">
+              <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">1</span>
+              Click <span className="text-gray-300 mx-1">Connect to Plutus Cloud</span> above
+            </li>
+            <li className="flex gap-2">
+              <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">2</span>
+              Enter the pairing code in <span className="text-gray-300 mx-1">cloud Plutus → Settings</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">3</span>
+              Done — bridge connects automatically and stays connected
+            </li>
+          </ol>
+        </div>
+      )}
     </div>
   );
 }

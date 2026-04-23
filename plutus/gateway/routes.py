@@ -2960,3 +2960,156 @@ def create_workspace_router() -> APIRouter:
         return {"path": str(ws), "custom_path": new_dir}
 
     return ws_router
+
+
+def create_cloud_router() -> APIRouter:
+    """Sub-router for cloud bridge management (pairing, status, disconnect)."""
+    import asyncio
+    import logging
+
+    cloud_router = APIRouter(prefix="/cloud")
+    _logger = logging.getLogger("plutus.gateway.cloud")
+
+    @cloud_router.get("/status")
+    async def cloud_status() -> dict[str, Any]:
+        """Return whether the local Plutus is connected to the cloud."""
+        from plutus.config import PlutusConfig
+        from plutus.gateway.server import get_state
+
+        cfg = PlutusConfig.load()
+        token = (cfg.cloud_sync.token or "").strip()
+        cloud_url = (cfg.cloud_sync.url or "").strip()
+
+        state = get_state()
+        bridge_task = state.get("cloud_bridge_task")
+        connected = bridge_task is not None and not bridge_task.done()
+
+        return {
+            "connected": connected,
+            "token_configured": bool(token),
+            "cloud_url": cloud_url,
+        }
+
+    @cloud_router.post("/pair")
+    async def cloud_pair(body: dict[str, Any]) -> dict[str, Any]:
+        """Initiate pairing with a cloud instance.
+
+        Expects: { "cloud_url": "https://api.useplutus.ai" }
+
+        Calls the cloud's /api/bridge/pair/initiate endpoint, then polls
+        for confirmation in the background. Once confirmed, saves the token
+        and auto-starts the bridge.
+        """
+        import httpx
+
+        cloud_url = body.get("cloud_url", "").strip().rstrip("/")
+        if not cloud_url:
+            raise HTTPException(status_code=400, detail="cloud_url is required")
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(f"{cloud_url}/api/bridge/pair/initiate")
+            resp.raise_for_status()
+            data = resp.json()
+
+        pairing_id = data["pairing_id"]
+        code = data["code"]
+        expires_at = data["expires_at"]
+
+        async def _poll_and_connect() -> None:
+            """Poll the cloud for pairing confirmation, then save token and start bridge."""
+            import time
+
+            from plutus.config import PlutusConfig
+            from plutus.gateway.server import _auto_start_cloud_bridge, get_state
+
+            async with httpx.AsyncClient(timeout=15) as client:
+                while time.time() < expires_at:
+                    await asyncio.sleep(3)
+                    try:
+                        resp = await client.get(
+                            f"{cloud_url}/api/bridge/pair/poll/{pairing_id}"
+                        )
+                        resp.raise_for_status()
+                        result = resp.json()
+                    except Exception as exc:
+                        _logger.warning("Pairing poll error: %s", exc)
+                        continue
+
+                    if result["status"] == "confirmed" and result.get("token"):
+                        token = result["token"]
+                        _logger.info(
+                            "Pairing confirmed! Saving token and starting bridge."
+                        )
+
+                        cfg = PlutusConfig.load()
+                        cfg.update(
+                            {
+                                "cloud_sync": {
+                                    "token": token,
+                                    "url": cloud_url,
+                                    "enabled": True,
+                                }
+                            }
+                        )
+
+                        state = get_state()
+                        old_task = state.get("cloud_bridge_task")
+                        if old_task and not old_task.done():
+                            old_task.cancel()
+                            try:
+                                await old_task
+                            except (asyncio.CancelledError, Exception):
+                                pass
+
+                        new_cfg = PlutusConfig.load()
+                        bridge_task = await _auto_start_cloud_bridge(new_cfg)
+                        if bridge_task:
+                            state["cloud_bridge_task"] = bridge_task
+                        return
+
+                    if result["status"] in ("expired", "claimed"):
+                        _logger.info(
+                            "Pairing %s — stopping poll.", result["status"]
+                        )
+                        return
+
+            _logger.warning("Pairing timed out (code %s)", code)
+
+        asyncio.create_task(_poll_and_connect(), name="cloud_pairing_poll")
+
+        return {
+            "pairing_id": pairing_id,
+            "code": code,
+            "expires_at": expires_at,
+        }
+
+    @cloud_router.post("/disconnect")
+    async def cloud_disconnect() -> dict[str, str]:
+        """Disconnect from the cloud — stop bridge and clear token."""
+        from plutus.config import PlutusConfig
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        bridge_task = state.get("cloud_bridge_task")
+        if bridge_task and not bridge_task.done():
+            bridge_task.cancel()
+            try:
+                await bridge_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            state.pop("cloud_bridge_task", None)
+
+        cfg = PlutusConfig.load()
+        cfg.update(
+            {
+                "cloud_sync": {
+                    "token": "",
+                    "url": "",
+                    "enabled": False,
+                }
+            }
+        )
+
+        return {"message": "Disconnected from cloud"}
+
+    return cloud_router

@@ -540,6 +540,34 @@ export const api = {
       return { local_only, cloud_only, newer_local, newer_cloud, in_sync };
     });
   },
+
+  // Cloud pairing — initiate from local, poll for token
+  cloudPairInitiate: (cloudUrl: string) =>
+    fetch(`${cloudUrl}/api/bridge/pair/initiate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(`Pairing initiate failed: ${res.status}`);
+      return res.json() as Promise<{ pairing_id: string; code: string; expires_at: number }>;
+    }),
+
+  cloudPairPoll: (cloudUrl: string, pairingId: string) =>
+    fetch(`${cloudUrl}/api/bridge/pair/poll/${pairingId}`).then(async (res) => {
+      if (!res.ok) throw new Error(`Pairing poll failed: ${res.status}`);
+      return res.json() as Promise<{ status: string; token?: string }>;
+    }),
+
+  // Cloud bridge status (local side)
+  getCloudBridgeStatus: () =>
+    request<{ connected: boolean; token_configured: boolean; cloud_url: string }>("/cloud/status").catch(() => ({
+      connected: false,
+      token_configured: false,
+      cloud_url: "",
+    })),
+
+  // Disconnect from cloud
+  cloudDisconnect: () =>
+    request<{ message: string }>("/cloud/disconnect", { method: "POST" }),
 };
 
 /**
