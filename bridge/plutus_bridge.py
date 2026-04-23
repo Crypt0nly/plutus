@@ -202,7 +202,7 @@ async def _tool_shell(args: dict[str, Any]) -> dict[str, Any]:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(), timeout=timeout
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         return {"success": False, "error": f"Command timed out after {timeout}s"}
     return {
@@ -227,7 +227,7 @@ async def _tool_python(args: dict[str, Any]) -> dict[str, Any]:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(), timeout=timeout
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         return {"success": False, "error": f"Python timed out after {timeout}s"}
     return {
@@ -466,7 +466,7 @@ class PlutusBridge:
     async def _sleep(self, seconds: float) -> None:
         try:
             await asyncio.wait_for(self._shutdown.wait(), timeout=seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
 
