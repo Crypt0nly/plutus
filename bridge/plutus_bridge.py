@@ -505,7 +505,7 @@ class PlutusBridge:
 
         while not self.shutdown.is_shutting_down:
             try:
-                ws_url = f"{self.server_url}?token={self.token}"
+                ws_url = f"{self.server_url}/{self.token}"
                 log.info("Connecting to %s …", self.server_url)
 
                 async with websockets.connect(
