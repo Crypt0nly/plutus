@@ -38,9 +38,7 @@ try:
     import websockets.exceptions
 except ImportError:
     print("Installing websockets…")
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "--quiet", "websockets>=12.0"]
-    )
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "websockets>=12.0"])
     import websockets
     import websockets.exceptions
 
@@ -65,9 +63,7 @@ def _setup_logging() -> logging.Logger:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger("plutus_bridge")
     logger.setLevel(logging.DEBUG)
-    fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
-    )
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
     ch.setFormatter(fmt)
@@ -94,7 +90,7 @@ def extract_server_url(token: str) -> str:
     """
     if not token.startswith("plutus_"):
         raise ValueError("Invalid token format — must start with 'plutus_'")
-    body = token[len("plutus_"):]
+    body = token[len("plutus_") :]
     url_b64 = body.split(".")[0]
     # Re-add padding
     padding = 4 - len(url_b64) % 4
@@ -199,9 +195,7 @@ async def _tool_shell(args: dict[str, Any]) -> dict[str, Any]:
         cwd=cwd,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
         proc.kill()
         return {"success": False, "error": f"Command timed out after {timeout}s"}
@@ -219,14 +213,14 @@ async def _tool_python(args: dict[str, Any]) -> dict[str, Any]:
     if not code:
         return {"success": False, "error": "Empty code"}
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", code,
+        sys.executable,
+        "-c",
+        code,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
         proc.kill()
         return {"success": False, "error": f"Python timed out after {timeout}s"}
@@ -281,12 +275,14 @@ def _tool_file_list(args: dict[str, Any]) -> dict[str, Any]:
         for f in sorted(path.glob(pattern))[:limit]:
             try:
                 stat = f.stat()
-                entries.append({
-                    "name": f.name,
-                    "path": str(f),
-                    "is_dir": f.is_dir(),
-                    "size": stat.st_size if f.is_file() else 0,
-                })
+                entries.append(
+                    {
+                        "name": f.name,
+                        "path": str(f),
+                        "is_dir": f.is_dir(),
+                        "size": stat.st_size if f.is_file() else 0,
+                    }
+                )
             except OSError:
                 entries.append({"name": f.name, "path": str(f)})
         return {"success": True, "files": entries, "count": len(entries)}
@@ -357,11 +353,14 @@ class PlutusBridge:
                     delay = RECONNECT_DELAY_INIT
 
                     # Handshake
-                    await self._send(ws, {
-                        "type": "handshake",
-                        "system": get_system_info(),
-                        "version": VERSION,
-                    })
+                    await self._send(
+                        ws,
+                        {
+                            "type": "handshake",
+                            "system": get_system_info(),
+                            "version": VERSION,
+                        },
+                    )
 
                     # Run heartbeat + receiver concurrently
                     hb = asyncio.create_task(self._heartbeat(ws))
@@ -419,9 +418,7 @@ class PlutusBridge:
                 msg_type = data.get("type", "")
 
                 if msg_type == "tool_call":
-                    asyncio.create_task(
-                        self._handle_tool_call(ws, data)
-                    )
+                    asyncio.create_task(self._handle_tool_call(ws, data))
                 elif msg_type == "heartbeat_ack":
                     log.debug("Heartbeat ACK")
                 elif msg_type == "handshake_ack":
@@ -448,14 +445,19 @@ class PlutusBridge:
         elapsed = time.monotonic() - t0
         log.info(
             "Tool %s done in %.1fs — success=%s",
-            tool, elapsed, result.get("success"),
+            tool,
+            elapsed,
+            result.get("success"),
         )
         try:
-            await self._send(ws, {
-                "type": "tool_result",
-                "call_id": call_id,
-                "result": result,
-            })
+            await self._send(
+                ws,
+                {
+                    "type": "tool_result",
+                    "call_id": call_id,
+                    "result": result,
+                },
+            )
         except Exception as exc:
             log.warning("Failed to send tool result: %s", exc)
 
