@@ -2981,8 +2981,8 @@ def create_cloud_router() -> APIRouter:
         cloud_url = (cfg.cloud_sync.url or "").strip()
 
         state = get_state()
-        bridge_task = state.get("cloud_bridge_task")
-        connected = bridge_task is not None and not bridge_task.done()
+        bridge_instance = state.get("cloud_bridge_instance")
+        connected = bridge_instance is not None and bridge_instance.is_connected
 
         return {
             "connected": connected,
@@ -3060,6 +3060,7 @@ def create_cloud_router() -> APIRouter:
                                 await old_task
                             except (asyncio.CancelledError, Exception):
                                 pass
+                        state.pop("cloud_bridge_instance", None)
 
                         new_cfg = PlutusConfig.load()
                         bridge_task = await _auto_start_cloud_bridge(new_cfg)
@@ -3097,7 +3098,8 @@ def create_cloud_router() -> APIRouter:
                 await bridge_task
             except (asyncio.CancelledError, Exception):
                 pass
-            state.pop("cloud_bridge_task", None)
+        state.pop("cloud_bridge_task", None)
+        state.pop("cloud_bridge_instance", None)
 
         cfg = PlutusConfig.load()
         cfg.update(

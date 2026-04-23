@@ -770,16 +770,7 @@ async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
         return None
 
     try:
-        # Import the bridge module from the bridge/ directory
-        import sys as _sys
-
-        bridge_dir = str(
-            Path(__file__).resolve().parent.parent.parent / "bridge"
-        )
-        if bridge_dir not in _sys.path:
-            _sys.path.insert(0, bridge_dir)
-
-        from plutus_bridge import PlutusBridge, extract_server_url
+        from plutus.bridge import PlutusBridge, extract_server_url
 
         # Auto-extract server URL from token
         server_url = extract_server_url(cloud_token)
@@ -793,6 +784,10 @@ async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
 
         task = asyncio.create_task(bridge.run(), name="cloud_bridge")
         logger.info("Cloud bridge auto-started")
+
+        # Store bridge instance so status endpoint can check is_connected
+        _state["cloud_bridge_instance"] = bridge
+
         return task
 
     except Exception as exc:
