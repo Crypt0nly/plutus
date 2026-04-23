@@ -344,8 +344,8 @@ class PlutusBridge:
                 log.info("Connecting…")
                 async with websockets.connect(
                     self._ws_url,
-                    ping_interval=20,
-                    ping_timeout=10,
+                    ping_interval=None,
+                    ping_timeout=None,
                     close_timeout=5,
                 ) as ws:
                     self._ws = ws
