@@ -27,6 +27,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 CONFIG_DIR = Path.home() / ".plutus"
 CONFIG_FILE = CONFIG_DIR / "bridge_config.json"
 LOG_FILE = CONFIG_DIR / "bridge.log"
@@ -65,7 +66,7 @@ def _setup_logging() -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
     ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
+    ch.setLevel(logging.DEBUG)  # Show ALL messages in terminal for debugging
     ch.setFormatter(fmt)
     logger.addHandler(ch)
     fh = logging.handlers.RotatingFileHandler(
@@ -327,6 +328,7 @@ class PlutusBridge:
             self._install_signal_handlers()
         log.info("Plutus Bridge v%s starting…", VERSION)
         log.info("Server: %s", self.server_url)
+        log.info("WS URL: %s", self._ws_url[:80] + "…")
         if not self._embedded:
             log.info("Log:    %s", LOG_FILE)
         await self._connection_loop()
@@ -344,18 +346,21 @@ class PlutusBridge:
         delay = RECONNECT_DELAY_INIT
         while not self._shutdown.is_set():
             try:
-                log.info("Connecting…")
+                log.info("Connecting to %s …", self.server_url)
                 async with websockets.connect(
                     self._ws_url,
                     ping_interval=None,
                     ping_timeout=None,
-                    close_timeout=5,
+                    close_timeout=10,
+                    max_size=10 * 1024 * 1024,  # 10 MB
+                    open_timeout=30,
                 ) as ws:
                     self._ws = ws
-                    log.info("✓ Connected to Plutus Cloud")
+                    log.info("✓ WebSocket connected")
                     delay = RECONNECT_DELAY_INIT
 
                     # Handshake
+                    log.info("Sending handshake…")
                     await self._send(
                         ws,
                         {
@@ -364,77 +369,174 @@ class PlutusBridge:
                             "version": VERSION,
                         },
                     )
+                    log.info("Handshake sent, waiting for server messages…")
 
                     # Run heartbeat + receiver concurrently
-                    hb = asyncio.create_task(self._heartbeat(ws))
-                    recv = asyncio.create_task(self._receiver(ws))
-                    shutdown = asyncio.create_task(self._shutdown.wait())
+                    hb = asyncio.create_task(self._heartbeat(ws), name="bridge_heartbeat")
+                    recv = asyncio.create_task(self._receiver(ws), name="bridge_receiver")
+                    shutdown = asyncio.create_task(self._shutdown.wait(), name="bridge_shutdown")
 
                     done, pending = await asyncio.wait(
                         [hb, recv, shutdown],
                         return_when=asyncio.FIRST_COMPLETED,
                     )
+
+                    # Log which task(s) completed and why
+                    for t in done:
+                        name = t.get_name()
+                        if t.cancelled():
+                            log.warning("Task '%s' was cancelled", name)
+                        elif t.exception():
+                            log.error(
+                                "Task '%s' raised exception: %s\n%s",
+                                name,
+                                t.exception(),
+                                "".join(
+                                    traceback.format_exception(
+                                        type(t.exception()),
+                                        t.exception(),
+                                        t.exception().__traceback__,
+                                    )
+                                ),
+                            )
+                        else:
+                            log.info(
+                                "Task '%s' completed normally (result=%s)",
+                                name,
+                                t.result(),
+                            )
+
                     for t in pending:
                         t.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)
 
                     if self._shutdown.is_set():
+                        log.info("Shutdown requested — exiting connection loop")
                         return
 
-            except (
-                websockets.exceptions.ConnectionClosed,
-                websockets.exceptions.InvalidStatusCode,
-                ConnectionRefusedError,
-                OSError,
-            ) as exc:
-                log.warning("Connection lost: %s — retrying in %ds", exc, delay)
+                    log.warning("Connection loop iteration ended — will reconnect")
+
+            except websockets.exceptions.InvalidStatusCode as exc:
+                log.error(
+                    "Server rejected connection with HTTP %s — "
+                    "check token validity. Retrying in %ds",
+                    exc.status_code,
+                    delay,
+                )
+            except websockets.exceptions.ConnectionClosed as exc:
+                log.warning(
+                    "Connection closed: code=%s reason='%s' — retrying in %ds",
+                    exc.code,
+                    exc.reason,
+                    delay,
+                )
+            except ConnectionRefusedError:
+                log.warning("Connection refused (server down?) — retrying in %ds", delay)
+            except OSError as exc:
+                log.warning("Network error: %s — retrying in %ds", exc, delay)
             except asyncio.CancelledError:
+                log.info("Bridge task cancelled — exiting")
                 return
             except Exception as exc:
-                log.error("Unexpected error: %s — retrying in %ds", exc, delay)
+                log.error(
+                    "Unexpected error in connection loop: %s\n%s",
+                    exc,
+                    traceback.format_exc(),
+                )
 
             if self._shutdown.is_set():
                 return
+            log.info("Waiting %ds before reconnecting…", delay)
             await self._sleep(delay)
             delay = min(delay * 2, RECONNECT_DELAY_MAX)
 
     async def _heartbeat(self, ws) -> None:
+        """Send periodic heartbeats to keep the connection alive."""
+        hb_count = 0
         while not self._shutdown.is_set():
             await self._sleep(HEARTBEAT_INTERVAL)
             if self._shutdown.is_set():
+                log.debug("Heartbeat: shutdown requested, stopping")
                 return
             try:
+                hb_count += 1
+                log.debug("Sending heartbeat #%d", hb_count)
                 await self._send(ws, {"type": "heartbeat", "ts": time.time()})
-            except Exception:
+                log.debug("Heartbeat #%d sent OK", hb_count)
+            except websockets.exceptions.ConnectionClosed as exc:
+                log.warning(
+                    "Heartbeat #%d failed — connection closed: code=%s reason='%s'",
+                    hb_count,
+                    exc.code,
+                    exc.reason,
+                )
+                return
+            except Exception as exc:
+                log.error(
+                    "Heartbeat #%d failed — unexpected error: %s\n%s",
+                    hb_count,
+                    exc,
+                    traceback.format_exc(),
+                )
                 return
 
     async def _receiver(self, ws) -> None:
+        """Receive and dispatch messages from the cloud server."""
+        msg_count = 0
         try:
             async for raw in ws:
                 if self._shutdown.is_set():
+                    log.debug("Receiver: shutdown requested, stopping")
                     return
+                msg_count += 1
                 try:
                     data = json.loads(raw)
                 except json.JSONDecodeError:
+                    log.warning(
+                        "Receiver: invalid JSON (msg #%d): %s",
+                        msg_count,
+                        raw[:200],
+                    )
                     continue
 
                 msg_type = data.get("type", "")
+                log.debug("Received message #%d: type=%s", msg_count, msg_type)
 
                 if msg_type == "tool_call":
                     asyncio.create_task(self._handle_tool_call(ws, data))
                 elif msg_type == "heartbeat_ack":
-                    log.debug("Heartbeat ACK")
+                    log.debug("Heartbeat ACK received")
                 elif msg_type == "handshake_ack":
-                    log.debug("Handshake acknowledged")
+                    log.info("✓ Handshake acknowledged by server")
                 elif msg_type == "error":
                     log.error("Server error: %s", data.get("message", data))
                 else:
                     log.debug("Unknown message type: %s", msg_type)
 
-        except websockets.exceptions.ConnectionClosed:
-            log.info("WebSocket closed by server")
+            # If we get here, the `async for` loop ended normally,
+            # which means the WebSocket was closed cleanly
+            log.info(
+                "Receiver: WebSocket closed normally after %d messages",
+                msg_count,
+            )
+
+        except websockets.exceptions.ConnectionClosed as exc:
+            log.warning(
+                "Receiver: connection closed after %d messages: code=%s reason='%s'",
+                msg_count,
+                exc.code,
+                exc.reason,
+            )
         except asyncio.CancelledError:
-            return
+            log.debug("Receiver: cancelled after %d messages", msg_count)
+            raise  # Let asyncio handle cancellation properly
+        except Exception as exc:
+            log.error(
+                "Receiver: unexpected error after %d messages: %s\n%s",
+                msg_count,
+                exc,
+                traceback.format_exc(),
+            )
 
     async def _handle_tool_call(self, ws, data: dict) -> None:
         call_id = data.get("call_id", "unknown")
