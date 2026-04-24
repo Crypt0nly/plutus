@@ -993,6 +993,7 @@ class AgentRuntime:
 
         # Stall detection — timestamp of the last event emitted during processing
         import time as _time
+
         self._last_activity: float = _time.monotonic()
         # Warn the UI after this many seconds of silence while processing
         self.stall_warn_seconds: int = 60
@@ -1040,6 +1041,7 @@ class AgentRuntime:
     def seconds_since_activity(self) -> float:
         """Seconds elapsed since the last agent event was emitted."""
         import time as _time
+
         return _time.monotonic() - self._last_activity
 
     def on_event(self, handler: Callable[[AgentEvent], Any]) -> None:
@@ -1104,14 +1106,10 @@ class AgentRuntime:
         # Check if the fallback key is available
         fb_key = self._secrets.get_key(fb_provider) or os.environ.get(fb_env)
         if not fb_key:
-            logger.info(
-                f"No API key for fallback provider {fb_provider}, skipping fallback."
-            )
+            logger.info(f"No API key for fallback provider {fb_provider}, skipping fallback.")
             return None
 
-        logger.info(
-            f"Attempting fallback: {failed_provider} -> {fb_provider}/{fb_model}"
-        )
+        logger.info(f"Attempting fallback: {failed_provider} -> {fb_provider}/{fb_model}")
 
         fb_config = ModelConfig(
             provider=fb_provider,
@@ -1125,9 +1123,7 @@ class AgentRuntime:
         try:
             return await fb_client.complete(messages, tools=tool_defs)
         except Exception as fb_exc:
-            logger.warning(
-                f"Fallback provider {fb_provider} also failed: {fb_exc}"
-            )
+            logger.warning(f"Fallback provider {fb_provider} also failed: {fb_exc}")
             return None
 
     def _build_system_prompt(self) -> str:
@@ -1143,11 +1139,17 @@ class AgentRuntime:
         if self._tool_registry:
             tool_names = self._tool_registry.list_tools()
             # Also include plan since it's a built-in tool
-            all_tools = tool_names + (["plan"] if self._config.planner.enabled and "plan" not in tool_names else [])
+            all_tools = tool_names + (
+                ["plan"] if self._config.planner.enabled and "plan" not in tool_names else []
+            )
             parts.append(f"\n## Available Tools: {', '.join(all_tools)}")
             parts.append("**Primary tool: `pc`** — use this for all computer interaction.")
-            parts.append("**Plan tool: `plan`** — only use for complex tasks with 4+ steps. Skip for simple/quick requests.")
-            parts.append("**Memory tool: `memory`** — save facts, goals, and checkpoints. This is how you remember things.")
+            parts.append(
+                "**Plan tool: `plan`** — only use for complex tasks with 4+ steps. Skip for simple/quick requests."
+            )
+            parts.append(
+                "**Memory tool: `memory`** — save facts, goals, and checkpoints. This is how you remember things."
+            )
 
         # Inject connector awareness — tell the agent which connectors are ready
         if self._connector_manager:
@@ -1215,7 +1217,7 @@ class AgentRuntime:
                 # Inject voice mode awareness when ElevenLabs is configured
                 elevenlabs = self._connector_manager.get("elevenlabs")
                 if elevenlabs and elevenlabs.is_configured:
-                    voice_enabled = getattr(elevenlabs, 'voice_mode_enabled', False)
+                    voice_enabled = getattr(elevenlabs, "voice_mode_enabled", False)
                     if voice_enabled:
                         parts.append(
                             "\n## Voice Mode (ElevenLabs TTS + Transcription)\n"
@@ -1273,7 +1275,7 @@ class AgentRuntime:
             "  1. Write a self-contained script to ~/plutus-workspace/workers/<name>.py\n"
             "  2. Launch it: pc(operation='run_command', command=\""
             "nohup python3 ~/plutus-workspace/workers/<name>.py "
-            "> ~/plutus-workspace/workers/<name>.log 2>&1 &\")\n"
+            '> ~/plutus-workspace/workers/<name>.log 2>&1 &")\n'
             "  3. Mark the plan step in_progress and continue with other steps\n"
             "  4. On the next heartbeat, check the log file to see if the worker finished\n"
             "  5. Mark the step done once the log shows success\n"
@@ -1311,25 +1313,23 @@ class AgentRuntime:
         # of background workers without needing to call a tool.
         if self._tool_registry:
             worker_tool = self._tool_registry.get("worker")
-            if worker_tool and hasattr(worker_tool, '_pool'):
+            if worker_tool and hasattr(worker_tool, "_pool"):
                 try:
                     all_workers = worker_tool._pool.list_all()
                     if all_workers:
                         lines = ["\n## Background Workers (live status)"]
                         for w in all_workers:
-                            state = w.get('state', 'unknown')
-                            name = w.get('name', w.get('task_id', '?'))
-                            pct = w.get('progress_pct', 0)
-                            step = w.get('current_step', '')
-                            extra = ''
-                            if state == 'completed' and w.get('result'):
-                                r = w['result']
+                            state = w.get("state", "unknown")
+                            name = w.get("name", w.get("task_id", "?"))
+                            pct = w.get("progress_pct", 0)
+                            step = w.get("current_step", "")
+                            extra = ""
+                            if state == "completed" and w.get("result"):
+                                r = w["result"]
                                 extra = f" | Result: {r[:2000]}{'...' if len(r) > 2000 else ''}"
-                            elif state == 'failed':
+                            elif state == "failed":
                                 extra = f" | Error: {w.get('error', 'unknown')}"
-                            lines.append(
-                                f"  [{state.upper()}] {name} — {pct:.0f}% — {step}{extra}"
-                            )
+                            lines.append(f"  [{state.upper()}] {name} — {pct:.0f}% — {step}{extra}")
                         lines.append(
                             "  NOTE: If a worker shows [COMPLETED] above, it is DONE. "
                             "Do NOT say it is still running."
@@ -1347,7 +1347,7 @@ class AgentRuntime:
                 "  pc(operation='run_command', command=\""
                 f"curl -s -X POST http://localhost:{gw_port}/api/cloud/send "
                 "-H 'Content-Type: application/json' "
-                "-d '{\\\"content\\\": \\\"your message here\\\"}'\")"  # noqa: E501
+                '-d \'{\\"content\\": \\"your message here\\"}\'")'  # noqa: E501
             )
             parts.append(
                 "\n## Plutus Cloud Connection\n"
@@ -1361,13 +1361,24 @@ class AgentRuntime:
                 "agent.\n\n"
                 "### Sending Messages to Cloud\n"
                 "You can proactively send messages to the cloud agent using:\n"
-                + curl_example + "\n\n"
+                + curl_example
+                + "\n\n"
                 "### When to Communicate with Cloud\n"
                 "- When you need information that only the cloud agent has access to\n"
                 "- When you want to delegate a cloud-side task (e.g. web research "
                 "without using the local browser)\n"
                 "- When the user asks you to coordinate with the cloud version\n"
                 "- When reporting results of a task the cloud agent delegated to you\n\n"
+                "### CRITICAL — Loop Prevention Rules\n"
+                "- When you receive a message from the cloud agent in session_cloud, "
+                "process it and respond ONCE. Your response is automatically sent "
+                "back. Do NOT send additional follow-up messages.\n"
+                "- NEVER forward a cloud agent's message back to the cloud agent. "
+                "If the cloud agent asks you something, answer it — do not relay "
+                "the question back.\n"
+                "- Do NOT proactively send messages to the cloud agent unless the "
+                "USER explicitly asks you to communicate with the cloud version.\n"
+                "- One incoming message = one response. That's it. No loops.\n\n"
                 "### Important\n"
                 "- The cloud agent can also send you tool_call requests (shell "
                 "commands, file operations, etc.) which are handled automatically "
@@ -1410,16 +1421,18 @@ class AgentRuntime:
             active_plan = await self._planner.get_active_plan(conv_id)
             if active_plan:
                 done_steps = sum(
-                    1 for s in active_plan["steps"]
-                    if s["status"] in ("done", "skipped")
+                    1 for s in active_plan["steps"] if s["status"] in ("done", "skipped")
                 )
                 plan_info = {
                     "title": active_plan["title"],
                     "goal": active_plan.get("goal"),
                     "progress": f"{done_steps}/{len(active_plan['steps'])}",
                     "current_step": next(
-                        (s["description"] for s in active_plan["steps"]
-                         if s["status"] == "in_progress"),
+                        (
+                            s["description"]
+                            for s in active_plan["steps"]
+                            if s["status"] == "in_progress"
+                        ),
                         None,
                     ),
                 }
@@ -1489,9 +1502,7 @@ class AgentRuntime:
                 else:
                     await self._conversation.start_conversation(title=user_message[:50])
             except Exception as _resume_err:
-                logger.warning(
-                    "Could not resume conversation: %s — starting fresh", _resume_err
-                )
+                logger.warning("Could not resume conversation: %s — starting fresh", _resume_err)
                 await self._conversation.start_conversation(title=user_message[:50])
 
         # Drain any pending worker results into the conversation BEFORE
@@ -1500,10 +1511,10 @@ class AgentRuntime:
         # the coordinator thinks the results haven't arrived yet.
         if self._pending_worker_results:
             for wr_msg in self._pending_worker_results:
-                await self._conversation.add_user_message(
-                    f"[SYSTEM NOTIFICATION]\n{wr_msg}"
-                )
-            logger.info(f"Drained {len(self._pending_worker_results)} pending worker results into conversation")
+                await self._conversation.add_user_message(f"[SYSTEM NOTIFICATION]\n{wr_msg}")
+            logger.info(
+                f"Drained {len(self._pending_worker_results)} pending worker results into conversation"
+            )
             self._pending_worker_results.clear()
 
         await self._conversation.add_user_message(user_message)
@@ -1515,12 +1526,12 @@ class AgentRuntime:
         # inject a brief system reminder so the LLM knows it's mid-task and
         # should not greet the user.  This is a belt-and-suspenders guard
         # alongside the system prompt rule and the summary injection.
-        if getattr(self._conversation, '_just_resumed', False):
+        if getattr(self._conversation, "_just_resumed", False):
             self._conversation._just_resumed = False
             summary = self._conversation._current_summary
-            if summary and (summary.get('goals') or summary.get('key_facts')):
-                goals_text = '; '.join(summary.get('goals', [])[:3])
-                facts_text = '; '.join(summary.get('key_facts', [])[:3])
+            if summary and (summary.get("goals") or summary.get("key_facts")):
+                goals_text = "; ".join(summary.get("goals", [])[:3])
+                facts_text = "; ".join(summary.get("key_facts", [])[:3])
                 reminder = (
                     "[SYSTEM: Context restored after restart. "
                     "You are mid-task — DO NOT greet the user. "
@@ -1536,13 +1547,13 @@ class AgentRuntime:
                     conv_id = self._conversation.conversation_id
                     if conv_id:
                         recent = await self._conversation._memory.get_messages(conv_id, limit=1)
-                        if recent and recent[-1].get('role') == 'user':
+                        if recent and recent[-1].get("role") == "user":
                             last_msg = recent[-1]
-                            original = last_msg.get('content', '') or ''
+                            original = last_msg.get("content", "") or ""
                             updated_content = f"{reminder}\n\n{original}"
                             await self._conversation._memory._db.execute(
                                 "UPDATE messages SET content = ? WHERE id = ?",
-                                (updated_content, last_msg['id'])
+                                (updated_content, last_msg["id"]),
                             )
                             await self._conversation._memory._db.commit()
                 except Exception as _reminder_err:
@@ -1551,6 +1562,7 @@ class AgentRuntime:
         self._cancelled = False
         self._processing = True
         import time as _time
+
         self._last_activity = _time.monotonic()
         yield AgentEvent("thinking", {"message": "Processing your request..."})
 
@@ -1571,9 +1583,7 @@ class AgentRuntime:
             # check at the start of every round — not just at process_message entry.
             if self._pending_worker_results:
                 for wr_msg in self._pending_worker_results:
-                    await self._conversation.add_user_message(
-                        f"[SYSTEM NOTIFICATION]\n{wr_msg}"
-                    )
+                    await self._conversation.add_user_message(f"[SYSTEM NOTIFICATION]\n{wr_msg}")
                 logger.info(
                     f"Mid-loop: drained {len(self._pending_worker_results)} "
                     f"pending worker results into conversation (round {round_num})"
@@ -1593,9 +1603,7 @@ class AgentRuntime:
             _retry_events: list[AgentEvent] = []
 
             def _on_retry(attempt: int, wait: int, msg: str) -> None:
-                _retry_events.append(
-                    AgentEvent("system_message", {"message": msg})
-                )
+                _retry_events.append(AgentEvent("system_message", {"message": msg}))
 
             try:
                 response = await self._llm.complete(
@@ -1611,22 +1619,28 @@ class AgentRuntime:
                     e.provider, messages, system_prompt, tool_defs
                 )
                 if fallback_response is not None:
-                    yield AgentEvent("system_message", {
-                        "message": (
-                            f"{e.provider.capitalize()} is temporarily unavailable. "
-                            f"Switched to a fallback model for this response."
-                        )
-                    })
+                    yield AgentEvent(
+                        "system_message",
+                        {
+                            "message": (
+                                f"{e.provider.capitalize()} is temporarily unavailable. "
+                                f"Switched to a fallback model for this response."
+                            )
+                        },
+                    )
                     response = fallback_response
                 else:
                     self._processing = False
-                    yield AgentEvent("error", {
-                        "message": (
-                            f"{e.provider.capitalize()} is temporarily overloaded "
-                            f"and no fallback model is available. Please try again "
-                            f"in a few minutes."
-                        )
-                    })
+                    yield AgentEvent(
+                        "error",
+                        {
+                            "message": (
+                                f"{e.provider.capitalize()} is temporarily overloaded "
+                                f"and no fallback model is available. Please try again "
+                                f"in a few minutes."
+                            )
+                        },
+                    )
                     return
             except Exception as e:
                 for evt in _retry_events:
@@ -1650,12 +1664,16 @@ class AgentRuntime:
 
             # Handle truncated responses (finish_reason=length)
             if response.finish_reason == "length":
-                logger.warning(f"Response truncated (finish_reason=length) at round {round_num + 1}")
+                logger.warning(
+                    f"Response truncated (finish_reason=length) at round {round_num + 1}"
+                )
                 # If there are tool calls with parse errors, don't execute them.
                 # Instead, tell the LLM to retry with smaller content.
-                has_parse_errors = any(
-                    "__parse_error" in tc.arguments for tc in response.tool_calls
-                ) if response.tool_calls else False
+                has_parse_errors = (
+                    any("__parse_error" in tc.arguments for tc in response.tool_calls)
+                    if response.tool_calls
+                    else False
+                )
 
                 if has_parse_errors or response.tool_calls:
                     # Add a user message telling the LLM its response was truncated
@@ -1667,7 +1685,12 @@ class AgentRuntime:
                         "content via a script file."
                     )
                     await self._conversation.add_user_message(truncation_msg)
-                    yield AgentEvent("info", {"message": "Response was truncated, asking to retry with shorter content..."})
+                    yield AgentEvent(
+                        "info",
+                        {
+                            "message": "Response was truncated, asking to retry with shorter content..."
+                        },
+                    )
                     continue  # Retry the round
 
             # If there's text content, emit it
@@ -1685,16 +1708,16 @@ class AgentRuntime:
             valid_tool_calls = []
             for tc in response.tool_calls:
                 if "__parse_error" in tc.arguments:
-                    logger.warning(f"Skipping tool call {tc.name} with parse error: {tc.arguments.get('__parse_error')}")
+                    logger.warning(
+                        f"Skipping tool call {tc.name} with parse error: {tc.arguments.get('__parse_error')}"
+                    )
                     # We still need to add a tool_result for Anthropic pairing
                     # This will be handled after we add the assistant message
                 else:
                     valid_tool_calls.append(tc)
 
             # Track whether this round has any external (non-plan, non-memory) tool calls
-            has_external_call = any(
-                tc.name not in ("plan", "memory") for tc in response.tool_calls
-            )
+            has_external_call = any(tc.name not in ("plan", "memory") for tc in response.tool_calls)
             if has_external_call:
                 external_rounds += 1
                 self._rounds_since_checkpoint += 1
@@ -1801,11 +1824,7 @@ class AgentRuntime:
 
                 # If the speak tool returned audio, emit a voice_message
                 # event so the UI can render a playable voice memo.
-                if (
-                    tc.name == "speak"
-                    and isinstance(result, dict)
-                    and result.get("voice_message")
-                ):
+                if tc.name == "speak" and isinstance(result, dict) and result.get("voice_message"):
                     yield AgentEvent(
                         "voice_message",
                         {
@@ -1884,13 +1903,14 @@ class AgentRuntime:
         # If a blocked_ops list has been set (from HeartbeatConfig) and this is
         # a heartbeat run, enforce it.  The list is user-configurable — set it
         # to an empty list in Settings → Heartbeat to allow all operations.
-        if getattr(self, '_is_heartbeat', False) and tool_name == "pc":
-            blocked: list[str] = getattr(self, '_heartbeat_blocked_ops', [])
+        if getattr(self, "_is_heartbeat", False) and tool_name == "pc":
+            blocked: list[str] = getattr(self, "_heartbeat_blocked_ops", [])
             if blocked:
                 op = arguments.get("operation", "")
                 if op in blocked:
                     logger.warning(
-                        "Heartbeat tried to call blocked operation '%s' — blocked by user config.", op
+                        "Heartbeat tried to call blocked operation '%s' — blocked by user config.",
+                        op,
                     )
                     return (
                         f"[BLOCKED] Operation '{op}' is in your heartbeat blocked-ops list. "
@@ -1902,6 +1922,7 @@ class AgentRuntime:
         # does not fire false stall warnings during long-running tool calls (e.g.
         # web_deploy scaffold running npm install for 60-180 s).
         import time as _time
+
         self._last_activity = _time.monotonic()
 
         return await tool.execute(**arguments)
@@ -1939,12 +1960,14 @@ class AgentRuntime:
             updated = await self._planner.update_step(plan["id"], step_index, status, result)
             if not updated:
                 return f"[ERROR] Could not update step {step_index}."
-            return json.dumps({
-                "plan": updated["id"],
-                "step": step_index,
-                "status": status,
-                "plan_status": updated["status"],
-            })
+            return json.dumps(
+                {
+                    "plan": updated["id"],
+                    "step": step_index,
+                    "status": status,
+                    "plan_status": updated["status"],
+                }
+            )
 
         elif action == "get":
             plan = await self._planner.get_active_plan(conv_id)

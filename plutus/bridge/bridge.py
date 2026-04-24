@@ -37,9 +37,7 @@ try:
     import websockets.exceptions
 except ImportError:
     print("Installing websockets…")
-    subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", "--quiet", "websockets>=12.0"]
-    )
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "websockets>=12.0"])
     import websockets
     import websockets.exceptions
 
@@ -77,9 +75,7 @@ def _setup_standalone_logging() -> None:
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     log.setLevel(logging.DEBUG)
-    fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
-    )
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(fmt)
@@ -120,9 +116,7 @@ def extract_server_url(token: str) -> str:
 
 def derive_ws_url(server_url: str) -> str:
     """Convert an HTTP(S) server URL to the bridge WebSocket URL."""
-    ws = server_url.replace("https://", "wss://").replace(
-        "http://", "ws://"
-    )
+    ws = server_url.replace("https://", "wss://").replace("http://", "ws://")
     ws = ws.rstrip("/")
     return f"{ws}/api/bridge/ws"
 
@@ -134,7 +128,7 @@ def load_config() -> dict[str, Any]:
     if CONFIG_FILE.exists():
         try:
             return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             pass
     return {}
 
@@ -180,9 +174,7 @@ def get_system_info() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Tool handlers
 # ---------------------------------------------------------------------------
-async def handle_tool_call(
-    tool: str, args: dict[str, Any]
-) -> dict[str, Any]:
+async def handle_tool_call(tool: str, args: dict[str, Any]) -> dict[str, Any]:
     """Execute a tool call from the cloud agent."""
     try:
         if tool == "shell_exec":
@@ -221,9 +213,7 @@ async def _tool_shell(args: dict[str, Any]) -> dict[str, Any]:
         cwd=cwd,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
         proc.kill()
         return {
@@ -251,9 +241,7 @@ async def _tool_python(args: dict[str, Any]) -> dict[str, Any]:
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
         proc.kill()
         return {
@@ -438,20 +426,12 @@ class PlutusBridge:
 
                     # Mark connected after handshake sent
                     self._connected = True
-                    log.info(
-                        "Bridge: handshake sent, connection active"
-                    )
+                    log.info("Bridge: handshake sent, connection active")
 
                     # Run heartbeat + receiver concurrently
-                    hb = asyncio.create_task(
-                        self._heartbeat(ws), name="bridge_heartbeat"
-                    )
-                    recv = asyncio.create_task(
-                        self._receiver(ws), name="bridge_receiver"
-                    )
-                    shutdown = asyncio.create_task(
-                        self._shutdown.wait(), name="bridge_shutdown"
-                    )
+                    hb = asyncio.create_task(self._heartbeat(ws), name="bridge_heartbeat")
+                    recv = asyncio.create_task(self._receiver(ws), name="bridge_receiver")
+                    shutdown = asyncio.create_task(self._shutdown.wait(), name="bridge_shutdown")
 
                     done, pending = await asyncio.wait(
                         [hb, recv, shutdown],
@@ -465,9 +445,7 @@ class PlutusBridge:
                     for t in done:
                         name = t.get_name()
                         if t.cancelled():
-                            log.warning(
-                                "Bridge task '%s' was cancelled", name
-                            )
+                            log.warning("Bridge task '%s' was cancelled", name)
                         elif t.exception():
                             log.error(
                                 "Bridge task '%s' raised exception: %s\n%s",
@@ -489,33 +467,25 @@ class PlutusBridge:
 
                     for t in pending:
                         t.cancel()
-                    await asyncio.gather(
-                        *pending, return_exceptions=True
-                    )
+                    await asyncio.gather(*pending, return_exceptions=True)
 
                     if self._shutdown.is_set():
-                        log.info(
-                            "Bridge: shutdown requested — exiting"
-                        )
+                        log.info("Bridge: shutdown requested — exiting")
                         return
 
-                    log.warning(
-                        "Bridge: connection lost — will reconnect"
-                    )
+                    log.warning("Bridge: connection lost — will reconnect")
 
             except websockets.exceptions.InvalidStatusCode as exc:
                 self._connected = False
                 log.error(
-                    "Bridge: server rejected with HTTP %s — "
-                    "check token. Retrying in %ds",
+                    "Bridge: server rejected with HTTP %s — check token. Retrying in %ds",
                     exc.status_code,
                     delay,
                 )
             except websockets.exceptions.ConnectionClosed as exc:
                 self._connected = False
                 log.warning(
-                    "Bridge: connection closed: code=%s reason='%s' "
-                    "— retrying in %ds",
+                    "Bridge: connection closed: code=%s reason='%s' — retrying in %ds",
                     exc.code,
                     exc.reason,
                     delay,
@@ -547,9 +517,7 @@ class PlutusBridge:
 
             if self._shutdown.is_set():
                 return
-            log.info(
-                "Bridge: waiting %ds before reconnecting…", delay
-            )
+            log.info("Bridge: waiting %ds before reconnecting…", delay)
             await self._sleep(delay)
             delay = min(delay * 2, RECONNECT_DELAY_MAX)
 
@@ -562,14 +530,11 @@ class PlutusBridge:
                 return
             try:
                 hb_count += 1
-                await self._send(
-                    ws, {"type": "heartbeat", "ts": time.time()}
-                )
+                await self._send(ws, {"type": "heartbeat", "ts": time.time()})
                 log.debug("Bridge: heartbeat #%d OK", hb_count)
             except websockets.exceptions.ConnectionClosed as exc:
                 log.warning(
-                    "Bridge: heartbeat #%d failed — closed: "
-                    "code=%s reason='%s'",
+                    "Bridge: heartbeat #%d failed — closed: code=%s reason='%s'",
                     hb_count,
                     exc.code,
                     exc.reason,
@@ -605,35 +570,31 @@ class PlutusBridge:
                 msg_type = data.get("type", "")
 
                 if msg_type == "tool_call":
-                    asyncio.create_task(
-                        self._handle_tool_call(ws, data)
-                    )
+                    asyncio.create_task(self._handle_tool_call(ws, data))
                 elif msg_type == "heartbeat_ack":
                     log.debug("Bridge: heartbeat ACK")
                 elif msg_type == "handshake_ack":
-                    log.info(
-                        "Bridge: ✓ handshake acknowledged by server"
-                    )
+                    log.info("Bridge: ✓ handshake acknowledged by server")
                 elif msg_type == "agent_message":
                     # Message from the cloud agent → route to local agent
                     content = data.get("content", "")
                     sender = data.get("sender", "cloud_agent")
                     reply_to = data.get("reply_to")
+                    msg_id = data.get("id")  # unique message ID for request-reply
                     log.info(
-                        "Bridge: agent_message from %s: %s",
+                        "Bridge: agent_message from %s (id=%s, reply_to=%s): %s",
                         sender,
+                        msg_id[:8] if msg_id else "None",
+                        reply_to[:8] if reply_to else "None",
                         content[:80],
                     )
                     if self._on_agent_message:
                         asyncio.create_task(
-                            self._on_agent_message(
-                                content, sender, reply_to, ws
-                            )
+                            self._on_agent_message(content, sender, msg_id or reply_to, ws)
                         )
                     else:
                         log.warning(
-                            "Bridge: no on_agent_message handler "
-                            "registered — message dropped"
+                            "Bridge: no on_agent_message handler registered — message dropped"
                         )
                 elif msg_type == "error":
                     log.error(
@@ -641,9 +602,7 @@ class PlutusBridge:
                         data.get("message", data),
                     )
                 else:
-                    log.debug(
-                        "Bridge: unknown msg type: %s", msg_type
-                    )
+                    log.debug("Bridge: unknown msg type: %s", msg_type)
 
             log.info(
                 "Bridge: WebSocket closed normally after %d msgs",
@@ -652,8 +611,7 @@ class PlutusBridge:
 
         except websockets.exceptions.ConnectionClosed as exc:
             log.warning(
-                "Bridge: receiver closed after %d msgs: "
-                "code=%s reason='%s'",
+                "Bridge: receiver closed after %d msgs: code=%s reason='%s'",
                 msg_count,
                 exc.code,
                 exc.reason,
@@ -694,9 +652,7 @@ class PlutusBridge:
                 },
             )
         except Exception as exc:
-            log.warning(
-                "Bridge: failed to send tool result: %s", exc
-            )
+            log.warning("Bridge: failed to send tool result: %s", exc)
 
     async def send_to_cloud(
         self,
@@ -733,9 +689,7 @@ class PlutusBridge:
 
     async def _sleep(self, seconds: float) -> None:
         try:
-            await asyncio.wait_for(
-                self._shutdown.wait(), timeout=seconds
-            )
+            await asyncio.wait_for(self._shutdown.wait(), timeout=seconds)
         except TimeoutError:
             pass
 
@@ -751,12 +705,8 @@ def main() -> None:
         "--token",
         help="Bridge token (from Settings → Local Bridge)",
     )
-    parser.add_argument(
-        "--setup", action="store_true", help="Interactive setup wizard"
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"v{VERSION}"
-    )
+    parser.add_argument("--setup", action="store_true", help="Interactive setup wizard")
+    parser.add_argument("--version", action="version", version=f"v{VERSION}")
     args = parser.parse_args()
 
     if args.setup:

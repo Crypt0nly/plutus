@@ -91,7 +91,7 @@ class CloudBridge:
 
         # Fallback — use the global agent (no dedicated lock)
         try:
-            from plutus.gateway.server import get_state, _agent_lock
+            from plutus.gateway.server import _agent_lock, get_state
 
             state = get_state()
             return state.get("agent"), _agent_lock
@@ -132,9 +132,7 @@ class CloudBridge:
         The ``ws`` parameter is the raw websocket (not used directly here —
         we use bridge.send_to_cloud() instead).
         """
-        logger.info(
-            f"Queuing cloud message from {sender}: {content[:80]}"
-        )
+        logger.info(f"Queuing cloud message from {sender}: {content[:80]}")
         await self._queue.put((content, sender, reply_to))
 
     async def _process_queue(self) -> None:
@@ -142,9 +140,7 @@ class CloudBridge:
         logger.info("Cloud bridge queue processor started")
         while self._running:
             try:
-                content, sender, reply_to = await asyncio.wait_for(
-                    self._queue.get(), timeout=2.0
-                )
+                content, sender, reply_to = await asyncio.wait_for(self._queue.get(), timeout=2.0)
             except TimeoutError:
                 continue
             except asyncio.CancelledError:
@@ -189,11 +185,13 @@ class CloudBridge:
             return
 
         # Broadcast the incoming cloud message to the Sessions panel in the UI
-        await self._broadcast({
-            "type": "text",
-            "content": f"☁️ **Cloud Agent**: {content}",
-            "role": "user",
-        })
+        await self._broadcast(
+            {
+                "type": "text",
+                "content": f"☁️ **Cloud Agent**: {content}",
+                "role": "user",
+            }
+        )
         await self._broadcast({"type": "thinking"})
 
         # Process through the dedicated Cloud session agent
@@ -224,16 +222,8 @@ class CloudBridge:
                     elif event.type == "tool_call":
                         tool_name = event.data.get("tool", "")
                         if tool_name not in ("plan", "memory"):
-                            operation = (
-                                event.data.get("arguments", {}).get(
-                                    "operation", ""
-                                )
-                            )
-                            summary = (
-                                f"{tool_name}.{operation}"
-                                if operation
-                                else f"{tool_name}"
-                            )
+                            operation = event.data.get("arguments", {}).get("operation", "")
+                            summary = f"{tool_name}.{operation}" if operation else f"{tool_name}"
                             tool_summaries.append(summary)
                             logger.debug(f"Agent tool call: {summary}")
 
@@ -248,10 +238,12 @@ class CloudBridge:
         except Exception as e:
             logger.exception("Agent processing failed for cloud message")
             response_parts.append(f"Processing error: {str(e)[:300]}")
-            await self._broadcast({
-                "type": "error",
-                "message": str(e)[:300],
-            })
+            await self._broadcast(
+                {
+                    "type": "error",
+                    "message": str(e)[:300],
+                }
+            )
 
         await self._broadcast({"type": "done"})
 
@@ -263,8 +255,7 @@ class CloudBridge:
                 final_response = "Done!"
             else:
                 final_response = (
-                    "I received your message but had no response to give. "
-                    "Could you try rephrasing?"
+                    "I received your message but had no response to give. Could you try rephrasing?"
                 )
 
         # Append tool call summary if there were any
@@ -275,9 +266,7 @@ class CloudBridge:
                 actions_str += f" ... and {len(tool_summaries) - 10} more"
             final_response = f"{final_response}\n\n[Actions: {actions_str}]"
 
-        logger.info(
-            f"Sending reply to cloud ({len(final_response)} chars)"
-        )
+        logger.info(f"Sending reply to cloud ({len(final_response)} chars)")
 
         # Send the response back to the cloud agent via the bridge
         if bridge:
@@ -291,9 +280,7 @@ class CloudBridge:
             else:
                 logger.warning("Failed to send reply to cloud")
         else:
-            logger.warning(
-                "Bridge instance not available — reply not sent to cloud"
-            )
+            logger.warning("Bridge instance not available — reply not sent to cloud")
 
 
 # Module-level singleton accessor
