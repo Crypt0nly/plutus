@@ -771,22 +771,31 @@ async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
 
     try:
         from plutus.bridge import PlutusBridge, extract_server_url
+        from plutus.connectors.cloud_bridge import get_cloud_bridge
 
         # Auto-extract server URL from token
         server_url = extract_server_url(cloud_token)
         logger.info("Cloud bridge server: %s", server_url)
 
+        # Set up the cloud bridge connector for agent-to-agent messaging
+        cloud_bridge_connector = get_cloud_bridge()
+
         bridge = PlutusBridge(
             server_url=server_url,
             token=cloud_token,
             embedded=True,
+            on_agent_message=cloud_bridge_connector.handle_cloud_message,
         )
 
-        task = asyncio.create_task(bridge.run(), name="cloud_bridge")
-        logger.info("Cloud bridge auto-started")
+        # Start the cloud bridge connector's message queue processor
+        await cloud_bridge_connector.start()
 
-        # Store bridge instance so status endpoint can check is_connected
+        task = asyncio.create_task(bridge.run(), name="cloud_bridge")
+        logger.info("Cloud bridge auto-started with agent messaging")
+
+        # Store bridge instance so status endpoint and cloud_bridge can access it
         _state["cloud_bridge_instance"] = bridge
+        _state["bridge_instance"] = bridge  # alias for cloud_bridge connector
 
         return task
 

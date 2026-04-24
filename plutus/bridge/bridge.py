@@ -371,6 +371,7 @@ class PlutusBridge:
         token: str,
         *,
         embedded: bool = False,
+        on_agent_message=None,
     ) -> None:
         self.server_url = server_url
         self.token = token
@@ -379,6 +380,9 @@ class PlutusBridge:
         self._ws = None
         self._embedded = embedded
         self._connected = False  # True only when WS is open and handshake done
+        # Callback for incoming agent messages from the cloud.
+        # Signature: async def callback(content: str, sender: str, reply_to: str | None, ws)
+        self._on_agent_message = on_agent_message
 
     @property
     def is_connected(self) -> bool:
@@ -610,6 +614,27 @@ class PlutusBridge:
                     log.info(
                         "Bridge: ✓ handshake acknowledged by server"
                     )
+                elif msg_type == "agent_message":
+                    # Message from the cloud agent → route to local agent
+                    content = data.get("content", "")
+                    sender = data.get("sender", "cloud_agent")
+                    reply_to = data.get("reply_to")
+                    log.info(
+                        "Bridge: agent_message from %s: %s",
+                        sender,
+                        content[:80],
+                    )
+                    if self._on_agent_message:
+                        asyncio.create_task(
+                            self._on_agent_message(
+                                content, sender, reply_to, ws
+                            )
+                        )
+                    else:
+                        log.warning(
+                            "Bridge: no on_agent_message handler "
+                            "registered — message dropped"
+                        )
                 elif msg_type == "error":
                     log.error(
                         "Bridge: server error: %s",
@@ -672,6 +697,35 @@ class PlutusBridge:
             log.warning(
                 "Bridge: failed to send tool result: %s", exc
             )
+
+    async def send_to_cloud(
+        self,
+        content: str,
+        sender: str = "local_agent",
+        reply_to: str | None = None,
+    ) -> bool:
+        """Send an agent message to the cloud agent over the bridge WS.
+
+        Returns True if the message was sent successfully.
+        """
+        if not self._ws or not self._connected:
+            log.warning("Bridge: cannot send to cloud — not connected")
+            return False
+        try:
+            payload: dict[str, Any] = {
+                "type": "agent_message",
+                "content": content,
+                "sender": sender,
+                "ts": time.time(),
+            }
+            if reply_to:
+                payload["reply_to"] = reply_to
+            await self._send(self._ws, payload)
+            log.info("Bridge: sent agent_message to cloud (%d chars)", len(content))
+            return True
+        except Exception as exc:
+            log.warning("Bridge: failed to send agent_message: %s", exc)
+            return False
 
     @staticmethod
     async def _send(ws, data: dict) -> None:

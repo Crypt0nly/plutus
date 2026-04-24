@@ -3061,6 +3061,7 @@ def create_cloud_router() -> APIRouter:
                             except (asyncio.CancelledError, Exception):
                                 pass
                         state.pop("cloud_bridge_instance", None)
+                        state.pop("bridge_instance", None)
 
                         new_cfg = PlutusConfig.load()
                         bridge_task = await _auto_start_cloud_bridge(new_cfg)
@@ -3100,6 +3101,7 @@ def create_cloud_router() -> APIRouter:
                 pass
         state.pop("cloud_bridge_task", None)
         state.pop("cloud_bridge_instance", None)
+        state.pop("bridge_instance", None)
 
         cfg = PlutusConfig.load()
         cfg.update(
@@ -3113,5 +3115,35 @@ def create_cloud_router() -> APIRouter:
         )
 
         return {"message": "Disconnected from cloud"}
+
+    @cloud_router.post("/send")
+    async def cloud_send_message(body: dict[str, Any]) -> dict[str, Any]:
+        """Send a message from local Plutus to the cloud agent.
+
+        Expects: { "content": "message text" }
+        """
+        from plutus.gateway.server import get_state
+
+        content = body.get("content", "").strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="content is required")
+
+        state = get_state()
+        bridge_instance = state.get("bridge_instance")
+        if not bridge_instance or not bridge_instance.is_connected:
+            raise HTTPException(
+                status_code=503,
+                detail="Not connected to cloud",
+            )
+
+        sent = await bridge_instance.send_to_cloud(
+            content=content,
+            sender="local_user",
+        )
+        if sent:
+            return {"status": "sent"}
+        raise HTTPException(
+            status_code=500, detail="Failed to send message"
+        )
 
     return cloud_router

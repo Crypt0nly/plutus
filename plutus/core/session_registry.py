@@ -24,6 +24,7 @@ CONNECTOR_SESSIONS: dict[str, str] = {
     "whatsapp": "session_whatsapp",
     "discord": "session_discord",
     "email": "session_email",
+    "cloud": "session_cloud",
 }
 
 # Human-readable display names for sessions
@@ -32,6 +33,7 @@ SESSION_DISPLAY_NAMES: dict[str, str] = {
     "session_whatsapp": "WhatsApp",
     "session_discord": "Discord",
     "session_email": "Email",
+    "session_cloud": "Plutus Cloud",
 }
 
 # Emoji icons for sessions
@@ -40,6 +42,7 @@ SESSION_ICONS: dict[str, str] = {
     "session_whatsapp": "💬",
     "session_discord": "🎮",
     "session_email": "📧",
+    "session_cloud": "☁️",
 }
 
 
