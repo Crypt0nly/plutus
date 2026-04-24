@@ -216,6 +216,8 @@ async def _dispatch_task(task_type: str, payload: dict[str, Any]) -> dict[str, A
         return _task_write_file(payload)
     if task_type == "list_files":
         return _task_list_files(payload)
+    if task_type in ("file_pull", "pull_file"):
+        return _task_file_pull(payload)
     if task_type == "ping":
         return {"success": True, "message": "pong", "system": get_system_info()}
     return {"success": False, "error": f"Unknown task type: {task_type}"}
@@ -302,6 +304,41 @@ def _task_list_files(payload: dict[str, Any]) -> dict[str, Any]:
         return {"success": True, "files": files, "count": len(files)}
     except Exception as exc:
         return {"success": False, "error": f"List failed: {exc}"}
+
+
+def _task_file_pull(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read a file as base64 for binary-safe transfer to the cloud."""
+    import base64
+
+    raw_path: str = payload.get("path", "")
+    if not raw_path:
+        return {"success": False, "error": "No path provided"}
+    path = Path(raw_path).expanduser()
+    if not path.exists():
+        return {"success": False, "error": f"File not found: {path}"}
+    if not path.is_file():
+        return {"success": False, "error": f"Not a file: {path}"}
+
+    max_bytes = 50 * 1024 * 1024  # 50 MB limit
+    size = path.stat().st_size
+    if size > max_bytes:
+        return {
+            "success": False,
+            "error": (
+                f"File too large for transfer: {size / (1024 * 1024):.1f} MB "
+                f"(limit is {max_bytes // (1024 * 1024)} MB)"
+            ),
+        }
+    try:
+        data = path.read_bytes()
+        return {
+            "success": True,
+            "filename": path.name,
+            "size": size,
+            "data_b64": base64.b64encode(data).decode("ascii"),
+        }
+    except Exception as exc:
+        return {"success": False, "error": f"Read failed: {exc}"}
 
 
 # ---------------------------------------------------------------------------

@@ -174,6 +174,8 @@ async def handle_tool_call(tool: str, args: dict[str, Any]) -> dict[str, Any]:
             return _tool_file_write(args)
         if tool == "file_list":
             return _tool_file_list(args)
+        if tool == "file_pull":
+            return _tool_file_pull(args)
         if tool == "open_app":
             return _tool_open_app(args)
         if tool == "ping":
@@ -289,6 +291,41 @@ def _tool_file_list(args: dict[str, Any]) -> dict[str, Any]:
         return {"success": True, "files": entries, "count": len(entries)}
     except Exception as exc:
         return {"success": False, "error": f"List failed: {exc}"}
+
+
+def _tool_file_pull(args: dict[str, Any]) -> dict[str, Any]:
+    """Read a file as base64 for binary-safe transfer to the cloud."""
+    import base64
+
+    raw = args.get("path", "")
+    if not raw:
+        return {"success": False, "error": "No path provided"}
+    path = Path(raw).expanduser()
+    if not path.exists():
+        return {"success": False, "error": f"File not found: {path}"}
+    if not path.is_file():
+        return {"success": False, "error": f"Not a file: {path}"}
+
+    max_bytes = 50 * 1024 * 1024  # 50 MB limit
+    size = path.stat().st_size
+    if size > max_bytes:
+        return {
+            "success": False,
+            "error": (
+                f"File too large for transfer: {size / (1024 * 1024):.1f} MB "
+                f"(limit is {max_bytes // (1024 * 1024)} MB)"
+            ),
+        }
+    try:
+        data = path.read_bytes()
+        return {
+            "success": True,
+            "filename": path.name,
+            "size": size,
+            "data_b64": base64.b64encode(data).decode("ascii"),
+        }
+    except Exception as exc:
+        return {"success": False, "error": f"Read failed: {exc}"}
 
 
 def _tool_open_app(args: dict[str, Any]) -> dict[str, Any]:
