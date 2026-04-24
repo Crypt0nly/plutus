@@ -1338,6 +1338,50 @@ class AgentRuntime:
                 except Exception:
                     pass
 
+        # Inject cloud bridge awareness — tell the agent it can communicate
+        # with the cloud Plutus instance via the persistent bridge.
+        cloud_cfg = self._config.cloud_sync
+        if cloud_cfg.token and cloud_cfg.enabled:
+            gw_port = self._config.gateway.port
+            curl_example = (
+                "  pc(operation='run_command', command=\""
+                f"curl -s -X POST http://localhost:{gw_port}/api/cloud/send "
+                "-H 'Content-Type: application/json' "
+                "-d '{\\\"content\\\": \\\"your message here\\\"}'\")"  # noqa: E501
+            )
+            parts.append(
+                "\n## Plutus Cloud Connection\n"
+                "You are **connected to Plutus Cloud**. A cloud-based Plutus AI agent "
+                "is available and can communicate with you over a persistent bridge.\n\n"
+                "### Receiving Messages from Cloud\n"
+                "Messages from the cloud agent arrive automatically in your "
+                "`session_cloud` session. When you receive a message from the cloud "
+                "agent, treat it as a task request or coordination message. Process it "
+                "and respond -- your response is automatically sent back to the cloud "
+                "agent.\n\n"
+                "### Sending Messages to Cloud\n"
+                "You can proactively send messages to the cloud agent using:\n"
+                + curl_example + "\n\n"
+                "### When to Communicate with Cloud\n"
+                "- When you need information that only the cloud agent has access to\n"
+                "- When you want to delegate a cloud-side task (e.g. web research "
+                "without using the local browser)\n"
+                "- When the user asks you to coordinate with the cloud version\n"
+                "- When reporting results of a task the cloud agent delegated to you\n\n"
+                "### Important\n"
+                "- The cloud agent can also send you tool_call requests (shell "
+                "commands, file operations, etc.) which are handled automatically "
+                "by the bridge.\n"
+                "- Agent-to-agent messages are for higher-level coordination and "
+                "conversation."
+            )
+        elif cloud_cfg.token and not cloud_cfg.enabled:
+            parts.append(
+                "\n## Plutus Cloud\n"
+                "A cloud bridge token is configured but the bridge is currently "
+                "**disabled**. The user can enable it in Settings > Cloud Sync."
+            )
+
         # Add a final reminder — this is the LAST thing the LLM sees in the system prompt,
         # which means it gets high attention weight in transformer models
         parts.append("\n## REMINDER")
