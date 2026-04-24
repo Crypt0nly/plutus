@@ -26,6 +26,7 @@ import subprocess
 import sys
 import time
 import traceback
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ HEARTBEAT_INTERVAL = 25  # seconds between heartbeats
 RECONNECT_DELAY_INIT = 3  # initial reconnect back-off
 RECONNECT_DELAY_MAX = 120  # cap at 2 minutes
 OUTPUT_LIMIT = 50_000  # max chars for stdout/stderr
+AGENT_REPLY_TIMEOUT = 120.0  # max seconds to wait for cloud agent reply
 
 # Module-level logger — configured lazily
 log: logging.Logger = logging.getLogger("plutus.bridge")
@@ -371,6 +373,9 @@ class PlutusBridge:
         # Callback for incoming agent messages from the cloud.
         # Signature: async def callback(content: str, sender: str, reply_to: str | None, ws)
         self._on_agent_message = on_agent_message
+        # Pending futures for local→cloud request-reply pattern.
+        # message_id → asyncio.Future that resolves with the cloud agent's reply.
+        self._pending_cloud_replies: dict[str, asyncio.Future] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -576,7 +581,6 @@ class PlutusBridge:
                 elif msg_type == "handshake_ack":
                     log.info("Bridge: ✓ handshake acknowledged by server")
                 elif msg_type == "agent_message":
-                    # Message from the cloud agent → route to local agent
                     content = data.get("content", "")
                     sender = data.get("sender", "cloud_agent")
                     reply_to = data.get("reply_to")
@@ -588,6 +592,23 @@ class PlutusBridge:
                         reply_to[:8] if reply_to else "None",
                         content[:80],
                     )
+
+                    # Check if this is a REPLY to a message WE sent to cloud.
+                    # If reply_to matches a pending future, resolve it so the
+                    # send_to_cloud_and_wait() caller gets the reply as a
+                    # return value (tool output), NOT as a new agent message.
+                    if reply_to and reply_to in self._pending_cloud_replies:
+                        fut = self._pending_cloud_replies.pop(reply_to)
+                        if not fut.done():
+                            fut.set_result(content)
+                            log.info(
+                                "Bridge: resolved pending cloud reply for msg_id %s",
+                                reply_to[:8],
+                            )
+                        continue
+
+                    # Otherwise this is a cloud-INITIATED message → dispatch
+                    # to the on_agent_message callback (cloud_bridge.py).
                     if self._on_agent_message:
                         asyncio.create_task(
                             self._on_agent_message(content, sender, msg_id or reply_to, ws)
@@ -596,6 +617,14 @@ class PlutusBridge:
                         log.warning(
                             "Bridge: no on_agent_message handler registered — message dropped"
                         )
+                elif msg_type == "cancel_agent_conversations":
+                    # Kill switch from cloud — cancel all pending futures
+                    count = self.cancel_pending_cloud_replies()
+                    log.info(
+                        "Bridge: received cancel_agent_conversations from cloud, "
+                        "cancelled %d pending futures",
+                        count,
+                    )
                 elif msg_type == "error":
                     log.error(
                         "Bridge: server error: %s",
@@ -662,6 +691,10 @@ class PlutusBridge:
     ) -> bool:
         """Send an agent message to the cloud agent over the bridge WS.
 
+        This is the fire-and-forget version used for REPLIES to cloud-initiated
+        messages (where ``reply_to`` is set).  The cloud side resolves its
+        pending future when it sees the ``reply_to`` field.
+
         Returns True if the message was sent successfully.
         """
         if not self._ws or not self._connected:
@@ -682,6 +715,87 @@ class PlutusBridge:
         except Exception as exc:
             log.warning("Bridge: failed to send agent_message: %s", exc)
             return False
+
+    async def send_to_cloud_and_wait(
+        self,
+        content: str,
+        sender: str = "local_agent",
+        timeout: float = AGENT_REPLY_TIMEOUT,
+    ) -> dict[str, Any]:
+        """Send a message to the cloud agent and WAIT for the reply.
+
+        This is the synchronous request-reply pattern used when the LOCAL
+        agent initiates a conversation with the cloud agent.  It:
+          1. Generates a unique ``message_id``
+          2. Registers an ``asyncio.Future`` keyed by ``message_id``
+          3. Sends the message over the bridge WS with ``id: message_id``
+          4. Awaits the future with a timeout
+          5. Returns the cloud agent's reply text
+
+        The local agent sees the reply as a tool/API result — NOT as a new
+        incoming agent message — so no loop is possible.
+        """
+        if not self._ws or not self._connected:
+            return {"success": False, "error": "Not connected to cloud"}
+
+        message_id = str(uuid.uuid4())
+        loop = asyncio.get_event_loop()
+        fut: asyncio.Future = loop.create_future()
+
+        # Register BEFORE sending so we never miss an instant reply
+        self._pending_cloud_replies[message_id] = fut
+
+        try:
+            payload: dict[str, Any] = {
+                "type": "agent_message",
+                "id": message_id,
+                "content": content,
+                "sender": sender,
+                "ts": time.time(),
+            }
+            await self._send(self._ws, payload)
+            log.info(
+                "Bridge: sent agent_message to cloud (msg_id %s, %d chars) — awaiting reply",
+                message_id[:8],
+                len(content),
+            )
+
+            reply_content = await asyncio.wait_for(fut, timeout=timeout)
+
+            return {
+                "success": True,
+                "reply": reply_content,
+                "message_id": message_id,
+            }
+
+        except TimeoutError:
+            log.warning(
+                "Bridge: cloud agent reply timeout for msg_id %s",
+                message_id[:8],
+            )
+            return {
+                "success": False,
+                "error": (
+                    f"The cloud agent did not reply within {int(timeout)}s. "
+                    "It may still be processing — try again later."
+                ),
+            }
+        except Exception as exc:
+            return {"success": False, "error": f"Failed to send/receive: {exc}"}
+        finally:
+            self._pending_cloud_replies.pop(message_id, None)
+
+    def cancel_pending_cloud_replies(self) -> int:
+        """Cancel all pending cloud reply futures.  Returns the count cancelled."""
+        count = 0
+        for msg_id, fut in list(self._pending_cloud_replies.items()):
+            if not fut.done():
+                fut.cancel()
+                count += 1
+        self._pending_cloud_replies.clear()
+        if count:
+            log.info("Bridge: cancelled %d pending cloud reply futures", count)
+        return count
 
     @staticmethod
     async def _send(ws, data: dict) -> None:

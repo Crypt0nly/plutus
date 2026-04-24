@@ -3118,9 +3118,14 @@ def create_cloud_router() -> APIRouter:
 
     @cloud_router.post("/send")
     async def cloud_send_message(body: dict[str, Any]) -> dict[str, Any]:
-        """Send a message from local Plutus to the cloud agent.
+        """Send a message from local Plutus to the cloud agent and WAIT for reply.
 
         Expects: { "content": "message text" }
+
+        Uses the synchronous request-reply pattern: sends the message with
+        a unique ``id``, awaits the cloud agent's reply (which arrives with
+        ``reply_to: id``), and returns the reply text.  The local agent
+        sees this as a tool/API result, NOT as a new incoming message.
         """
         from plutus.gateway.server import get_state
 
@@ -3136,14 +3141,18 @@ def create_cloud_router() -> APIRouter:
                 detail="Not connected to cloud",
             )
 
-        sent = await bridge_instance.send_to_cloud(
+        result = await bridge_instance.send_to_cloud_and_wait(
             content=content,
-            sender="local_user",
+            sender="local_agent",
         )
-        if sent:
-            return {"status": "sent"}
+        if result.get("success"):
+            return {
+                "status": "ok",
+                "reply": result.get("reply", ""),
+            }
         raise HTTPException(
-            status_code=500, detail="Failed to send message"
+            status_code=502,
+            detail=result.get("error", "Failed to get reply from cloud"),
         )
 
     return cloud_router
