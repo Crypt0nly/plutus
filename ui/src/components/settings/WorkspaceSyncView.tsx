@@ -658,7 +658,7 @@ export default function WorkspaceSyncView() {
       )}
 
       {/* ── How it works (only when not connected) ── */}
-      {!cloudStatus.token_configured && !pairing && (
+      {!cloudStatus.token_configured && (
         <div
           className="rounded-xl p-4"
           style={{ background: "rgba(6, 182, 212, 0.03)", border: "1px solid rgba(6, 182, 212, 0.1)" }}
@@ -667,11 +667,11 @@ export default function WorkspaceSyncView() {
           <ol className="space-y-2 text-xs text-gray-500">
             <li className="flex gap-2">
               <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">1</span>
-              Click <span className="text-gray-300 mx-1">Connect to Plutus Cloud</span> above
+              Go to <span className="text-gray-300 mx-1">Plutus Cloud → Settings → API Keys</span> and create a key
             </li>
             <li className="flex gap-2">
               <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">2</span>
-              Enter the pairing code in <span className="text-gray-300 mx-1">cloud Plutus → Settings</span>
+              Paste the <span className="text-gray-300 mx-1">pk_...</span> key above and click Connect
             </li>
             <li className="flex gap-2">
               <span className="flex-shrink-0 w-4 h-4 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold flex items-center justify-center">3</span>
