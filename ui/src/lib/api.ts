@@ -541,6 +541,13 @@ export const api = {
     });
   },
 
+  // Connect to cloud with API key
+  cloudConnect: (apiKey: string, serverUrl?: string) =>
+    request<{ success: boolean; message: string }>("/cloud/connect", {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey, server_url: serverUrl || "" }),
+    }),
+
   // Cloud bridge status (local side)
   getCloudBridgeStatus: () =>
     request<{ connected: boolean; token_configured: boolean; cloud_url: string }>("/cloud/status").catch(() => ({

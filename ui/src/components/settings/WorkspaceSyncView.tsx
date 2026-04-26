@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Cloud,
   CloudOff,
@@ -9,7 +9,6 @@ import {
   XCircle,
   Clock,
   ArrowUpDown,
-  Plug,
   PlugZap,
   Zap,
   Folder,
@@ -17,11 +16,10 @@ import {
   RotateCcw,
   Unplug,
   Loader2,
-  Copy,
 } from "lucide-react";
 import { api, extractCloudUrlFromToken } from "../../lib/api";
 
-/* ── Default cloud URL (can be overridden in the pairing input) ── */
+/* ── Default cloud URL (can be overridden in advanced settings) ── */
 const DEFAULT_CLOUD_URL = "https://api.useplutus.ai";
 
 /* ── Types ── */
@@ -101,15 +99,14 @@ export default function WorkspaceSyncView() {
   const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [pullMsg, setPullMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  /* Pairing state */
-  const [pairing, setPairing] = useState(false);
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [pairingMsg, setPairingMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  /* API key connection state */
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [connectMsg, setConnectMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [cloudUrl, setCloudUrl] = useState(DEFAULT_CLOUD_URL);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [codeCopied, setCodeCopied] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   /* ── Load config + cloud status ── */
   const loadConfig = useCallback(async () => {
@@ -151,82 +148,43 @@ export default function WorkspaceSyncView() {
     return () => clearInterval(id);
   }, [cloudStatus.token_configured]);
 
-  /* Cleanup pairing poll on unmount */
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
+
 
   const derivedUrl = extractCloudUrlFromToken(config.token) || config.url;
   const isConfigured = !!(derivedUrl && config.token);
 
-  /* ── Pairing flow ── */
-  const startPairing = async () => {
-    setPairing(true);
-    setPairingCode(null);
-    setPairingMsg(null);
-    setCodeCopied(false);
+  /* ── API Key connection flow ── */
+  const handleConnect = async () => {
+    const key = apiKeyInput.trim();
+    if (!key) return;
+    if (!key.startsWith("pk_")) {
+      setConnectMsg({ text: "Invalid API key — must start with pk_", ok: false });
+      setTimeout(() => setConnectMsg(null), 5000);
+      return;
+    }
+    setConnecting(true);
+    setConnectMsg(null);
     try {
-      // Call the LOCAL backend which proxies to the cloud and starts polling.
-      // This avoids CORS issues and ensures only ONE pairing session is created.
-      const resp = await fetch("/api/cloud/pair", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cloud_url: cloudUrl }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
-        throw new Error(err.detail || `Pairing failed: ${resp.status}`);
+      await api.cloudConnect(key, showAdvanced ? cloudUrl : undefined);
+      setConnectMsg({ text: "Connected to Plutus Cloud!", ok: true });
+      setApiKeyInput("");
+      // Reload status
+      const cs = await api.getCloudBridgeStatus();
+      setCloudStatus(cs);
+      const data = await api.getConfig();
+      if (data.cloud_sync && typeof data.cloud_sync === "object") {
+        setConfig((prev) => ({ ...prev, ...(data.cloud_sync as Partial<SyncConfig>) }));
       }
-      const result = await resp.json() as { pairing_id: string; code: string; expires_at: number };
-      setPairingCode(result.code);
-
-      // Poll local backend for completion (it polls the cloud in the background)
-      if (pollRef.current) clearInterval(pollRef.current);
-      const expiresAt = result.expires_at;
-      pollRef.current = setInterval(async () => {
-        if (Date.now() / 1000 > expiresAt) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          setPairing(false);
-          setPairingCode(null);
-          setPairingMsg({ text: "Pairing timed out — try again", ok: false });
-          setTimeout(() => setPairingMsg(null), 5000);
-          return;
-        }
-        try {
-          const cs = await api.getCloudBridgeStatus();
-          if (cs.token_configured) {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setCloudStatus(cs);
-            setPairing(false);
-            setPairingCode(null);
-            setPairingMsg({ text: "Connected to cloud!", ok: true });
-            setTimeout(() => setPairingMsg(null), 5000);
-            // Reload config to get the saved token
-            const data = await api.getConfig();
-            if (data.cloud_sync && typeof data.cloud_sync === "object") {
-              setConfig((prev) => ({ ...prev, ...(data.cloud_sync as Partial<SyncConfig>) }));
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }, 3000);
+      setTimeout(() => setConnectMsg(null), 5000);
     } catch (e: any) {
-      setPairing(false);
-      setPairingMsg({
-        text: `Failed to start pairing: ${e.message || e}`,
+      setConnectMsg({
+        text: `Connection failed: ${e.message || e}`,
         ok: false,
       });
-      setTimeout(() => setPairingMsg(null), 5000);
+      setTimeout(() => setConnectMsg(null), 5000);
+    } finally {
+      setConnecting(false);
     }
-  };
-
-  const cancelPairing = () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    setPairing(false);
-    setPairingCode(null);
   };
 
   const handleDisconnect = async () => {
@@ -242,13 +200,7 @@ export default function WorkspaceSyncView() {
     }
   };
 
-  const copyCode = () => {
-    if (pairingCode) {
-      navigator.clipboard.writeText(pairingCode);
-      setCodeCopied(true);
-      setTimeout(() => setCodeCopied(false), 2000);
-    }
-  };
+
 
   /* ── Workspace sync handlers (same as before) ── */
   const handlePush = async () => {
@@ -491,16 +443,54 @@ export default function WorkspaceSyncView() {
           )}
         </div>
 
-        {/* Not connected — show pairing UI */}
-        {!cloudStatus.token_configured && !pairing && (
+        {/* Not connected — show API key input */}
+        {!cloudStatus.token_configured && (
           <div className="space-y-3">
+            <div
+              className="rounded-xl p-3.5 space-y-2.5"
+              style={{ background: "rgba(6, 182, 212, 0.04)", border: "1px solid rgba(6, 182, 212, 0.12)" }}
+            >
+              <p className="text-xs text-gray-400">
+                To connect, create an API key in{" "}
+                <a
+                  href="https://app.useplutus.ai/settings"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                >
+                  Plutus Cloud → Settings → API Keys
+                </a>
+                {" "}and paste it below.
+              </p>
+              <div className="relative">
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="pk_..."
+                  className="w-full bg-gray-900/80 border border-gray-800/60 rounded-xl px-3.5 py-2.5 pr-20 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono"
+                  onKeyDown={(e) => { if (e.key === "Enter") handleConnect(); }}
+                />
+                <button
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-600 hover:text-gray-400 transition-colors px-1.5 py-0.5 rounded"
+                >
+                  {showApiKey ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+
             <button
-              onClick={startPairing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white text-sm font-medium transition-all active:scale-[0.98]"
+              onClick={handleConnect}
+              disabled={connecting || !apiKeyInput.trim()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "rgba(6, 182, 212, 0.8)", boxShadow: "0 4px 14px rgba(6, 182, 212, 0.2)" }}
             >
-              <PlugZap className="w-4 h-4" />
-              Connect to Plutus Cloud
+              {connecting ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Connecting…</>
+              ) : (
+                <><PlugZap className="w-4 h-4" /> Connect to Plutus Cloud</>
+              )}
             </button>
 
             {showAdvanced ? (
@@ -525,48 +515,6 @@ export default function WorkspaceSyncView() {
           </div>
         )}
 
-        {/* Pairing in progress — show code */}
-        {pairing && pairingCode && (
-          <div className="space-y-3">
-            <div
-              className="rounded-xl p-4 text-center"
-              style={{ background: "rgba(6, 182, 212, 0.06)", border: "1px solid rgba(6, 182, 212, 0.15)" }}
-            >
-              <p className="text-xs text-gray-400 mb-2">Enter this code in your Plutus Cloud settings:</p>
-              <div className="flex items-center justify-center gap-3">
-                <span className="text-3xl font-mono font-bold text-cyan-400 tracking-[0.2em]">
-                  {pairingCode}
-                </span>
-                <button
-                  onClick={copyCode}
-                  className="p-1.5 rounded-lg hover:bg-white/5 transition-colors text-gray-500 hover:text-gray-300"
-                  title="Copy code"
-                >
-                  {codeCopied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-600 mt-2">Code expires in 5 minutes</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
-              <span className="text-xs text-gray-400">Waiting for confirmation from cloud…</span>
-              <button
-                onClick={cancelPairing}
-                className="ml-auto text-xs text-gray-600 hover:text-gray-400 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {pairing && !pairingCode && (
-          <div className="flex items-center justify-center gap-2 py-4">
-            <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-            <span className="text-xs text-gray-400">Connecting to cloud server…</span>
-          </div>
-        )}
-
         {/* Connected — show disconnect button */}
         {cloudStatus.token_configured && (
           <button
@@ -580,10 +528,10 @@ export default function WorkspaceSyncView() {
           </button>
         )}
 
-        {pairingMsg && (
-          <p className={`text-[11px] flex items-center gap-1.5 ${pairingMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
-            {pairingMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-            {pairingMsg.text}
+        {connectMsg && (
+          <p className={`text-[11px] flex items-center gap-1.5 ${connectMsg.ok ? "text-emerald-400" : "text-red-400"}`}>
+            {connectMsg.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+            {connectMsg.text}
           </p>
         )}
       </div>
