@@ -753,16 +753,16 @@ async def _auto_start_connectors(connector_manager) -> None:
 # ── Cloud bridge auto-start ────────────────────────────────────────────────
 
 async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
-    """Start the cloud bridge daemon if a bridge token is configured.
+    """Start the cloud bridge daemon if a token or API key is configured.
 
-    The server URL is auto-extracted from the token (format:
-    ``plutus_<base64url(server_url)>.<hex_secret>``), so the user only
-    needs to paste a single token string.
+    Supports two auth methods:
+    - ``pk_...`` — Cloud-issued API key (uses explicit server URL or default)
+    - ``plutus_<base64url(server_url)>.<hex_secret>`` — legacy bridge token
     """
     cloud_token = (config.cloud_sync.token or "").strip()
 
     if not cloud_token:
-        logger.debug("Cloud bridge not started — no bridge token configured.")
+        logger.debug("Cloud bridge not started — no API key or token configured.")
         return None
 
     if not config.cloud_sync.enabled:
@@ -773,8 +773,9 @@ async def _auto_start_cloud_bridge(config: PlutusConfig) -> asyncio.Task | None:
         from plutus.bridge import PlutusBridge, extract_server_url
         from plutus.connectors.cloud_bridge import get_cloud_bridge
 
-        # Auto-extract server URL from token
-        server_url = extract_server_url(cloud_token)
+        # Resolve server URL — pk_ keys use explicit URL, plutus_ tokens embed it
+        explicit_url = (config.cloud_sync.url or "").strip() or None
+        server_url = extract_server_url(cloud_token, server_url=explicit_url)
         logger.info("Cloud bridge server: %s", server_url)
 
         # Set up the cloud bridge connector for agent-to-agent messaging

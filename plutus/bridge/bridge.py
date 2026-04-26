@@ -45,7 +45,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-VERSION = "1.2.0"
+VERSION = "2.0.0"
+DEFAULT_SERVER = "wss://api.useplutus.ai/api/bridge/ws"
 CONFIG_DIR = Path.home() / ".plutus"
 CONFIG_FILE = CONFIG_DIR / "bridge_config.json"
 LOG_FILE = CONFIG_DIR / "bridge.log"
@@ -99,13 +100,25 @@ def _setup_standalone_logging() -> None:
 # ---------------------------------------------------------------------------
 # Token helpers
 # ---------------------------------------------------------------------------
-def extract_server_url(token: str) -> str:
-    """Extract the cloud server URL embedded in a Plutus sync token.
+def extract_server_url(token: str, server_url: str | None = None) -> str:
+    """Resolve the cloud server URL from a token or explicit URL.
 
-    Token format: ``plutus_<base64url(server_url)>.<hex_secret>``
+    Supports two token formats:
+    - ``pk_...`` — Cloud-issued API key (requires explicit server_url or default)
+    - ``plutus_<base64url(server_url)>.<hex_secret>`` — legacy bridge token
     """
+    if token.startswith("pk_"):
+        # API key — server URL must be provided or use default
+        if server_url:
+            return server_url
+        # Derive from DEFAULT_SERVER (strip /api/bridge/ws path)
+        base = DEFAULT_SERVER.replace("wss://", "https://").replace("ws://", "http://")
+        base = base.split("/api/bridge")[0]
+        return base
     if not token.startswith("plutus_"):
-        raise ValueError("Invalid token format — must start with 'plutus_'")
+        raise ValueError(
+            "Invalid token format — must start with 'pk_' (API key) or 'plutus_' (legacy)"
+        )
     body = token[len("plutus_") :]
     url_b64 = body.split(".")[0]
     # Re-add padding
@@ -144,15 +157,33 @@ def run_setup() -> dict[str, Any]:
     print("\n╔══════════════════════════════════════╗")
     print("║     Plutus Bridge — Setup Wizard     ║")
     print("╚══════════════════════════════════════╝\n")
+    print("  To connect, you need an API key from Plutus Cloud.")
+    print("  Go to: app.useplutus.ai → Settings → API Keys")
+    print("  Create a key with client type 'Local App' and paste it below.\n")
     config = load_config()
-    token = input("  Bridge token: ").strip()
+    token = input("  API key (pk_...) or legacy token: ").strip()
     if token:
         config["token"] = token
-        try:
-            url = extract_server_url(token)
-            print(f"  → Server: {url}")
-        except Exception:
-            print("  ⚠ Could not extract server URL from token.")
+        if token.startswith("pk_"):
+            server = input(
+                f"  Cloud server URL [{DEFAULT_SERVER.replace('wss://', 'https://').split('/api/bridge')[0]}]: "
+            ).strip()
+            if server:
+                config["server_url"] = server
+            else:
+                config["server_url"] = (
+                    DEFAULT_SERVER.replace("wss://", "https://")
+                    .replace("ws://", "http://")
+                    .split("/api/bridge")[0]
+                )
+            print(f"  → Server: {config['server_url']}")
+        else:
+            try:
+                url = extract_server_url(token)
+                config["server_url"] = url
+                print(f"  → Server: {url}")
+            except Exception:
+                print("  ⚠ Could not extract server URL from token.")
     save_config(config)
     print("\n  ✓ Saved. Run `python -m plutus.bridge.bridge` to start.\n")
     return config
@@ -853,8 +884,16 @@ def main() -> None:
         description="Plutus Local Bridge — connect your PC to Plutus Cloud",
     )
     parser.add_argument(
+        "--api-key",
+        help="Plutus Cloud API key (pk_...) from Settings → API Keys",
+    )
+    parser.add_argument(
         "--token",
-        help="Bridge token (from Settings → Local Bridge)",
+        help="Legacy bridge token (plutus_...) — use --api-key instead",
+    )
+    parser.add_argument(
+        "--server",
+        help="Cloud server URL (default: https://api.useplutus.ai)",
     )
     parser.add_argument("--setup", action="store_true", help="Interactive setup wizard")
     parser.add_argument("--version", action="version", version=f"v{VERSION}")
@@ -865,23 +904,33 @@ def main() -> None:
         return
 
     config = load_config()
-    token = args.token or config.get("token", "")
+    token = args.api_key or args.token or config.get("token", "")
+    server = args.server or config.get("server_url", "")
 
     if not token:
-        print("Error: No bridge token configured.")
-        print("Run: python -m plutus.bridge.bridge --token <your_token>")
-        print("  or: python -m plutus.bridge.bridge --setup")
+        print("Error: No API key or bridge token configured.")
+        print("")
+        print("  Get an API key from: app.useplutus.ai → Settings → API Keys")
+        print("")
+        print("  Then run:")
+        print("    python -m plutus.bridge.bridge --api-key pk_your_key_here")
+        print("    python -m plutus.bridge.bridge --setup")
         sys.exit(1)
 
-    if args.token and args.token != config.get("token"):
-        config["token"] = args.token
+    # Save new token/key to config
+    if token != config.get("token"):
+        config["token"] = token
         save_config(config)
 
     try:
-        server_url = extract_server_url(token)
+        server_url = extract_server_url(token, server_url=server or None)
     except ValueError as exc:
         print(f"Error: {exc}")
         sys.exit(1)
+
+    if server and server != config.get("server_url"):
+        config["server_url"] = server
+        save_config(config)
 
     bridge = PlutusBridge(server_url=server_url, token=token)
     try:

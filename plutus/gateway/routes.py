@@ -2984,10 +2984,99 @@ def create_cloud_router() -> APIRouter:
         bridge_instance = state.get("cloud_bridge_instance")
         connected = bridge_instance is not None and bridge_instance.is_connected
 
+        auth_type = "none"
+        if token.startswith("pk_"):
+            auth_type = "api_key"
+        elif token.startswith("plutus_"):
+            auth_type = "legacy_token"
+
         return {
             "connected": connected,
             "token_configured": bool(token),
             "cloud_url": cloud_url,
+            "auth_type": auth_type,
+        }
+
+    @cloud_router.post("/connect")
+    async def cloud_connect(body: dict[str, Any]) -> dict[str, Any]:
+        """Connect to Plutus Cloud using an API key.
+
+        Expects: { "api_key": "pk_...", "server_url": "https://api.useplutus.ai" (optional) }
+
+        The API key is generated in the Cloud UI under Settings → API Keys.
+        """
+        import httpx
+
+        from plutus.config import PlutusConfig
+        from plutus.gateway.server import _auto_start_cloud_bridge, get_state
+
+        api_key = (body.get("api_key") or "").strip()
+        if not api_key:
+            raise HTTPException(status_code=400, detail="api_key is required")
+        if not api_key.startswith("pk_"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid API key format — must start with 'pk_'",
+            )
+
+        server_url = (
+            body.get("server_url", "").strip().rstrip("/")
+            or "https://api.useplutus.ai"
+        )
+
+        # Validate the API key against the cloud
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{server_url}/api/status",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                if resp.status_code == 401:
+                    raise HTTPException(
+                        status_code=401, detail="Invalid API key"
+                    )
+                resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Cannot reach cloud server: {exc}",
+            )
+
+        # Save config and start bridge
+        cfg = PlutusConfig.load()
+        cfg.update(
+            {
+                "cloud_sync": {
+                    "token": api_key,
+                    "url": server_url,
+                    "enabled": True,
+                }
+            }
+        )
+
+        # Stop existing bridge if running
+        state = get_state()
+        old_task = state.get("cloud_bridge_task")
+        if old_task and not old_task.done():
+            old_task.cancel()
+            try:
+                await old_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        state.pop("cloud_bridge_instance", None)
+        state.pop("bridge_instance", None)
+
+        # Start new bridge with the API key
+        new_cfg = PlutusConfig.load()
+        bridge_task = await _auto_start_cloud_bridge(new_cfg)
+        if bridge_task:
+            state["cloud_bridge_task"] = bridge_task
+
+        return {
+            "message": "Connected to Plutus Cloud",
+            "server_url": server_url,
         }
 
     @cloud_router.post("/pair")

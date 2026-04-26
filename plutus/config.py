@@ -139,7 +139,7 @@ class PlannerConfig(BaseModel):
 
 class CloudSyncConfig(BaseModel):
     url: str = ""  # Cloud API base URL (e.g. https://api.useplutus.ai)
-    token: str = ""  # Bridge token (auto-provisioned via pairing or manual)
+    token: str = ""  # API key (pk_...) or legacy bridge token (plutus_...)
     enabled: bool = True  # auto-start bridge when local Plutus starts
     workspace_dir: str = ""  # custom workspace path; empty = ~/plutus-workspace
 
