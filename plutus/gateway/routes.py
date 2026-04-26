@@ -3028,17 +3028,26 @@ def create_cloud_router() -> APIRouter:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
-                    f"{server_url}/api/status",
+                    f"{server_url}/api/bridge/status",
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 if resp.status_code == 401:
                     raise HTTPException(
                         status_code=401, detail="Invalid API key"
                     )
-                resp.raise_for_status()
-        except httpx.HTTPStatusError:
+                if resp.status_code == 403:
+                    raise HTTPException(
+                        status_code=403, detail="API key does not have permission"
+                    )
+                if not resp.is_success:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Cloud returned HTTP {resp.status_code}",
+                    )
+        except HTTPException:
             raise
         except Exception as exc:
+            _logger.warning("Cloud connect validation failed: %s", exc)
             raise HTTPException(
                 status_code=502,
                 detail=f"Cannot reach cloud server: {exc}",
