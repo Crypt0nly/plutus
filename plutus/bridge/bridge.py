@@ -201,6 +201,8 @@ def get_system_info() -> dict[str, Any]:
         "arch": platform.machine(),
         "user": os.getenv("USER") or os.getenv("USERNAME", "unknown"),
         "bridge_version": VERSION,
+        "client_type": "local_app",
+        "machine_label": platform.node(),
     }
 
 
