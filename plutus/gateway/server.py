@@ -928,9 +928,12 @@ async def lifespan(app: FastAPI):
         # Initialize Computer Use agent
         cu_agent = _init_computer_use_agent(config, secrets)
 
-        # Initialize heartbeat
+        # Initialize heartbeat. Pass a callable so the runner always reads
+        # the live config object — this guarantees that mid-session updates
+        # (e.g. via the Settings UI) take effect even if a code path mutates
+        # config.heartbeat without calling heartbeat.update_config().
         heartbeat = HeartbeatRunner(
-            config=config.heartbeat,
+            config=lambda: config.heartbeat,
             on_beat=_heartbeat_on_beat,
             on_event=_heartbeat_on_event,
         )
