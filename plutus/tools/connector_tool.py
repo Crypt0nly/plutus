@@ -64,7 +64,7 @@ class ConnectorTool(Tool):
     def description(self) -> str:
         return (
             "Send messages or files through external services like "
-            "Telegram, Email, WhatsApp, Discord, Gmail, Google Calendar, "
+            "Telegram, Email, WhatsApp, Discord, Slack, Gmail, Google Calendar, "
             "Google Drive, GitHub, and custom API services. "
             "Use action='list' to see available connectors. "
             "Use action='send' with service='telegram' to send a Telegram message. "
@@ -76,6 +76,10 @@ class ConnectorTool(Tool):
             "(requires 'to' and 'subject' params). "
             "Use action='send' with service='google_gmail' to send a Gmail email "
             "(requires 'to' and 'subject' params). "
+            "Use action='slack' to interact with Slack workspaces: "
+            "operation='list_channels' to list channels, "
+            "operation='read_messages' with channel=<id> to read messages on demand, "
+            "operation='send_message' with channel=<id> and text=<msg> to send. "
             "Use action='google' to interact with Google services: "
             "service='google_gmail' for reading emails (google_action='list_messages', "
             "'get_message', 'list_labels'), "
@@ -106,7 +110,7 @@ class ConnectorTool(Tool):
                     "type": "string",
                     "enum": [
                         "send", "send_file", "list", "status",
-                        "manage", "google", "github",
+                        "manage", "google", "github", "slack",
                         "custom", "create_connector", "delete_connector",
                     ],
                     "description": (
@@ -120,6 +124,8 @@ class ConnectorTool(Tool):
                         "(Gmail, Calendar, Drive). "
                         "'github' = interact with GitHub "
                         "(repos, issues, PRs, branches, files, workflows, etc.). "
+                        "'slack' = interact with Slack workspace "
+                        "(read/send messages, list channels/users, search). "
                         "'custom' = make HTTP request to a custom API connector. "
                         "'create_connector' = create a new custom API connector. "
                         "'delete_connector' = delete a custom API connector."
@@ -128,7 +134,7 @@ class ConnectorTool(Tool):
                 "service": {
                     "type": "string",
                     "enum": [
-                        "telegram", "email", "whatsapp", "discord",
+                        "telegram", "email", "whatsapp", "discord", "slack",
                         "google_gmail", "google_calendar", "google_drive",
                         "github",
                     ],
@@ -623,6 +629,42 @@ class ConnectorTool(Tool):
                         "(e.g. {'Accept': 'application/json'})."
                     ),
                 },
+                "operation": {
+                    "type": "string",
+                    "enum": [
+                        "send_message", "read_messages", "read_thread",
+                        "list_channels", "list_users", "channel_info", "search",
+                    ],
+                    "description": (
+                        "Slack operation. Required when action='slack'. "
+                        "'send_message' = send a message to a channel/DM. "
+                        "'read_messages' = read recent messages from a channel. "
+                        "'read_thread' = read replies in a thread. "
+                        "'list_channels' = list accessible channels. "
+                        "'list_users' = list workspace members. "
+                        "'channel_info' = get info about a channel. "
+                        "'search' = search messages in the workspace."
+                    ),
+                },
+                "channel": {
+                    "type": "string",
+                    "description": (
+                        "Slack channel ID or name. Required for send_message, "
+                        "read_messages, read_thread, and channel_info operations."
+                    ),
+                },
+                "thread_ts": {
+                    "type": "string",
+                    "description": (
+                        "Thread timestamp for Slack read_thread or to reply in a thread."
+                    ),
+                },
+                "text": {
+                    "type": "string",
+                    "description": (
+                        "Message text for Slack send_message operation."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -677,6 +719,14 @@ class ConnectorTool(Tool):
         elif action == "github":
             return await self._handle_github(**kwargs)
 
+        elif action == "slack":
+            # Slack on-demand operations are handled by the cloud connector executor.
+            # In local mode, we forward to the cloud API if available.
+            return (
+                "Slack connector operations are only available in cloud mode. "
+                "Please use Plutus Cloud to interact with Slack workspaces."
+            )
+
         elif action == "custom":
             return await self._handle_custom(**kwargs)
 
@@ -690,7 +740,7 @@ class ConnectorTool(Tool):
             return (
                 f"Error: Unknown action '{action}'. "
                 "Use 'send', 'send_file', 'list', 'status', 'manage', "
-                "'google', 'github', 'custom', 'create_connector', "
+                "'google', 'github', 'slack', 'custom', 'create_connector', "
                 "or 'delete_connector'."
             )
 
