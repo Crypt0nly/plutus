@@ -28,7 +28,7 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
 # Lazy dependency bootstrap (only needed for standalone usage)
@@ -771,15 +771,15 @@ class PlutusBridge:
             log.warning("Bridge: cannot send to cloud — not connected")
             return False
         try:
-            payload: dict[str, Any] = {
+            sync_payload: dict[str, Any] = {
                 "type": "agent_message",
-                "content": content,
+                "data": content,
                 "sender": sender,
                 "ts": time.time(),
             }
             if reply_to:
-                payload["reply_to"] = reply_to
-            await self._send(self._ws, payload)
+                sync_payload["reply_to"] = reply_to
+            await self._send(self._ws, sync_payload)
             log.info("Bridge: sent agent_message to cloud (%d chars)", len(content))
             return True
         except Exception as exc:
