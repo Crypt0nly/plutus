@@ -59,7 +59,7 @@ class ModelSpec:
 AVAILABLE_MODELS: dict[str, ModelSpec] = {
     # Anthropic
     "claude-opus": ModelSpec(
-        id="claude-opus-4-7",
+        id="claude-opus-4-8",
         provider="anthropic",
         display_name="Claude Opus",
         complexity_tier=Complexity.COMPLEX,
