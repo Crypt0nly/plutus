@@ -5,6 +5,7 @@ import {
   Clock,
   Layers3,
   Loader2,
+  Sparkles,
   Pencil,
   Play,
   Plus,
@@ -12,15 +13,24 @@ import {
   Save,
   Trash2,
   Workflow,
+  Wand2,
   X,
   XCircle,
 } from "lucide-react";
 import { api, type AgentWorkflow, type AgentWorkflowRun, type AgentWorkflowStats, type AgentWorkflowStep } from "../../lib/api";
 
+type NewWorkflowStepDraft = {
+  title: string;
+  instruction: string;
+  expected_output: string;
+};
+
 type NewWorkflowForm = {
   title: string;
   description: string;
   category: string;
+  priority: string;
+  starter_steps: NewWorkflowStepDraft[];
 };
 
 type WorkflowEditForm = {
@@ -51,6 +61,67 @@ const subtlePanelClass = "rounded-2xl border border-gray-700/70 bg-gray-900/80 d
 const inputClass = "w-full rounded-xl border border-gray-700/80 bg-gray-950 px-3 py-2 text-sm text-gray-50 outline-none placeholder:text-gray-400 focus:border-plutus-500/60 focus:ring-2 focus:ring-plutus-500/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-600";
 const compactInputClass = "rounded-xl border border-gray-700/80 bg-gray-950 px-3 py-2 text-sm text-gray-50 outline-none placeholder:text-gray-400 focus:border-plutus-500/60 focus:ring-2 focus:ring-plutus-500/10 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-600";
 const secondaryButtonClass = "inline-flex items-center gap-2 rounded-xl border border-gray-700/80 bg-gray-950 px-4 py-2 text-sm font-medium text-gray-100 hover:border-gray-600 hover:bg-gray-900 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10";
+
+const createEmptyStarterStep = (): NewWorkflowStepDraft => ({
+  title: "",
+  instruction: "",
+  expected_output: "",
+});
+
+const workflowTemplates: Array<NewWorkflowForm & { id: string; helper: string }> = [
+  {
+    id: "research_brief",
+    title: "Research brief",
+    category: "Research",
+    priority: "normal",
+    helper: "Collect sources and turn them into a short, reusable brief.",
+    description: "Research a topic, verify the most useful sources, and summarize the findings in a clear brief.",
+    starter_steps: [
+      { title: "Clarify the topic", instruction: "Identify the exact research question, scope, and output format before searching.", expected_output: "Research scope and success criteria" },
+      { title: "Gather reliable sources", instruction: "Find credible sources, compare the information, and keep source links for citation.", expected_output: "Source list with key findings" },
+      { title: "Write the brief", instruction: "Summarize the findings in plain language and highlight recommended next actions.", expected_output: "Concise research brief" },
+    ],
+  },
+  {
+    id: "client_follow_up",
+    title: "Client follow-up",
+    category: "Client work",
+    priority: "high",
+    helper: "Prepare a polished update and next-step message after client work.",
+    description: "Review recent client context, prepare a concise status update, and draft the next follow-up message.",
+    starter_steps: [
+      { title: "Review context", instruction: "Review the latest notes, messages, and deliverables for this client.", expected_output: "Client context summary" },
+      { title: "Draft update", instruction: "Write a friendly status update with progress, blockers, and recommended next steps.", expected_output: "Client-ready update draft" },
+      { title: "Prepare send-off", instruction: "Check tone, completeness, and any attachments before sending or asking for approval.", expected_output: "Final message ready for approval" },
+    ],
+  },
+  {
+    id: "report_generator",
+    title: "Report generator",
+    category: "Reporting",
+    priority: "normal",
+    helper: "Turn recurring data checks into a repeatable report workflow.",
+    description: "Collect current inputs, analyze the important changes, and produce a structured report.",
+    starter_steps: [
+      { title: "Collect inputs", instruction: "Gather the current files, links, metrics, or notes needed for the report.", expected_output: "Complete input set" },
+      { title: "Analyze changes", instruction: "Compare the inputs against the previous period and identify meaningful changes.", expected_output: "Key changes and interpretation" },
+      { title: "Create report", instruction: "Write the final report with summary, findings, and recommended decisions.", expected_output: "Finished report" },
+    ],
+  },
+  {
+    id: "website_monitor",
+    title: "Website monitor",
+    category: "Monitoring",
+    priority: "normal",
+    helper: "Check a page repeatedly and summarize changes that matter.",
+    description: "Review a website or page, detect important updates, and create an action-oriented summary.",
+    starter_steps: [
+      { title: "Open source page", instruction: "Visit the target page and record the current visible content or data.", expected_output: "Current page snapshot" },
+      { title: "Find changes", instruction: "Compare against the previous saved state and identify important updates.", expected_output: "Change summary" },
+      { title: "Recommend action", instruction: "Explain what changed, why it matters, and what should happen next.", expected_output: "Action recommendation" },
+    ],
+  },
+];
 
 function formatTime(ts?: number | null) {
   if (!ts) return "Never";
@@ -107,7 +178,7 @@ export function WorkflowsView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newWorkflow, setNewWorkflow] = useState<NewWorkflowForm>({ title: "", description: "", category: "General" });
+  const [newWorkflow, setNewWorkflow] = useState<NewWorkflowForm>({ title: "", description: "", category: "General", priority: "normal", starter_steps: [createEmptyStarterStep()] });
   const [newStep, setNewStep] = useState<NewStepForm>({ title: "", instruction: "", expected_output: "" });
   const [editingWorkflow, setEditingWorkflow] = useState(false);
   const [workflowEdit, setWorkflowEdit] = useState<WorkflowEditForm>({ title: "", description: "", category: "General", status: "active", priority: "normal" });
@@ -157,8 +228,49 @@ export function WorkflowsView() {
     return () => window.clearInterval(timer);
   }, [load]);
 
+  const resetNewWorkflow = () => {
+    setNewWorkflow({ title: "", description: "", category: "General", priority: "normal", starter_steps: [createEmptyStarterStep()] });
+  };
+
+  const applyWorkflowTemplate = (template: (typeof workflowTemplates)[number]) => {
+    setNewWorkflow({
+      title: template.title,
+      description: template.description,
+      category: template.category,
+      priority: template.priority,
+      starter_steps: template.starter_steps.map((step) => ({ ...step })),
+    });
+  };
+
+  const updateStarterStep = (index: number, patch: Partial<NewWorkflowStepDraft>) => {
+    setNewWorkflow((current) => ({
+      ...current,
+      starter_steps: current.starter_steps.map((step, stepIndex) => stepIndex === index ? { ...step, ...patch } : step),
+    }));
+  };
+
+  const addStarterStepDraft = () => {
+    setNewWorkflow((current) => ({ ...current, starter_steps: [...current.starter_steps, createEmptyStarterStep()] }));
+  };
+
+  const removeStarterStepDraft = (index: number) => {
+    setNewWorkflow((current) => ({
+      ...current,
+      starter_steps: current.starter_steps.length <= 1
+        ? [createEmptyStarterStep()]
+        : current.starter_steps.filter((_, stepIndex) => stepIndex !== index),
+    }));
+  };
+
   const createWorkflow = async () => {
     if (!newWorkflow.title.trim()) return;
+    const starterSteps = newWorkflow.starter_steps
+      .map((step) => ({
+        title: step.title.trim(),
+        instruction: step.instruction.trim(),
+        expected_output: step.expected_output.trim(),
+      }))
+      .filter((step) => step.title || step.instruction || step.expected_output);
     setSaving(true);
     setError(null);
     try {
@@ -168,9 +280,19 @@ export function WorkflowsView() {
         category: newWorkflow.category.trim() || "General",
         status: "active",
         trigger_type: "manual",
-        priority: "normal",
+        priority: newWorkflow.priority || "normal",
       });
-      setNewWorkflow({ title: "", description: "", category: "General" });
+      for (const step of starterSteps) {
+        await api.addAgentWorkflowStep(workflow.id, {
+          title: step.title || "Untitled step",
+          instruction: step.instruction,
+          expected_output: step.expected_output,
+          agent_type: "general",
+          status: "active",
+          enabled: true,
+        });
+      }
+      resetNewWorkflow();
       await load();
       setSelectedId(workflow.id);
     } catch (err: any) {
@@ -336,6 +458,8 @@ export function WorkflowsView() {
     }
   };
 
+  const starterStepCount = newWorkflow.starter_steps.filter((step) => step.title.trim() || step.instruction.trim() || step.expected_output.trim()).length;
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-gray-400">
@@ -384,38 +508,154 @@ export function WorkflowsView() {
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <div className="flex flex-col gap-4">
           <div className={`${panelClass} p-4`}>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Create workflow</h2>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-plutus-500/20 bg-plutus-50 px-2.5 py-1 text-xs font-medium text-plutus-700 dark:border-plutus-400/20 dark:bg-plutus-500/10 dark:text-plutus-100">
+                  <Sparkles size={13} /> Guided setup
+                </div>
+                <h2 className="mt-3 text-lg font-semibold text-gray-50 dark:text-white">Create a reusable workflow</h2>
+                <p className="mt-1 text-sm leading-6 text-gray-300 dark:text-gray-400">Start with a template, adjust the plain-language steps, then save everything at once.</p>
+              </div>
               <div className="rounded-lg bg-plutus-50 p-1.5 text-plutus-600 dark:bg-plutus-500/10 dark:text-plutus-200">
-                <Plus size={16} />
+                <Wand2 size={16} />
               </div>
             </div>
-            <div className="space-y-3">
-              <input
-                value={newWorkflow.title}
-                onChange={(e) => setNewWorkflow((v) => ({ ...v, title: e.target.value }))}
-                placeholder="Workflow name"
-                className={inputClass}
-              />
-              <input
-                value={newWorkflow.category}
-                onChange={(e) => setNewWorkflow((v) => ({ ...v, category: e.target.value }))}
-                placeholder="Category"
-                className={inputClass}
-              />
-              <textarea
-                value={newWorkflow.description}
-                onChange={(e) => setNewWorkflow((v) => ({ ...v, description: e.target.value }))}
-                placeholder="What should this workflow accomplish?"
-                rows={3}
-                className={`${inputClass} resize-none`}
-              />
+
+            <div className="space-y-4">
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Quick starts</div>
+                <div className="grid gap-2">
+                  {workflowTemplates.map((template) => (
+                    <button
+                      key={template.id}
+                      onClick={() => applyWorkflowTemplate(template)}
+                      disabled={saving}
+                      className={`rounded-2xl border p-3 text-left transition disabled:opacity-50 ${newWorkflow.title === template.title ? "border-plutus-500/50 bg-plutus-50 text-gray-950 dark:border-plutus-400/40 dark:bg-plutus-500/15 dark:text-white" : "border-gray-700/70 bg-gray-900/80 text-gray-100 hover:border-plutus-500/35 hover:bg-gray-800 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold">{template.title}</span>
+                        <span className="rounded-full border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 dark:border-white/10 dark:text-gray-500">{template.category}</span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-gray-400 dark:text-gray-500">{template.helper}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-700/70 bg-gray-900/80 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-50 dark:text-white">Workflow basics</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">Use names that describe the outcome, not the tool.</div>
+                  </div>
+                  <button onClick={resetNewWorkflow} disabled={saving} className="text-xs font-medium text-gray-400 hover:text-gray-100 disabled:opacity-50 dark:text-gray-500 dark:hover:text-white">Reset</button>
+                </div>
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-gray-300 dark:text-gray-400">Workflow name</span>
+                    <input
+                      value={newWorkflow.title}
+                      onChange={(e) => setNewWorkflow((v) => ({ ...v, title: e.target.value }))}
+                      placeholder="Example: Weekly competitor scan"
+                      className={inputClass}
+                    />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-gray-300 dark:text-gray-400">Category</span>
+                      <input
+                        value={newWorkflow.category}
+                        onChange={(e) => setNewWorkflow((v) => ({ ...v, category: e.target.value }))}
+                        placeholder="General"
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-gray-300 dark:text-gray-400">Priority</span>
+                      <select
+                        value={newWorkflow.priority}
+                        onChange={(e) => setNewWorkflow((v) => ({ ...v, priority: e.target.value }))}
+                        className={inputClass}
+                      >
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="high">High</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-gray-300 dark:text-gray-400">Goal</span>
+                    <textarea
+                      value={newWorkflow.description}
+                      onChange={(e) => setNewWorkflow((v) => ({ ...v, description: e.target.value }))}
+                      placeholder="Describe the recurring outcome this workflow should produce."
+                      rows={3}
+                      className={`${inputClass} resize-none`}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-700/70 bg-gray-900/80 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-50 dark:text-white">Starter steps</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">These will be added automatically after the workflow is created.</div>
+                  </div>
+                  <span className="rounded-full border border-plutus-500/20 bg-plutus-50 px-2.5 py-1 text-xs text-plutus-700 dark:border-plutus-400/20 dark:bg-plutus-500/10 dark:text-plutus-100">{starterStepCount} ready</span>
+                </div>
+                <div className="space-y-3">
+                  {newWorkflow.starter_steps.map((step, index) => (
+                    <div key={index} className="rounded-xl border border-gray-700/70 bg-gray-950/80 p-3 dark:border-white/10 dark:bg-gray-950/80">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-gray-300 dark:text-gray-400">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-plutus-50 text-plutus-700 dark:bg-plutus-500/15 dark:text-plutus-100">{index + 1}</span>
+                          Step {index + 1}
+                        </div>
+                        <button
+                          onClick={() => removeStarterStepDraft(index)}
+                          disabled={saving}
+                          className="rounded-lg p-1.5 text-gray-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+                          title="Remove starter step"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        <input
+                          value={step.title}
+                          onChange={(e) => updateStarterStep(index, { title: e.target.value })}
+                          placeholder="Step title"
+                          className={inputClass}
+                        />
+                        <textarea
+                          value={step.instruction}
+                          onChange={(e) => updateStarterStep(index, { instruction: e.target.value })}
+                          placeholder="What should Plutus do in this step?"
+                          rows={2}
+                          className={`${inputClass} resize-none`}
+                        />
+                        <input
+                          value={step.expected_output}
+                          onChange={(e) => updateStarterStep(index, { expected_output: e.target.value })}
+                          placeholder="Expected result"
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={addStarterStepDraft} disabled={saving} className={`${secondaryButtonClass} mt-3 w-full justify-center`}>
+                  <Plus size={15} /> Add another step
+                </button>
+              </div>
+
               <button
                 onClick={createWorkflow}
                 disabled={saving || !newWorkflow.title.trim()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-plutus-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-plutus-500/20 hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-plutus-500 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-plutus-500/20 hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Save workflow
+                {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Create workflow{starterStepCount ? ` with ${starterStepCount} step${starterStepCount === 1 ? "" : "s"}` : ""}
               </button>
             </div>
           </div>
