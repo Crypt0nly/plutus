@@ -43,6 +43,36 @@ except ImportError:
     import websockets
     import websockets.exceptions
 
+try:
+    import httpx  # noqa: F401
+    import aiosqlite  # noqa: F401
+except ImportError:
+    print("Installing sync dependencies…")
+    subprocess.check_call([
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "httpx>=0.28.0",
+        "aiosqlite>=0.20.0",
+    ])
+    import httpx  # noqa: F401
+    import aiosqlite  # noqa: F401
+
+try:
+    from .sync_client import LocalSyncClient, SyncError
+except Exception as sync_import_exc:  # standalone script fallback
+    try:
+        from sync_client import LocalSyncClient, SyncError
+        _SYNC_IMPORT_ERROR = None
+    except Exception as fallback_exc:  # pragma: no cover - defensive runtime fallback
+        LocalSyncClient = None  # type: ignore[assignment]
+        SyncError = Exception  # type: ignore[assignment]
+        _SYNC_IMPORT_ERROR = fallback_exc or sync_import_exc
+else:
+    _SYNC_IMPORT_ERROR = None
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -55,6 +85,7 @@ HEARTBEAT_INTERVAL = 25  # seconds between heartbeats
 RECONNECT_DELAY_INIT = 3  # initial reconnect back-off
 RECONNECT_DELAY_MAX = 120  # cap at 2 minutes
 OUTPUT_LIMIT = 50_000  # max chars for stdout/stderr
+WORKFLOW_SYNC_INTERVAL_SECONDS = int(os.getenv("PLUTUS_WORKFLOW_SYNC_INTERVAL", "60"))
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +401,31 @@ class PlutusBridge:
             log.info("Log:    %s", LOG_FILE)
         await self._connection_loop()
         log.info("Plutus Bridge stopped.")
+
+    def _start_sync_loop(self) -> asyncio.Task | None:
+        """Start periodic workflow definition sync in the background."""
+        if self._sync_client is None:
+            if _SYNC_IMPORT_ERROR is not None:
+                log.warning("Workflow sync disabled: %s", _SYNC_IMPORT_ERROR)
+            return None
+        log.info(
+            "Workflow sync enabled every %ss. Set PLUTUS_DISABLE_WORKFLOW_SYNC=1 to disable.",
+            WORKFLOW_SYNC_INTERVAL_SECONDS,
+        )
+        return asyncio.create_task(self._workflow_sync_loop(), name="workflow_sync")
+
+    async def _workflow_sync_loop(self) -> None:
+        """Periodically sync local workflow definitions with Plutus Cloud."""
+        while not self._shutdown.is_set():
+            try:
+                await self._sync_client.full_sync()  # type: ignore[union-attr]
+            except SyncError as exc:
+                log.warning("Workflow sync failed: %s", exc)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                log.warning("Unexpected workflow sync failure: %s", exc, exc_info=True)
+            await self._sleep(WORKFLOW_SYNC_INTERVAL_SECONDS)
 
     def _install_signal_handlers(self) -> None:
         loop = asyncio.get_running_loop()

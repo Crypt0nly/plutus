@@ -9,6 +9,7 @@ WorkerPool when available, so workflows reuse Plutus' normal agent/tool runtime.
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 import uuid
 from pathlib import Path
@@ -25,6 +26,24 @@ def _now() -> float:
 
 def _id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def _sync_id() -> str:
+    return f"wf-sync-{uuid.uuid4()}"
+
+
+def _canonical_workflow_payload(workflow: dict[str, Any]) -> dict[str, Any]:
+    keys = [
+        "sync_id", "title", "description", "category", "status", "trigger_type",
+        "trigger_config", "priority", "tags", "steps", "deleted_at",
+    ]
+    return {key: workflow.get(key) for key in keys}
+
+
+def _content_hash(workflow: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(_canonical_workflow_payload(workflow), sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
 
 
 def _step_sort_key(step: dict[str, Any]) -> tuple[int, str]:
@@ -44,10 +63,18 @@ class AgentWorkflowManager:
             return {"workflows": [], "runs": []}
         try:
             raw = json.loads(self.storage_path.read_text(encoding="utf-8"))
-            return {
+            data = {
                 "workflows": list(raw.get("workflows") or []),
                 "runs": list(raw.get("runs") or []),
             }
+            changed = False
+            for workflow in data["workflows"]:
+                changed = self._ensure_sync_metadata(workflow, dirty=False) or changed
+            if changed:
+                tmp = self.storage_path.with_suffix(".tmp")
+                tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+                tmp.replace(self.storage_path)
+            return data
         except Exception:
             return {"workflows": [], "runs": []}
 
@@ -62,18 +89,118 @@ class AgentWorkflowManager:
     def _find_run(self, run_id: str) -> dict[str, Any] | None:
         return next((r for r in self._data["runs"] if r.get("id") == run_id), None)
 
+    def _ensure_sync_metadata(self, workflow: dict[str, Any], dirty: bool = True) -> bool:
+        changed = False
+        if not workflow.get("sync_id"):
+            workflow["sync_id"] = _sync_id()
+            changed = True
+        if "sync_revision" not in workflow:
+            workflow["sync_revision"] = 0
+            changed = True
+        if "deleted_at" not in workflow:
+            workflow["deleted_at"] = None
+            changed = True
+        digest = _content_hash(workflow)
+        if workflow.get("content_hash") != digest:
+            workflow["content_hash"] = digest
+            changed = True
+        if dirty:
+            workflow["sync_revision"] = int(workflow.get("sync_revision") or 0) + 1
+            workflow["content_hash"] = _content_hash(workflow)
+            workflow["sync_dirty"] = True
+            changed = True
+        return changed
+
+    def list_sync_workflows(self, include_deleted: bool = True) -> list[dict[str, Any]]:
+        workflows = [self._serialize_workflow(w) for w in self._data["workflows"]]
+        if not include_deleted:
+            workflows = [w for w in workflows if not w.get("deleted_at")]
+        return sorted(workflows, key=lambda w: w.get("updated_at", 0), reverse=True)
+
+    def mark_workflow_synced(self, sync_id: str) -> None:
+        workflow = next((w for w in self._data["workflows"] if w.get("sync_id") == sync_id), None)
+        if workflow:
+            workflow["sync_dirty"] = False
+            workflow["last_synced_at"] = _now()
+            self._save()
+
+    def apply_synced_workflow(self, sync_id: str, payload: dict[str, Any], action: str = "update") -> dict[str, Any] | None:
+        workflow = next((w for w in self._data["workflows"] if w.get("sync_id") == sync_id), None)
+        if action == "delete":
+            if workflow is None:
+                now = _now()
+                workflow = {
+                    "id": _id("wf"),
+                    "sync_id": sync_id,
+                    "title": payload.get("name") or payload.get("title") or "Deleted workflow",
+                    "description": payload.get("description") or "",
+                    "category": "Synced",
+                    "status": "archived",
+                    "trigger_type": "manual",
+                    "trigger_config": {},
+                    "priority": "normal",
+                    "tags": [],
+                    "steps": [],
+                    "created_at": now,
+                    "updated_at": now,
+                    "deleted_at": payload.get("deleted_at") or now,
+                }
+                self._data["workflows"].append(workflow)
+            workflow["deleted_at"] = payload.get("deleted_at") or _now()
+            workflow["status"] = "archived"
+            workflow["updated_at"] = _now()
+            self._ensure_sync_metadata(workflow, dirty=False)
+            workflow["sync_dirty"] = False
+            self._save()
+            return self._serialize_workflow(workflow)
+
+        now = _now()
+        if workflow is None:
+            workflow = {
+                "id": _id("wf"),
+                "created_at": now,
+                "run_count": 0,
+                "success_count": 0,
+                "failure_count": 0,
+                "last_run_at": None,
+                "next_run_at": None,
+            }
+            self._data["workflows"].append(workflow)
+        labels = list(payload.get("labels") or [])
+        workflow.update({
+            "sync_id": sync_id,
+            "sync_revision": int(payload.get("sync_revision") or workflow.get("sync_revision") or 0),
+            "title": payload.get("name") or payload.get("title") or workflow.get("title") or "Untitled workflow",
+            "description": payload.get("description") or "",
+            "category": labels[0] if labels else workflow.get("category") or "Synced",
+            "status": payload.get("status") or "draft",
+            "trigger_type": payload.get("trigger_type") or "manual",
+            "trigger_config": payload.get("trigger_config") or {},
+            "priority": workflow.get("priority") or "normal",
+            "tags": labels,
+            "steps": payload.get("steps") or [],
+            "updated_at": now,
+            "deleted_at": payload.get("deleted_at"),
+            "content_hash": payload.get("content_hash"),
+            "sync_dirty": False,
+            "last_synced_at": now,
+        })
+        self._ensure_sync_metadata(workflow, dirty=False)
+        self._save()
+        return self._serialize_workflow(workflow)
+
     def _serialize_workflow(self, workflow: dict[str, Any]) -> dict[str, Any]:
         item = dict(workflow)
         item["steps"] = sorted([dict(s) for s in item.get("steps", [])], key=_step_sort_key)
         return item
 
     def list_workflows(self) -> list[dict[str, Any]]:
-        workflows = [self._serialize_workflow(w) for w in self._data["workflows"]]
+        workflows = [self._serialize_workflow(w) for w in self._data["workflows"] if not w.get("deleted_at")]
         return sorted(workflows, key=lambda w: w.get("updated_at", 0), reverse=True)
 
     def get_workflow(self, workflow_id: str) -> dict[str, Any] | None:
         workflow = self._find_workflow(workflow_id)
-        return self._serialize_workflow(workflow) if workflow else None
+        return self._serialize_workflow(workflow) if workflow and not workflow.get("deleted_at") else None
 
     def create_workflow(self, payload: dict[str, Any]) -> dict[str, Any]:
         now = _now()
@@ -88,6 +215,12 @@ class AgentWorkflowManager:
             "priority": payload.get("priority") or "normal",
             "tags": list(payload.get("tags") or []),
             "steps": [],
+            "sync_id": payload.get("sync_id") or _sync_id(),
+            "sync_revision": 0,
+            "content_hash": None,
+            "sync_dirty": True,
+            "deleted_at": None,
+            "last_synced_at": None,
             "created_at": now,
             "updated_at": now,
             "last_run_at": None,
@@ -98,6 +231,7 @@ class AgentWorkflowManager:
         }
         for idx, step in enumerate(payload.get("steps") or [], start=1):
             workflow["steps"].append(self._build_step(step, idx))
+        self._ensure_sync_metadata(workflow, dirty=True)
         self._data["workflows"].append(workflow)
         self._save()
         return self._serialize_workflow(workflow)
@@ -116,18 +250,23 @@ class AgentWorkflowManager:
                     value = value.strip()
                 workflow[key] = value
         workflow["updated_at"] = _now()
+        self._ensure_sync_metadata(workflow, dirty=True)
         self._save()
         return self._serialize_workflow(workflow)
 
     def delete_workflow(self, workflow_id: str) -> bool:
-        before = len(self._data["workflows"])
-        self._data["workflows"] = [w for w in self._data["workflows"] if w.get("id") != workflow_id]
-        if len(self._data["workflows"]) == before:
+        workflow = self._find_workflow(workflow_id)
+        if not workflow or workflow.get("deleted_at"):
             return False
+        now = _now()
+        workflow["deleted_at"] = now
+        workflow["status"] = "archived"
+        workflow["updated_at"] = now
+        self._ensure_sync_metadata(workflow, dirty=True)
         for run in self._data["runs"]:
             if run.get("workflow_id") == workflow_id and run.get("status") not in TERMINAL_RUN_STATES:
                 run["status"] = "cancelled"
-                run["completed_at"] = _now()
+                run["completed_at"] = now
                 run["error"] = "Workflow was deleted."
         self._save()
         return True
@@ -157,6 +296,7 @@ class AgentWorkflowManager:
         step = self._build_step(payload, next_order)
         workflow.setdefault("steps", []).append(step)
         workflow["updated_at"] = _now()
+        self._ensure_sync_metadata(workflow, dirty=True)
         self._save()
         return dict(step)
 
@@ -180,6 +320,7 @@ class AgentWorkflowManager:
                 step[key] = value
         step["updated_at"] = _now()
         workflow["updated_at"] = _now()
+        self._ensure_sync_metadata(workflow, dirty=True)
         self._save()
         return dict(step)
 
@@ -194,6 +335,7 @@ class AgentWorkflowManager:
         for idx, step in enumerate(sorted(workflow["steps"], key=_step_sort_key), start=1):
             step["order"] = idx
         workflow["updated_at"] = _now()
+        self._ensure_sync_metadata(workflow, dirty=True)
         self._save()
         return True
 
@@ -206,6 +348,7 @@ class AgentWorkflowManager:
             if step.get("id") in order_map:
                 step["order"] = order_map[step["id"]]
         workflow["updated_at"] = _now()
+        self._ensure_sync_metadata(workflow, dirty=True)
         self._save()
         return self._serialize_workflow(workflow)
 
@@ -372,7 +515,7 @@ class AgentWorkflowManager:
 
     def stats(self, worker_pool: Any | None = None) -> dict[str, Any]:
         self.refresh_runs(worker_pool)
-        workflows = self._data["workflows"]
+        workflows = [w for w in self._data["workflows"] if not w.get("deleted_at")]
         runs = self._data["runs"]
         active_runs = [r for r in runs if r.get("status") not in TERMINAL_RUN_STATES]
         return {
