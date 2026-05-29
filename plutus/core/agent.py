@@ -86,6 +86,10 @@ before taking any other action:
    - Save discoveries: memory(action="save_fact", category="technical", content="...")
    - After completing steps: plan(action="update_step", step_index=0, status="done", result="...")
 
+5. **Keep building reusable workflows:**
+   - When a task reveals a repeatable multi-step process, capture it as a reusable workflow when workflow tools are available, or clearly suggest a workflow the user can save.
+   - Continuously improve these workflows so future tasks require fewer instructions, run more seamlessly, and complete faster.
+
 This is NOT optional. Skipping these steps means you WILL forget what you're
 doing when the conversation gets long. The plan and memory tools are your
 lifeline for staying on track.

@@ -5,20 +5,30 @@ import {
   Clock,
   Layers3,
   Loader2,
+  Pencil,
   Play,
   Plus,
   RefreshCcw,
   Save,
   Trash2,
   Workflow,
+  X,
   XCircle,
 } from "lucide-react";
-import { api, type AgentWorkflow, type AgentWorkflowRun, type AgentWorkflowStats } from "../../lib/api";
+import { api, type AgentWorkflow, type AgentWorkflowRun, type AgentWorkflowStats, type AgentWorkflowStep } from "../../lib/api";
 
 type NewWorkflowForm = {
   title: string;
   description: string;
   category: string;
+};
+
+type WorkflowEditForm = {
+  title: string;
+  description: string;
+  category: string;
+  status: string;
+  priority: string;
 };
 
 type NewStepForm = {
@@ -99,11 +109,32 @@ export function WorkflowsView() {
   const [error, setError] = useState<string | null>(null);
   const [newWorkflow, setNewWorkflow] = useState<NewWorkflowForm>({ title: "", description: "", category: "General" });
   const [newStep, setNewStep] = useState<NewStepForm>({ title: "", instruction: "", expected_output: "" });
+  const [editingWorkflow, setEditingWorkflow] = useState(false);
+  const [workflowEdit, setWorkflowEdit] = useState<WorkflowEditForm>({ title: "", description: "", category: "General", status: "active", priority: "normal" });
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [stepEdit, setStepEdit] = useState<NewStepForm>({ title: "", instruction: "", expected_output: "" });
 
   const selected = useMemo(
     () => workflows.find((workflow) => workflow.id === selectedId) || workflows[0] || null,
     [workflows, selectedId]
   );
+
+  useEffect(() => {
+    if (!selected) {
+      setEditingWorkflow(false);
+      setEditingStepId(null);
+      return;
+    }
+    setWorkflowEdit({
+      title: selected.title || "",
+      description: selected.description || "",
+      category: selected.category || "General",
+      status: selected.status || "draft",
+      priority: selected.priority || "normal",
+    });
+    setEditingWorkflow(false);
+    setEditingStepId(null);
+  }, [selected?.id]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -198,15 +229,95 @@ export function WorkflowsView() {
     }
   };
 
+  const startEditWorkflow = (workflow: AgentWorkflow) => {
+    setWorkflowEdit({
+      title: workflow.title || "",
+      description: workflow.description || "",
+      category: workflow.category || "General",
+      status: workflow.status || "draft",
+      priority: workflow.priority || "normal",
+    });
+    setEditingWorkflow(true);
+  };
+
+  const cancelWorkflowEdit = () => {
+    if (!selected) return;
+    setWorkflowEdit({
+      title: selected.title || "",
+      description: selected.description || "",
+      category: selected.category || "General",
+      status: selected.status || "draft",
+      priority: selected.priority || "normal",
+    });
+    setEditingWorkflow(false);
+  };
+
+  const saveWorkflowEdit = async () => {
+    if (!selected || !workflowEdit.title.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.updateAgentWorkflow(selected.id, {
+        title: workflowEdit.title.trim(),
+        description: workflowEdit.description.trim(),
+        category: workflowEdit.category.trim() || "General",
+        status: workflowEdit.status,
+        priority: workflowEdit.priority,
+      });
+      setEditingWorkflow(false);
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Could not update workflow");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const deleteStep = async (stepId: string) => {
     if (!selected) return;
     setSaving(true);
     setError(null);
     try {
       await api.deleteAgentWorkflowStep(selected.id, stepId);
+      if (editingStepId === stepId) {
+        setEditingStepId(null);
+      }
       await load();
     } catch (err: any) {
       setError(err?.message || "Could not delete step");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEditStep = (step: AgentWorkflowStep) => {
+    setEditingStepId(step.id);
+    setStepEdit({
+      title: step.title || "",
+      instruction: step.instruction || step.description || "",
+      expected_output: step.expected_output || "",
+    });
+  };
+
+  const cancelStepEdit = () => {
+    setEditingStepId(null);
+    setStepEdit({ title: "", instruction: "", expected_output: "" });
+  };
+
+  const saveStepEdit = async (stepId: string) => {
+    if (!selected || !stepEdit.title.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.updateAgentWorkflowStep(selected.id, stepId, {
+        title: stepEdit.title.trim(),
+        instruction: stepEdit.instruction.trim(),
+        expected_output: stepEdit.expected_output.trim(),
+      });
+      cancelStepEdit();
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Could not update step");
     } finally {
       setSaving(false);
     }
@@ -344,43 +455,115 @@ export function WorkflowsView() {
           {selected ? (
             <>
               <div className={`${panelClass} p-5`}>
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h2 className="text-2xl font-semibold text-gray-50 dark:text-white">{selected.title}</h2>
-                      <StatusPill status={selected.status} />
+                {editingWorkflow ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h2 className="text-2xl font-semibold text-gray-50 dark:text-white">Edit workflow</h2>
+                        <p className="mt-1 text-sm leading-6 text-gray-300 dark:text-gray-400">Update the workflow details without losing its run history or configured steps.</p>
+                      </div>
+                      <button onClick={cancelWorkflowEdit} disabled={saving} className={secondaryButtonClass}>
+                        <X size={16} /> Cancel
+                      </button>
                     </div>
-                    <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300 dark:text-gray-400">{selected.description || "Add a description so teammates know when to use this workflow."}</p>
-                    <div className="mt-4 grid gap-3 text-xs text-gray-400 dark:text-gray-500 sm:grid-cols-3">
-                      <div>Last run: <span className="text-gray-100 dark:text-gray-300">{formatTime(selected.last_run_at)}</span></div>
-                      <div>Successes: <span className="text-gray-100 dark:text-gray-300">{selected.success_count || 0}</span></div>
-                      <div>Failures: <span className="text-gray-100 dark:text-gray-300">{selected.failure_count || 0}</span></div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <input
+                        value={workflowEdit.title}
+                        onChange={(e) => setWorkflowEdit((v) => ({ ...v, title: e.target.value }))}
+                        placeholder="Workflow name"
+                        className={inputClass}
+                      />
+                      <input
+                        value={workflowEdit.category}
+                        onChange={(e) => setWorkflowEdit((v) => ({ ...v, category: e.target.value }))}
+                        placeholder="Category"
+                        className={inputClass}
+                      />
+                      <select
+                        value={workflowEdit.status}
+                        onChange={(e) => setWorkflowEdit((v) => ({ ...v, status: e.target.value }))}
+                        className={inputClass}
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                      </select>
+                      <select
+                        value={workflowEdit.priority}
+                        onChange={(e) => setWorkflowEdit((v) => ({ ...v, priority: e.target.value }))}
+                        className={inputClass}
+                      >
+                        <option value="low">Low priority</option>
+                        <option value="normal">Normal priority</option>
+                        <option value="high">High priority</option>
+                      </select>
+                    </div>
+                    <textarea
+                      value={workflowEdit.description}
+                      onChange={(e) => setWorkflowEdit((v) => ({ ...v, description: e.target.value }))}
+                      placeholder="What should this workflow accomplish?"
+                      rows={4}
+                      className={`${inputClass} resize-none`}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={saveWorkflowEdit}
+                        disabled={saving || !workflowEdit.title.trim()}
+                        className="inline-flex items-center gap-2 rounded-xl bg-plutus-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-plutus-500/20 hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Save changes
+                      </button>
+                      <button onClick={cancelWorkflowEdit} disabled={saving} className={secondaryButtonClass}>Cancel</button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => startRun(selected)}
-                      disabled={saving}
-                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-400 disabled:opacity-50"
-                    >
-                      <Play size={16} /> Run
-                    </button>
-                    <button
-                      onClick={() => toggleWorkflowStatus(selected)}
-                      disabled={saving}
-                      className={secondaryButtonClass}
-                    >
-                      {selected.status === "active" ? "Set draft" : "Activate"}
-                    </button>
-                    <button
-                      onClick={() => deleteWorkflow(selected)}
-                      disabled={saving}
-                      className="inline-flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-100 dark:hover:bg-rose-500/20"
-                    >
-                      <Trash2 size={16} /> Delete
-                    </button>
+                ) : (
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h2 className="text-2xl font-semibold text-gray-50 dark:text-white">{selected.title}</h2>
+                        <StatusPill status={selected.status} />
+                      </div>
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300 dark:text-gray-400">{selected.description || "Add a description so teammates know when to use this workflow."}</p>
+                      <div className="mt-4 grid gap-3 text-xs text-gray-400 dark:text-gray-500 sm:grid-cols-5">
+                        <div>Category: <span className="text-gray-100 dark:text-gray-300">{selected.category || "General"}</span></div>
+                        <div>Priority: <span className="text-gray-100 dark:text-gray-300">{selected.priority || "normal"}</span></div>
+                        <div>Last run: <span className="text-gray-100 dark:text-gray-300">{formatTime(selected.last_run_at)}</span></div>
+                        <div>Successes: <span className="text-gray-100 dark:text-gray-300">{selected.success_count || 0}</span></div>
+                        <div>Failures: <span className="text-gray-100 dark:text-gray-300">{selected.failure_count || 0}</span></div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => startRun(selected)}
+                        disabled={saving}
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-400 disabled:opacity-50"
+                      >
+                        <Play size={16} /> Run
+                      </button>
+                      <button
+                        onClick={() => startEditWorkflow(selected)}
+                        disabled={saving}
+                        className={secondaryButtonClass}
+                      >
+                        <Pencil size={16} /> Edit
+                      </button>
+                      <button
+                        onClick={() => toggleWorkflowStatus(selected)}
+                        disabled={saving}
+                        className={secondaryButtonClass}
+                      >
+                        {selected.status === "active" ? "Set draft" : "Activate"}
+                      </button>
+                      <button
+                        onClick={() => deleteWorkflow(selected)}
+                        disabled={saving}
+                        className="inline-flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-100 dark:hover:bg-rose-500/20"
+                      >
+                        <Trash2 size={16} /> Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className={`${panelClass} p-5`}>
@@ -393,23 +576,76 @@ export function WorkflowsView() {
                     <div className="rounded-2xl border border-dashed border-gray-700/80 p-6 text-sm text-gray-400 dark:border-white/10 dark:text-gray-500">No steps yet. Add the first action below.</div>
                   ) : selected.steps.map((step, index) => (
                     <div key={step.id} className={`${subtlePanelClass} p-4`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-plutus-50 text-sm font-semibold text-plutus-700 dark:bg-plutus-500/15 dark:text-plutus-100">{index + 1}</div>
-                          <div>
-                            <div className="font-medium text-gray-50 dark:text-white">{step.title}</div>
-                            <div className="mt-1 text-sm leading-6 text-gray-300 dark:text-gray-400">{step.instruction || step.description || "No instruction yet."}</div>
-                            {step.expected_output && <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">Expected: {step.expected_output}</div>}
+                      {editingStepId === step.id ? (
+                        <div className="space-y-3">
+                          <div className="flex gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-plutus-50 text-sm font-semibold text-plutus-700 dark:bg-plutus-500/15 dark:text-plutus-100">{index + 1}</div>
+                            <input
+                              value={stepEdit.title}
+                              onChange={(e) => setStepEdit((v) => ({ ...v, title: e.target.value }))}
+                              placeholder="Step title"
+                              className={compactInputClass}
+                            />
+                          </div>
+                          <textarea
+                            value={stepEdit.instruction}
+                            onChange={(e) => setStepEdit((v) => ({ ...v, instruction: e.target.value }))}
+                            placeholder="Instruction for the agent"
+                            rows={3}
+                            className={`${inputClass} resize-none`}
+                          />
+                          <input
+                            value={stepEdit.expected_output}
+                            onChange={(e) => setStepEdit((v) => ({ ...v, expected_output: e.target.value }))}
+                            placeholder="Expected output"
+                            className={compactInputClass}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => saveStepEdit(step.id)}
+                              disabled={saving || !stepEdit.title.trim()}
+                              className="inline-flex items-center gap-2 rounded-xl bg-plutus-500 px-3 py-2 text-sm font-semibold text-white hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save step
+                            </button>
+                            <button onClick={cancelStepEdit} disabled={saving} className={secondaryButtonClass}>Cancel</button>
+                            <button
+                              onClick={() => deleteStep(step.id)}
+                              disabled={saving}
+                              className="inline-flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-100 dark:hover:bg-rose-500/20"
+                            >
+                              <Trash2 size={15} /> Delete
+                            </button>
                           </div>
                         </div>
-                        <button
-                          onClick={() => deleteStep(step.id)}
-                          className="rounded-lg p-2 text-gray-400 hover:bg-rose-50 hover:text-rose-600 dark:text-gray-500 dark:hover:bg-white/10 dark:hover:text-rose-200"
-                          title="Delete step"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-plutus-50 text-sm font-semibold text-plutus-700 dark:bg-plutus-500/15 dark:text-plutus-100">{index + 1}</div>
+                            <div>
+                              <div className="font-medium text-gray-50 dark:text-white">{step.title}</div>
+                              <div className="mt-1 text-sm leading-6 text-gray-300 dark:text-gray-400">{step.instruction || step.description || "No instruction yet."}</div>
+                              {step.expected_output && <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">Expected: {step.expected_output}</div>}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              onClick={() => startEditStep(step)}
+                              className="rounded-lg p-2 text-gray-400 hover:bg-plutus-50 hover:text-plutus-600 dark:text-gray-500 dark:hover:bg-white/10 dark:hover:text-plutus-200"
+                              title="Edit step"
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              onClick={() => deleteStep(step.id)}
+                              className="rounded-lg p-2 text-gray-400 hover:bg-rose-50 hover:text-rose-600 dark:text-gray-500 dark:hover:bg-white/10 dark:hover:text-rose-200"
+                              title="Delete step"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
