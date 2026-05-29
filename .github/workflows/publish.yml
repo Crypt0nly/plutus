@@ -1,12 +1,12 @@
 name: Publish to PyPI
 
-# Build compiled platform wheels and publish to PyPI.
+# Build compiled platform wheels, publish to PyPI when possible, and attach release assets.
 #
 # Every push to main automatically:
 #   1. Bumps the patch version FIRST (so each commit gets a unique version)
 #   2. Builds compiled wheels for all platforms (with UI built inline)
-#   3. Publishes to PyPI as a stable release
-#   4. Creates a GitHub Release
+#   3. Publishes to PyPI when project storage headroom allows
+#   4. Creates a GitHub Release with compiled wheel assets
 #
 # Protected modules (core orchestration, PC control, workers) are compiled
 # to native .so/.pyd via Cython so the source is not distributed.
@@ -225,16 +225,22 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: wheelhouse/*.whl
 
-  # ── Publish wheels to PyPI (no sdist — open-core protection) ─────
+  # ── Publish wheels to PyPI when project storage allows ────────────
   #
   # Only compiled platform wheels are published. No source distribution
   # is uploaded so that unsupported platforms cannot fall back to raw
   # Python source, which would expose protected open-core modules.
+  #
+  # PyPI enforces a project-wide storage cap. The preflight below avoids
+  # partial uploads once the project is near that cap; GitHub Releases remain
+  # the durable fallback distribution channel for the compiled wheels.
   publish:
     needs: [build-wheels, bump-version]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read     # Required for checkout
+      actions: read      # Required for downloading build artifacts
       id-token: write    # OIDC for PyPI trusted publishing + attestations
       attestations: write # Required for sigstore attestations
 
@@ -259,12 +265,26 @@ jobs:
       - name: List artifacts
         run: ls -la dist/
 
+      - name: Check PyPI storage headroom
+        id: pypi_storage
+        run: |
+          python3 .github/scripts/check_pypi_storage.py \
+            --project plutus-ai \
+            --dist-dir dist
+
       - name: Publish to PyPI
+        if: steps.pypi_storage.outputs.can_publish == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
           verbose: true
           attestations: false
+
+      - name: Skip PyPI publish because project storage is full
+        if: steps.pypi_storage.outputs.can_publish != 'true'
+        run: |
+          echo "::warning::${{ steps.pypi_storage.outputs.reason }}"
+          echo "Built wheels will be attached to the GitHub Release instead."
 
 
   # ── Create GitHub Release ───────────────────────────────────────
@@ -273,22 +293,40 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
 
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
 
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-dist/
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -la release-dist/
+
       - name: Create GitHub Release
         run: |
           VERSION=$(python3 -c "exec(open('plutus/__init__.py').read()); print(__version__)")
           echo "Creating release v${VERSION}"
 
+          shopt -s nullglob
+          WHEEL_ASSETS=(release-dist/*.whl)
+          if [ ${#WHEEL_ASSETS[@]} -eq 0 ]; then
+            echo "No wheel assets found to attach to release v${VERSION}"
+            exit 1
+          fi
+
           # Check if release already exists (idempotent)
           if gh release view "v${VERSION}" &>/dev/null; then
-            echo "Release v${VERSION} already exists — skipping"
+            echo "Release v${VERSION} already exists — uploading wheel assets"
+            gh release upload "v${VERSION}" "${WHEEL_ASSETS[@]}" --clobber
           else
-            gh release create "v${VERSION}" \
+            gh release create "v${VERSION}" "${WHEEL_ASSETS[@]}" \
               --title "v${VERSION}" \
               --generate-notes
           fi
