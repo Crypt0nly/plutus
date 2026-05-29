@@ -10,6 +10,7 @@ export type View =
   | "settings"
   | "tools"
   | "workers"
+  | "workflows"
   | "tool-creator"
   | "skills"
   | "memory"

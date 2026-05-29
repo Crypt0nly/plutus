@@ -2,6 +2,68 @@
 
 const BASE = "/api";
 
+
+export interface AgentWorkflowStep {
+  id: string;
+  title: string;
+  description?: string;
+  instruction?: string;
+  agent_type?: string;
+  status?: string;
+  order: number;
+  enabled: boolean;
+  depends_on?: string[];
+  expected_output?: string;
+  timeout_seconds?: number;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface AgentWorkflow {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  status: string;
+  trigger_type: string;
+  trigger_config?: Record<string, any>;
+  priority: string;
+  tags: string[];
+  steps: AgentWorkflowStep[];
+  created_at: number;
+  updated_at: number;
+  last_run_at?: number | null;
+  next_run_at?: number | null;
+  run_count: number;
+  success_count: number;
+  failure_count: number;
+}
+
+export interface AgentWorkflowRun {
+  id: string;
+  workflow_id: string;
+  workflow_title: string;
+  status: string;
+  triggered_by: string;
+  current_step_id?: string | null;
+  steps: Record<string, any>[];
+  result?: string | null;
+  error?: string | null;
+  worker_task_id?: string | null;
+  started_at: number;
+  completed_at?: number | null;
+  created_at: number;
+}
+
+export interface AgentWorkflowStats {
+  workflow_count: number;
+  active_workflow_count: number;
+  run_count: number;
+  active_run_count: number;
+  success_count: number;
+  failure_count: number;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -95,6 +157,51 @@ export const api = {
     request<Record<string, any>>(
       `/scheduler/history?limit=${limit}${jobId ? `&job_id=${jobId}` : ""}`
     ),
+
+
+
+  // Agent Workflows
+  getAgentWorkflowsOverview: () =>
+    request<{ workflows: AgentWorkflow[]; runs: AgentWorkflowRun[]; stats: AgentWorkflowStats }>("/agent-workflows"),
+  getAgentWorkflows: () =>
+    request<{ workflows: AgentWorkflow[]; stats: AgentWorkflowStats }>("/agent-workflows/workflows"),
+  getAgentWorkflow: (workflowId: string) =>
+    request<{ workflow: AgentWorkflow; runs: AgentWorkflowRun[] }>(`/agent-workflows/workflows/${workflowId}`),
+  createAgentWorkflow: (data: Partial<AgentWorkflow> & { title: string }) =>
+    request<{ workflow: AgentWorkflow }>("/agent-workflows/workflows", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateAgentWorkflow: (workflowId: string, patch: Partial<AgentWorkflow>) =>
+    request<{ workflow: AgentWorkflow }>(`/agent-workflows/workflows/${workflowId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteAgentWorkflow: (workflowId: string) =>
+    request<{ message: string }>(`/agent-workflows/workflows/${workflowId}`, { method: "DELETE" }),
+  addAgentWorkflowStep: (workflowId: string, data: Partial<AgentWorkflowStep>) =>
+    request<{ step: AgentWorkflowStep; workflow: AgentWorkflow }>(`/agent-workflows/workflows/${workflowId}/steps`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateAgentWorkflowStep: (workflowId: string, stepId: string, patch: Partial<AgentWorkflowStep>) =>
+    request<{ step: AgentWorkflowStep; workflow: AgentWorkflow }>(`/agent-workflows/workflows/${workflowId}/steps/${stepId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteAgentWorkflowStep: (workflowId: string, stepId: string) =>
+    request<{ message: string; workflow: AgentWorkflow }>(`/agent-workflows/workflows/${workflowId}/steps/${stepId}`, { method: "DELETE" }),
+  reorderAgentWorkflowSteps: (workflowId: string, stepIds: string[]) =>
+    request<{ workflow: AgentWorkflow }>(`/agent-workflows/workflows/${workflowId}/steps/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ step_ids: stepIds }),
+    }),
+  getAgentWorkflowRuns: (limit = 50, workflowId?: string) =>
+    request<{ runs: AgentWorkflowRun[] }>(`/agent-workflows/runs?limit=${limit}${workflowId ? `&workflow_id=${workflowId}` : ""}`),
+  startAgentWorkflowRun: (workflowId: string) =>
+    request<{ run: AgentWorkflowRun }>(`/agent-workflows/workflows/${workflowId}/runs`, { method: "POST" }),
+  cancelAgentWorkflowRun: (runId: string) =>
+    request<{ run: AgentWorkflowRun }>(`/agent-workflows/runs/${runId}/cancel`, { method: "POST" }),
 
   // Model Routing
   getModelRouting: () => request<Record<string, any>>("/models"),

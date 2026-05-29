@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from plutus.guardrails.tiers import Tier, get_tier_info
 
@@ -177,6 +177,60 @@ class RenameConversationRequest(BaseModel):
     title: str
 
 
+class AgentWorkflowStepRequest(BaseModel):
+    title: str = ""
+    description: str = ""
+    instruction: str = ""
+    agent_type: str = "general"
+    status: str = "active"
+    order: int | None = None
+    enabled: bool = True
+    depends_on: list[str] = Field(default_factory=list)
+    expected_output: str = ""
+    timeout_seconds: int = 600
+
+
+class AgentWorkflowRequest(BaseModel):
+    title: str
+    description: str = ""
+    category: str = "General"
+    status: str = "draft"
+    trigger_type: str = "manual"
+    trigger_config: dict[str, Any] = Field(default_factory=dict)
+    priority: str = "normal"
+    tags: list[str] = Field(default_factory=list)
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AgentWorkflowUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    category: str | None = None
+    status: str | None = None
+    trigger_type: str | None = None
+    trigger_config: dict[str, Any] | None = None
+    priority: str | None = None
+    tags: list[str] | None = None
+    next_run_at: float | None = None
+
+
+class AgentWorkflowStepUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    instruction: str | None = None
+    agent_type: str | None = None
+    status: str | None = None
+    order: int | None = None
+    enabled: bool | None = None
+    depends_on: list[str] | None = None
+    expected_output: str | None = None
+    timeout_seconds: int | None = None
+
+
+class AgentWorkflowReorderRequest(BaseModel):
+    step_ids: list[str]
+
+
 class ConnectorConfigUpdate(BaseModel):
     config: dict[str, Any]
 
@@ -206,6 +260,18 @@ class SkillImportRequest(BaseModel):
 
 def create_router() -> APIRouter:
     router = APIRouter()
+
+
+    def _get_agent_workflows():
+        from plutus.core.agent_workflows import AgentWorkflowManager
+        from plutus.gateway.server import get_state
+
+        state = get_state()
+        manager = state.get("agent_workflow_manager")
+        if manager is None:
+            manager = AgentWorkflowManager()
+            state["agent_workflow_manager"] = manager
+        return manager, state.get("worker_pool")
 
     # ── Status ──────────────────────────────────────────────
 
@@ -2767,6 +2833,117 @@ def create_router() -> APIRouter:
             pass
 
         return {"status": "ok", "removed": removed}
+
+
+    # ── Agent Workflows ────────────────────────────────────────
+
+    @router.get("/agent-workflows")
+    async def get_agent_workflows_overview() -> dict[str, Any]:
+        manager, worker_pool = _get_agent_workflows()
+        return {
+            "workflows": manager.list_workflows(),
+            "runs": manager.list_runs(limit=20, worker_pool=worker_pool),
+            "stats": manager.stats(worker_pool=worker_pool),
+        }
+
+    @router.get("/agent-workflows/workflows")
+    async def list_agent_workflows() -> dict[str, Any]:
+        manager, worker_pool = _get_agent_workflows()
+        return {
+            "workflows": manager.list_workflows(),
+            "stats": manager.stats(worker_pool=worker_pool),
+        }
+
+    @router.post("/agent-workflows/workflows")
+    async def create_agent_workflow(body: AgentWorkflowRequest) -> dict[str, Any]:
+        manager, _worker_pool = _get_agent_workflows()
+        workflow = manager.create_workflow(body.model_dump())
+        return {"workflow": workflow}
+
+    @router.get("/agent-workflows/workflows/{workflow_id}")
+    async def get_agent_workflow(workflow_id: str) -> dict[str, Any]:
+        manager, worker_pool = _get_agent_workflows()
+        workflow = manager.get_workflow(workflow_id)
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return {
+            "workflow": workflow,
+            "runs": manager.list_runs(limit=25, workflow_id=workflow_id, worker_pool=worker_pool),
+        }
+
+    @router.patch("/agent-workflows/workflows/{workflow_id}")
+    async def update_agent_workflow(workflow_id: str, body: AgentWorkflowUpdateRequest) -> dict[str, Any]:
+        manager, _worker_pool = _get_agent_workflows()
+        workflow = manager.update_workflow(
+            workflow_id,
+            {k: v for k, v in body.model_dump().items() if v is not None},
+        )
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return {"workflow": workflow}
+
+    @router.delete("/agent-workflows/workflows/{workflow_id}")
+    async def delete_agent_workflow(workflow_id: str) -> dict[str, str]:
+        manager, _worker_pool = _get_agent_workflows()
+        if not manager.delete_workflow(workflow_id):
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return {"message": "Workflow deleted"}
+
+    @router.post("/agent-workflows/workflows/{workflow_id}/steps")
+    async def add_agent_workflow_step(workflow_id: str, body: AgentWorkflowStepRequest) -> dict[str, Any]:
+        manager, _worker_pool = _get_agent_workflows()
+        step = manager.add_step(workflow_id, body.model_dump())
+        if not step:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return {"step": step, "workflow": manager.get_workflow(workflow_id)}
+
+    @router.patch("/agent-workflows/workflows/{workflow_id}/steps/{step_id}")
+    async def update_agent_workflow_step(workflow_id: str, step_id: str, body: AgentWorkflowStepUpdateRequest) -> dict[str, Any]:
+        manager, _worker_pool = _get_agent_workflows()
+        step = manager.update_step(
+            workflow_id,
+            step_id,
+            {k: v for k, v in body.model_dump().items() if v is not None},
+        )
+        if not step:
+            raise HTTPException(status_code=404, detail="Workflow step not found")
+        return {"step": step, "workflow": manager.get_workflow(workflow_id)}
+
+    @router.delete("/agent-workflows/workflows/{workflow_id}/steps/{step_id}")
+    async def delete_agent_workflow_step(workflow_id: str, step_id: str) -> dict[str, Any]:
+        manager, _worker_pool = _get_agent_workflows()
+        if not manager.delete_step(workflow_id, step_id):
+            raise HTTPException(status_code=404, detail="Workflow step not found")
+        return {"message": "Step deleted", "workflow": manager.get_workflow(workflow_id)}
+
+    @router.post("/agent-workflows/workflows/{workflow_id}/steps/reorder")
+    async def reorder_agent_workflow_steps(workflow_id: str, body: AgentWorkflowReorderRequest) -> dict[str, Any]:
+        manager, _worker_pool = _get_agent_workflows()
+        workflow = manager.reorder_steps(workflow_id, body.step_ids)
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return {"workflow": workflow}
+
+    @router.get("/agent-workflows/runs")
+    async def list_agent_workflow_runs(limit: int = 50, workflow_id: str | None = None) -> dict[str, Any]:
+        manager, worker_pool = _get_agent_workflows()
+        return {"runs": manager.list_runs(limit=limit, workflow_id=workflow_id, worker_pool=worker_pool)}
+
+    @router.post("/agent-workflows/workflows/{workflow_id}/runs")
+    async def start_agent_workflow_run(workflow_id: str) -> dict[str, Any]:
+        manager, worker_pool = _get_agent_workflows()
+        run = await manager.start_run(workflow_id, worker_pool=worker_pool)
+        if not run:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return {"run": run}
+
+    @router.post("/agent-workflows/runs/{run_id}/cancel")
+    async def cancel_agent_workflow_run(run_id: str) -> dict[str, Any]:
+        manager, worker_pool = _get_agent_workflows()
+        run = await manager.cancel_run(run_id, worker_pool=worker_pool)
+        if not run:
+            raise HTTPException(status_code=404, detail="Workflow run not found")
+        return {"run": run}
 
     return router
 

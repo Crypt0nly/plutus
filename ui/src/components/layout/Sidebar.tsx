@@ -54,6 +54,7 @@ import {
   Monitor,
   Smartphone,
   Wifi,
+  Workflow,
 } from "lucide-react";
 import { useAppStore, PENDING_NEW_SESSION_ID, type View } from "../../stores/appStore";
 
@@ -65,7 +66,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Terminal, Palette, Music, Camera, Video, Mic, Bell, Calendar, Clock,
   Map, Compass, Bookmark, Flag, Award, Target, TrendingUp, BarChart,
   PieChart, Database, Server, Cloud, Lock, Unlock, Key, User, Users,
-  Mail, Send, Download, Upload, File, Folder, Image, Monitor, Smartphone, Wifi,
+  Mail, Send, Download, Upload, File, Folder, Image, Monitor, Smartphone, Wifi, Workflow,
 };
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -114,6 +115,7 @@ const DEFAULT_SECTIONS: NavSection[] = [
       { id: "memory", label: "Memory & Plans", icon: Brain },
       { id: "tools", label: "Tools", icon: Wrench },
       { id: "workers", label: "Workers", icon: Cpu },
+      { id: "workflows", label: "Workflows", icon: Workflow, badge: "New" },
       { id: "tool-creator", label: "Tool Creator", icon: Sparkles },
       { id: "skills", label: "Skills", icon: Brain, badge: "New" },
     ],

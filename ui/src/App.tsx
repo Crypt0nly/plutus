@@ -9,6 +9,7 @@ import { GuardrailsView } from "./components/guardrails/GuardrailsView";
 import { SettingsView } from "./components/settings/SettingsView";
 import { ToolsView } from "./components/tools/ToolsView";
 import { WorkersView } from "./components/workers/WorkersView";
+import { WorkflowsView } from "./components/workflows/WorkflowsView";
 import { ToolCreatorView } from "./components/tool-creator/ToolCreatorView";
 import SkillsView from "./components/skills/SkillsView";
 import { MemoryView } from "./components/memory/MemoryView";
@@ -558,6 +559,7 @@ export default function App() {
     settings: <SettingsView />,
     tools: <ToolsView />,
     workers: <WorkersView />,
+    workflows: <WorkflowsView />,
     "tool-creator": <ToolCreatorView />,
     skills: <SkillsView />,
     memory: <MemoryView />,
