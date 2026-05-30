@@ -442,6 +442,8 @@ export const api = {
       release_notes?: string;
       release_url?: string;
       published_at?: string;
+      source?: "pypi" | "github";
+      download_url?: string;
       error?: string;
     }>("/updates/check"),
   dismissUpdate: (version: string) =>

@@ -112,6 +112,115 @@ def _latest_compatible_release_version(
     return compatible_versions[-1][1]
 
 
+def _github_asset_compatible_wheel_url(
+    assets: list[dict[str, Any]] | None,
+    supported_tags: set[Any] | None = None,
+) -> str | None:
+    """Return the download URL for the first compatible wheel in GitHub assets."""
+    try:
+        from packaging.tags import sys_tags
+        from packaging.utils import parse_wheel_filename
+    except Exception:
+        for asset in assets or []:
+            if not isinstance(asset, dict):
+                continue
+            filename = str(asset.get("name", ""))
+            if filename.endswith(".whl"):
+                return str(asset.get("browser_download_url") or "") or None
+        return None
+
+    tags = supported_tags or set(sys_tags())
+    for asset in assets or []:
+        if not isinstance(asset, dict):
+            continue
+        filename = str(asset.get("name", ""))
+        if not filename.endswith(".whl"):
+            continue
+        try:
+            _name, _version, _build, wheel_tags = parse_wheel_filename(filename)
+        except Exception:
+            continue
+        if wheel_tags & tags:
+            return str(asset.get("browser_download_url") or "") or None
+    return None
+
+
+def _latest_github_release_version(
+    releases: list[dict[str, Any]] | None,
+    supported_tags: set[Any] | None = None,
+) -> tuple[str, str, str] | None:
+    """Return the newest GitHub release with a compatible wheel asset."""
+    try:
+        from packaging.version import Version
+    except Exception:
+        return None
+
+    compatible_versions: list[tuple[Any, str, str, str]] = []
+    for release in releases or []:
+        if not isinstance(release, dict):
+            continue
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        tag_name = str(release.get("tag_name") or "")
+        if not tag_name:
+            continue
+        version_str = tag_name[1:] if tag_name.startswith("v") else tag_name
+        try:
+            parsed_version = Version(version_str)
+        except Exception:
+            continue
+        wheel_url = _github_asset_compatible_wheel_url(
+            release.get("assets"),
+            supported_tags,
+        )
+        if not wheel_url:
+            continue
+        release_url = str(release.get("html_url") or "")
+        compatible_versions.append(
+            (parsed_version, version_str, wheel_url, release_url)
+        )
+
+    if not compatible_versions:
+        return None
+
+    compatible_versions.sort(key=lambda item: item[0])
+    _parsed, version_str, wheel_url, release_url = compatible_versions[-1]
+    return version_str, wheel_url, release_url
+
+
+async def _latest_installable_update_sources() -> tuple[
+    str | None,
+    str | None,
+    tuple[str, str, str] | None,
+]:
+    """Return published PyPI, compatible PyPI, and compatible GitHub candidates."""
+    import httpx
+
+    latest_published_pypi: str | None = None
+    latest_compatible_pypi: str | None = None
+    latest_github: tuple[str, str, str] | None = None
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        pypi_resp = await client.get("https://pypi.org/pypi/plutus-ai/json")
+        pypi_resp.raise_for_status()
+        pypi_data = pypi_resp.json()
+        latest_published_pypi = pypi_data.get("info", {}).get("version")
+        latest_compatible_pypi = _latest_compatible_release_version(pypi_data)
+
+        try:
+            gh_resp = await client.get(
+                "https://api.github.com/repos/Crypt0nly/plutus/releases"
+            )
+            gh_resp.raise_for_status()
+            gh_data = gh_resp.json()
+            if isinstance(gh_data, list):
+                latest_github = _latest_github_release_version(gh_data)
+        except Exception:
+            latest_github = None
+
+    return latest_published_pypi, latest_compatible_pypi, latest_github
+
+
 # ── Request body models (module-level for proper FastAPI schema generation) ──
 
 
@@ -2423,11 +2532,37 @@ def create_router() -> APIRouter:
                 pypi_resp.raise_for_status()
                 pypi_data = pypi_resp.json()
 
+            github_releases: list[dict[str, Any]] = []
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    gh_resp = await client.get(
+                        f"https://api.github.com/repos/{repo}/releases",
+                        headers={"Accept": "application/vnd.github+json"},
+                    )
+                    if gh_resp.status_code == 200:
+                        gh_data = gh_resp.json()
+                        if isinstance(gh_data, list):
+                            github_releases = gh_data
+            except Exception:
+                github_releases = []
+
             published_version = pypi_data.get("info", {}).get("version", __version__)
-            latest_version = (
-                _latest_compatible_release_version(pypi_data) or published_version
-            )
-            project_url = pypi_data.get("info", {}).get("project_url", "")
+            pypi_latest = _latest_compatible_release_version(pypi_data)
+            latest_version = pypi_latest or published_version or __version__
+            update_source = "pypi"
+            github_wheel_url = ""
+            github_release_url = ""
+            github_latest = _latest_github_release_version(github_releases)
+            if github_latest:
+                gh_version, gh_wheel_url, gh_release_url = github_latest
+                github_is_newest_installable = (
+                    not pypi_latest or _version_newer(gh_version, pypi_latest)
+                )
+                if _version_newer(gh_version, __version__) and github_is_newest_installable:
+                    latest_version = gh_version
+                    update_source = "github"
+                    github_wheel_url = gh_wheel_url
+                    github_release_url = gh_release_url
             update_available = _version_newer(latest_version, __version__)
 
             # Try to fetch GitHub release notes (best-effort, non-blocking)
@@ -2452,7 +2587,11 @@ def create_router() -> APIRouter:
                     pass  # GitHub notes are optional
 
             if not release_url:
-                release_url = f"https://pypi.org/project/{pypi_package}/{latest_version}/"
+                release_url = (
+                    github_release_url
+                    if update_source == "github" and github_release_url
+                    else f"https://pypi.org/project/{pypi_package}/{latest_version}/"
+                )
 
             dismissed = (
                 config.updates.dismissed_version == latest_version if config else False
@@ -2467,6 +2606,8 @@ def create_router() -> APIRouter:
                 "release_notes": release_body,
                 "release_url": release_url,
                 "published_at": published_at,
+                "source": update_source,
+                "download_url": github_wheel_url,
             }
         except Exception as e:
             return {
@@ -2538,6 +2679,30 @@ def create_router() -> APIRouter:
 
         steps: list[dict[str, Any]] = []
 
+        latest_published_pypi: str | None = None
+        latest_compatible_pypi: str | None = None
+        latest_github: tuple[str, str, str] | None = None
+        try:
+            latest_published_pypi, latest_compatible_pypi, latest_github = (
+                await _latest_installable_update_sources()
+            )
+        except Exception:
+            pass
+
+        selected_update_source = "pypi"
+        selected_update_version = latest_compatible_pypi
+        selected_update_url = ""
+        if latest_github:
+            gh_version, gh_wheel_url, _gh_release_url = latest_github
+            github_is_newest_installable = (
+                not latest_compatible_pypi
+                or _version_newer(gh_version, latest_compatible_pypi)
+            )
+            if _version_newer(gh_version, __version__) and github_is_newest_installable:
+                selected_update_source = "github"
+                selected_update_version = gh_version
+                selected_update_url = gh_wheel_url
+
         # ── Windows workaround: rename locked .exe scripts so pip can overwrite ──
         renamed_scripts: list[tuple[Path, Path]] = []
         if sys.platform == "win32":
@@ -2590,12 +2755,17 @@ def create_router() -> APIRouter:
                     "previous_version": __version__,
                 }
         else:
-            # ── Pip install: just upgrade from PyPI ──
-            # --no-cache-dir ensures pip fetches the latest index from PyPI
-            # rather than serving a locally cached (old) wheel.
+            # ── Pip install: upgrade from PyPI or the newest compatible GitHub wheel ──
+            # --no-cache-dir ensures pip fetches the latest index/artifact rather
+            # than serving a locally cached (old) wheel.
+            package_spec = (
+                selected_update_url
+                if selected_update_source == "github"
+                else "plutus-ai"
+            )
             pip_cmd = [
                 sys.executable, "-m", "pip", "install",
-                "--upgrade", "--no-cache-dir", "plutus-ai",
+                "--upgrade", "--no-cache-dir", package_spec,
             ]
             code, out, err = await run(pip_cmd, timeout=180)
             clean_err = _clean_pip_stderr(err)
@@ -2626,9 +2796,14 @@ def create_router() -> APIRouter:
                 except Exception:
                     pass
 
+                package_spec = (
+                    selected_update_url
+                    if selected_update_source == "github"
+                    else "plutus-ai"
+                )
                 pip_cmd = [
                     sys.executable, "-m", "pip", "install",
-                    "--upgrade", "--no-cache-dir", "plutus-ai",
+                    "--upgrade", "--no-cache-dir", package_spec,
                 ]
                 code, out, err = await run(pip_cmd, timeout=180)
                 clean_err = _clean_pip_stderr(err)
@@ -2672,35 +2847,37 @@ def create_router() -> APIRouter:
         except Exception:
             pass
         # If pip "succeeded" but the version didn't change, check whether
-        # PyPI actually has a newer version.  If it does but the version
-        # didn't change, it means pip couldn't find a compatible wheel for
-        # this platform/Python combination.  If PyPI has no newer version
-        # either, the user is simply already up to date.
+        # there is a newer installable source.  PyPI remains preferred for the
+        # same compatible version, while GitHub Releases can provide wheels
+        # newer than the compatible PyPI build.
         if new_version == __version__:
-            # Ask PyPI for the newest published version and the newest wheel
-            # that actually matches this platform/Python combination.
-            latest_published_pypi: str | None = None
-            latest_compatible_pypi: str | None = None
-            try:
-                import json as _json
-                import urllib.request
+            if latest_published_pypi is None and latest_compatible_pypi is None:
+                try:
+                    latest_published_pypi, latest_compatible_pypi, latest_github = (
+                        await _latest_installable_update_sources()
+                    )
+                except Exception:
+                    pass
 
-                with urllib.request.urlopen(
-                    "https://pypi.org/pypi/plutus-ai/json", timeout=8
-                ) as _resp:
-                    _data = _json.loads(_resp.read())
-                    latest_published_pypi = _data.get("info", {}).get("version")
-                    latest_compatible_pypi = _latest_compatible_release_version(_data)
-            except Exception:
-                pass
+            retry_version = selected_update_version
+            retry_source = selected_update_source
+            retry_package_spec = selected_update_url
+            if retry_source != "github" and latest_compatible_pypi:
+                retry_version = latest_compatible_pypi
+                retry_package_spec = f"plutus-ai=={latest_compatible_pypi}"
+            if (
+                retry_source == "github"
+                and not retry_package_spec
+                and latest_github
+            ):
+                retry_version, retry_package_spec, _release_url = latest_github
 
-            if latest_compatible_pypi and _version_newer(latest_compatible_pypi, __version__):
-                # Retry with an explicit pin to the newest version that does
-                # have a compatible wheel for this machine.
+            if retry_version and _version_newer(retry_version, __version__):
+                # Retry with an explicit install target for the newest version
+                # that does have a compatible wheel for this machine.
                 pip_pin_cmd = [
                     sys.executable, "-m", "pip", "install",
-                    "--upgrade", "--no-cache-dir",
-                    f"plutus-ai=={latest_compatible_pypi}",
+                    "--upgrade", "--no-cache-dir", retry_package_spec,
                 ]
                 pin_code, pin_out, pin_err = await run(pip_pin_cmd, timeout=180)
                 clean_pin_err = _clean_pip_stderr(pin_err)
@@ -2722,17 +2899,22 @@ def create_router() -> APIRouter:
                     except Exception:
                         pass
                 if new_version != __version__:
-                    # Pinned install succeeded — fall through to restart
+                    # Explicit install succeeded — fall through to restart
                     pass
                 else:
+                    install_hint = (
+                        f"pip install --upgrade {retry_package_spec}"
+                        if retry_source == "github"
+                        else f"pip install --upgrade plutus-ai=={retry_version}"
+                    )
                     return {
                         "success": False,
                         "error": (
-                            f"Automatic update to v{latest_compatible_pypi} did not complete. "
-                            f"Please try again, or run: pip install --upgrade plutus-ai=={latest_compatible_pypi}"
+                            f"Automatic update to v{retry_version} did not complete. "
+                            f"Please try again, or run: {install_hint}"
                         ),
                         "previous_version": __version__,
-                        "new_version": latest_compatible_pypi,
+                        "new_version": retry_version,
                         "steps": steps,
                         "restart_required": False,
                     }
@@ -2740,11 +2922,16 @@ def create_router() -> APIRouter:
                 # Either we are already on the latest compatible wheel, or a
                 # newer published version exists but its wheel for this platform
                 # has not finished publishing yet.
-                latest_known = latest_compatible_pypi or __version__
-                if latest_published_pypi and _version_newer(latest_published_pypi, latest_known):
+                latest_known = retry_version or latest_compatible_pypi or __version__
+                if latest_published_pypi and _version_newer(
+                    latest_published_pypi,
+                    latest_known,
+                ):
                     error = (
-                        f"Already on the latest version available for your platform ({latest_known}). "
-                        f"The newer release v{latest_published_pypi} is still publishing platform wheels. "
+                        "Already on the latest version available for your platform "
+                        f"({latest_known}). "
+                        f"The newer release v{latest_published_pypi} is still publishing "
+                        "platform wheels. "
                         f"Please try again in a few minutes."
                     )
                 else:
