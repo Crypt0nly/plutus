@@ -3,9 +3,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  Layers3,
   Loader2,
-  Sparkles,
   Pencil,
   Play,
   Plus,
@@ -13,7 +11,6 @@ import {
   Save,
   Trash2,
   Workflow,
-  Wand2,
   X,
   XCircle,
 } from "lucide-react";
@@ -56,11 +53,11 @@ const emptyStats: AgentWorkflowStats = {
   failure_count: 0,
 };
 
-const panelClass = "rounded-3xl border border-gray-700/70 bg-gray-950/95 shadow-sm shadow-gray-950/5 dark:border-white/10 dark:bg-gray-950/70 dark:shadow-black/20";
-const subtlePanelClass = "rounded-2xl border border-gray-700/70 bg-gray-900/80 dark:border-white/10 dark:bg-white/[0.03]";
-const inputClass = "w-full rounded-xl border border-gray-700/80 bg-gray-950 px-3 py-2 text-sm text-gray-50 outline-none placeholder:text-gray-400 focus:border-plutus-500/60 focus:ring-2 focus:ring-plutus-500/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-600";
-const compactInputClass = "rounded-xl border border-gray-700/80 bg-gray-950 px-3 py-2 text-sm text-gray-50 outline-none placeholder:text-gray-400 focus:border-plutus-500/60 focus:ring-2 focus:ring-plutus-500/10 dark:border-white/10 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-600";
-const secondaryButtonClass = "inline-flex items-center gap-2 rounded-xl border border-gray-700/80 bg-gray-950 px-4 py-2 text-sm font-medium text-gray-100 hover:border-gray-600 hover:bg-gray-900 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10";
+const panelClass = "rounded-2xl border border-gray-800/80 bg-gray-950/80 shadow-sm shadow-black/10 dark:border-white/10 dark:bg-gray-950/60";
+const subtlePanelClass = "rounded-xl border border-gray-800/70 bg-gray-950/45 dark:border-white/10 dark:bg-white/[0.025]";
+const inputClass = "w-full rounded-lg border border-gray-800/80 bg-gray-950/70 px-3 py-2 text-sm text-gray-50 outline-none placeholder:text-gray-500 focus:border-plutus-500/50 focus:ring-2 focus:ring-plutus-500/10 dark:border-white/10 dark:bg-white/[0.035] dark:text-white dark:placeholder:text-gray-600";
+const compactInputClass = "rounded-lg border border-gray-800/80 bg-gray-950/70 px-3 py-2 text-sm text-gray-50 outline-none placeholder:text-gray-500 focus:border-plutus-500/50 focus:ring-2 focus:ring-plutus-500/10 dark:border-white/10 dark:bg-white/[0.035] dark:text-white dark:placeholder:text-gray-600";
+const secondaryButtonClass = "inline-flex items-center gap-2 rounded-lg border border-gray-800/80 bg-transparent px-3 py-2 text-sm font-medium text-gray-300 hover:border-gray-700 hover:bg-white/[0.03] hover:text-gray-100 disabled:opacity-50 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/[0.06]";
 
 const createEmptyStarterStep = (): NewWorkflowStepDraft => ({
   title: "",
@@ -148,7 +145,7 @@ function statusClasses(status?: string) {
 
 function StatusPill({ status }: { status?: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${statusClasses(status)}`}>
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClasses(status)}`}>
       {status || "draft"}
     </span>
   );
@@ -156,15 +153,13 @@ function StatusPill({ status }: { status?: string }) {
 
 function StatCard({ label, value, icon: Icon }: { label: string; value: number; icon: React.ElementType }) {
   return (
-    <div className="rounded-2xl border border-gray-700/70 bg-gray-950/95 p-4 shadow-sm shadow-gray-950/5 dark:border-white/10 dark:bg-white/[0.04] dark:shadow-black/20">
-      <div className="flex items-center justify-between gap-4">
+    <div className="rounded-xl border border-gray-800/70 bg-gray-950/45 px-4 py-3 dark:border-white/10 dark:bg-white/[0.025]">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">{label}</div>
-          <div className="mt-2 text-2xl font-semibold text-gray-50 dark:text-white">{value}</div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-500">{label}</div>
+          <div className="mt-1 text-xl font-semibold text-gray-100 dark:text-white">{value}</div>
         </div>
-        <div className="rounded-xl border border-plutus-500/20 bg-plutus-50 p-2 text-plutus-600 dark:border-plutus-400/20 dark:bg-plutus-500/10 dark:text-plutus-200">
-          <Icon size={18} />
-        </div>
+        <Icon size={16} className="text-gray-500 dark:text-gray-500" />
       </div>
     </div>
   );
@@ -469,26 +464,18 @@ export function WorkflowsView() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 text-gray-100">
-      <div className="relative overflow-hidden rounded-3xl border border-gray-700/70 bg-gradient-to-br from-gray-950 via-gray-950 to-plutus-50 p-6 shadow-sm shadow-gray-950/5 dark:border-white/10 dark:from-gray-950 dark:via-gray-950 dark:to-plutus-950/30 dark:shadow-2xl dark:shadow-black/30">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-plutus-400/40 to-transparent" />
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-plutus-500/20 bg-plutus-50 px-3 py-1 text-xs font-medium text-plutus-700 dark:border-plutus-400/20 dark:bg-plutus-400/10 dark:text-plutus-100">
-              <Workflow size={14} /> Agent Workflows
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-gray-50 dark:text-white">Turn repeatable work into one-click agent runs.</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300 dark:text-gray-400">
-              Capture multi-step processes as reusable workflows, run them through local Plutus workers, and keep a lightweight history of every execution.
-            </p>
-          </div>
-          <button
-            onClick={load}
-            className={secondaryButtonClass}
-          >
-            <RefreshCcw size={16} /> Refresh
-          </button>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 text-gray-100">
+      <div className="flex flex-col gap-4 border-b border-gray-800/80 pb-5 dark:border-white/10 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-500">Workflows</div>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-gray-50 dark:text-white">Reusable agent runs</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-400 dark:text-gray-500">
+            Build repeatable multi-step work once, then run it locally with a compact history of each execution.
+          </p>
         </div>
+        <button onClick={load} className={secondaryButtonClass}>
+          <RefreshCcw size={15} /> Refresh
+        </button>
       </div>
 
       {error && (
@@ -498,8 +485,8 @@ export function WorkflowsView() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Workflows" value={stats.workflow_count} icon={Layers3} />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Total" value={stats.workflow_count} icon={Workflow} />
         <StatCard label="Active" value={stats.active_workflow_count} icon={CheckCircle2} />
         <StatCard label="Runs" value={stats.run_count} icon={Clock} />
         <StatCard label="Failures" value={stats.failure_count} icon={XCircle} />
@@ -508,17 +495,9 @@ export function WorkflowsView() {
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <div className="flex flex-col gap-4">
           <div className={`${panelClass} p-4`}>
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-plutus-500/20 bg-plutus-50 px-2.5 py-1 text-xs font-medium text-plutus-700 dark:border-plutus-400/20 dark:bg-plutus-500/10 dark:text-plutus-100">
-                  <Sparkles size={13} /> Guided setup
-                </div>
-                <h2 className="mt-3 text-lg font-semibold text-gray-50 dark:text-white">Create a reusable workflow</h2>
-                <p className="mt-1 text-sm leading-6 text-gray-300 dark:text-gray-400">Start with a template, adjust the plain-language steps, then save everything at once.</p>
-              </div>
-              <div className="rounded-lg bg-plutus-50 p-1.5 text-plutus-600 dark:bg-plutus-500/10 dark:text-plutus-200">
-                <Wand2 size={16} />
-              </div>
+            <div className="mb-4">
+              <h2 className="text-base font-semibold text-gray-50 dark:text-white">Create workflow</h2>
+              <p className="mt-1 text-sm leading-6 text-gray-400 dark:text-gray-500">Choose a starting point, name the outcome, and save the first steps.</p>
             </div>
 
             <div className="space-y-4">
@@ -530,11 +509,11 @@ export function WorkflowsView() {
                       key={template.id}
                       onClick={() => applyWorkflowTemplate(template)}
                       disabled={saving}
-                      className={`rounded-2xl border p-3 text-left transition disabled:opacity-50 ${newWorkflow.title === template.title ? "border-plutus-500/50 bg-plutus-50 text-gray-950 dark:border-plutus-400/40 dark:bg-plutus-500/15 dark:text-white" : "border-gray-700/70 bg-gray-900/80 text-gray-100 hover:border-plutus-500/35 hover:bg-gray-800 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"}`}
+                      className={`rounded-xl border px-3 py-2 text-left transition disabled:opacity-50 ${newWorkflow.title === template.title ? "border-plutus-500/40 bg-plutus-500/10 text-white" : "border-gray-800/70 bg-transparent text-gray-200 hover:border-gray-700 hover:bg-white/[0.03] dark:border-white/10 dark:hover:bg-white/[0.05]"}`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm font-semibold">{template.title}</span>
-                        <span className="rounded-full border border-gray-700/70 px-2 py-0.5 text-[11px] text-gray-400 dark:border-white/10 dark:text-gray-500">{template.category}</span>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-500">{template.category}</span>
                       </div>
                       <p className="mt-1 text-xs leading-5 text-gray-400 dark:text-gray-500">{template.helper}</p>
                     </button>
@@ -542,7 +521,7 @@ export function WorkflowsView() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-gray-700/70 bg-gray-900/80 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+              <div className="rounded-xl border border-gray-800/70 bg-gray-950/35 p-3 dark:border-white/10 dark:bg-white/[0.02]">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-gray-50 dark:text-white">Workflow basics</div>
@@ -596,20 +575,20 @@ export function WorkflowsView() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-gray-700/70 bg-gray-900/80 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+              <div className="rounded-xl border border-gray-800/70 bg-gray-950/35 p-3 dark:border-white/10 dark:bg-white/[0.02]">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-gray-50 dark:text-white">Starter steps</div>
                     <div className="text-xs text-gray-400 dark:text-gray-500">These will be added automatically after the workflow is created.</div>
                   </div>
-                  <span className="rounded-full border border-plutus-500/20 bg-plutus-50 px-2.5 py-1 text-xs text-plutus-700 dark:border-plutus-400/20 dark:bg-plutus-500/10 dark:text-plutus-100">{starterStepCount} ready</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-500">{starterStepCount} ready</span>
                 </div>
                 <div className="space-y-3">
                   {newWorkflow.starter_steps.map((step, index) => (
-                    <div key={index} className="rounded-xl border border-gray-700/70 bg-gray-950/80 p-3 dark:border-white/10 dark:bg-gray-950/80">
+                    <div key={index} className="rounded-lg border border-gray-800/70 bg-transparent p-3 dark:border-white/10">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 text-xs font-semibold text-gray-300 dark:text-gray-400">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-plutus-50 text-plutus-700 dark:bg-plutus-500/15 dark:text-plutus-100">{index + 1}</span>
+                          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.04] text-gray-400 dark:bg-white/[0.06] dark:text-gray-400">{index + 1}</span>
                           Step {index + 1}
                         </div>
                         <button
@@ -646,14 +625,14 @@ export function WorkflowsView() {
                   ))}
                 </div>
                 <button onClick={addStarterStepDraft} disabled={saving} className={`${secondaryButtonClass} mt-3 w-full justify-center`}>
-                  <Plus size={15} /> Add another step
+                  <Plus size={15} /> Add step
                 </button>
               </div>
 
               <button
                 onClick={createWorkflow}
                 disabled={saving || !newWorkflow.title.trim()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-plutus-500 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-plutus-500/20 hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-plutus-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Create workflow{starterStepCount ? ` with ${starterStepCount} step${starterStepCount === 1 ? "" : "s"}` : ""}
               </button>
@@ -661,7 +640,7 @@ export function WorkflowsView() {
           </div>
 
           <div className={`overflow-hidden ${panelClass}`}>
-            <div className="border-b border-gray-700/70 px-4 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-gray-400 dark:border-white/10 dark:text-gray-500">
+            <div className="border-b border-gray-800/80 px-4 py-3 text-sm font-semibold text-gray-200 dark:border-white/10 dark:text-gray-200">
               Library
             </div>
             <div className="max-h-[520px] overflow-y-auto p-2">
@@ -671,7 +650,7 @@ export function WorkflowsView() {
                 <button
                   key={workflow.id}
                   onClick={() => setSelectedId(workflow.id)}
-                  className={`mb-2 w-full rounded-2xl border p-4 text-left transition ${selected?.id === workflow.id ? "border-plutus-500/40 bg-plutus-50 shadow-sm shadow-plutus-500/10 dark:border-plutus-400/40 dark:bg-plutus-500/10" : "border-gray-700/70 bg-gray-900/80 hover:border-gray-600 hover:bg-gray-800 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"}`}
+                  className={`mb-1 w-full rounded-xl border px-3 py-3 text-left transition ${selected?.id === workflow.id ? "border-plutus-500/35 bg-plutus-500/10" : "border-transparent bg-transparent hover:border-gray-800/70 hover:bg-white/[0.03] dark:hover:border-white/10 dark:hover:bg-white/[0.04]"}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -680,7 +659,7 @@ export function WorkflowsView() {
                     </div>
                     <StatusPill status={workflow.status} />
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-500">
                     <span>{workflow.steps?.length || 0} steps</span>
                     <span>{workflow.run_count || 0} runs</span>
                     <span>{workflow.category}</span>
@@ -691,16 +670,16 @@ export function WorkflowsView() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
           {selected ? (
             <>
-              <div className={`${panelClass} p-5`}>
+              <div className={`${panelClass} p-4`}>
                 {editingWorkflow ? (
                   <div className="space-y-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h2 className="text-2xl font-semibold text-gray-50 dark:text-white">Edit workflow</h2>
-                        <p className="mt-1 text-sm leading-6 text-gray-300 dark:text-gray-400">Update the workflow details without losing its run history or configured steps.</p>
+                        <h2 className="text-xl font-semibold text-gray-50 dark:text-white">Edit workflow</h2>
+                        <p className="mt-1 text-sm leading-6 text-gray-400 dark:text-gray-500">Update details without changing the run history or configured steps.</p>
                       </div>
                       <button onClick={cancelWorkflowEdit} disabled={saving} className={secondaryButtonClass}>
                         <X size={16} /> Cancel
@@ -749,7 +728,7 @@ export function WorkflowsView() {
                       <button
                         onClick={saveWorkflowEdit}
                         disabled={saving || !workflowEdit.title.trim()}
-                        className="inline-flex items-center gap-2 rounded-xl bg-plutus-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-plutus-500/20 hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-lg bg-plutus-500 px-4 py-2 text-sm font-semibold text-white hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Save changes
                       </button>
@@ -759,24 +738,24 @@ export function WorkflowsView() {
                 ) : (
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <h2 className="text-2xl font-semibold text-gray-50 dark:text-white">{selected.title}</h2>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-xl font-semibold text-gray-50 dark:text-white">{selected.title}</h2>
                         <StatusPill status={selected.status} />
                       </div>
-                      <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300 dark:text-gray-400">{selected.description || "Add a description so teammates know when to use this workflow."}</p>
-                      <div className="mt-4 grid gap-3 text-xs text-gray-400 dark:text-gray-500 sm:grid-cols-5">
-                        <div>Category: <span className="text-gray-100 dark:text-gray-300">{selected.category || "General"}</span></div>
-                        <div>Priority: <span className="text-gray-100 dark:text-gray-300">{selected.priority || "normal"}</span></div>
-                        <div>Last run: <span className="text-gray-100 dark:text-gray-300">{formatTime(selected.last_run_at)}</span></div>
-                        <div>Successes: <span className="text-gray-100 dark:text-gray-300">{selected.success_count || 0}</span></div>
-                        <div>Failures: <span className="text-gray-100 dark:text-gray-300">{selected.failure_count || 0}</span></div>
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400 dark:text-gray-500">{selected.description || "Add a description so teammates know when to use this workflow."}</p>
+                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-500">
+                        <span>{selected.category || "General"}</span>
+                        <span>{selected.priority || "normal"} priority</span>
+                        <span>Last run {formatTime(selected.last_run_at)}</span>
+                        <span>{selected.success_count || 0} succeeded</span>
+                        <span>{selected.failure_count || 0} failed</span>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => startRun(selected)}
                         disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-400 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-400 disabled:opacity-50"
                       >
                         <Play size={16} /> Run
                       </button>
@@ -797,7 +776,7 @@ export function WorkflowsView() {
                       <button
                         onClick={() => deleteWorkflow(selected)}
                         disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-100 dark:hover:bg-rose-500/20"
+                        className="inline-flex items-center gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-rose-300 hover:border-rose-500/25 hover:bg-rose-500/10 disabled:opacity-50"
                       >
                         <Trash2 size={16} /> Delete
                       </button>
@@ -806,10 +785,10 @@ export function WorkflowsView() {
                 )}
               </div>
 
-              <div className={`${panelClass} p-5`}>
-                <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="text-lg font-semibold text-gray-50 dark:text-white">Workflow steps</h3>
-                  <span className="text-xs text-gray-400 dark:text-gray-500">Executed in order by a local worker</span>
+              <div className={`${panelClass} p-4`}>
+                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-base font-semibold text-gray-50 dark:text-white">Steps</h3>
+                  <span className="text-xs text-gray-500 dark:text-gray-500">Runs top to bottom</span>
                 </div>
                 <div className="space-y-3">
                   {(selected.steps || []).length === 0 ? (
@@ -819,7 +798,7 @@ export function WorkflowsView() {
                       {editingStepId === step.id ? (
                         <div className="space-y-3">
                           <div className="flex gap-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-plutus-50 text-sm font-semibold text-plutus-700 dark:bg-plutus-500/15 dark:text-plutus-100">{index + 1}</div>
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-sm font-semibold text-gray-400 dark:bg-white/[0.06] dark:text-gray-400">{index + 1}</div>
                             <input
                               value={stepEdit.title}
                               onChange={(e) => setStepEdit((v) => ({ ...v, title: e.target.value }))}
@@ -844,7 +823,7 @@ export function WorkflowsView() {
                             <button
                               onClick={() => saveStepEdit(step.id)}
                               disabled={saving || !stepEdit.title.trim()}
-                              className="inline-flex items-center gap-2 rounded-xl bg-plutus-500 px-3 py-2 text-sm font-semibold text-white hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
+                              className="inline-flex items-center gap-2 rounded-lg bg-plutus-500 px-3 py-2 text-sm font-semibold text-white hover:bg-plutus-400 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Save step
                             </button>
@@ -852,7 +831,7 @@ export function WorkflowsView() {
                             <button
                               onClick={() => deleteStep(step.id)}
                               disabled={saving}
-                              className="inline-flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-100 dark:hover:bg-rose-500/20"
+                              className="inline-flex items-center gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2 text-sm font-medium text-rose-300 hover:border-rose-500/25 hover:bg-rose-500/10 disabled:opacity-50"
                             >
                               <Trash2 size={15} /> Delete
                             </button>
@@ -861,11 +840,11 @@ export function WorkflowsView() {
                       ) : (
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex gap-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-plutus-50 text-sm font-semibold text-plutus-700 dark:bg-plutus-500/15 dark:text-plutus-100">{index + 1}</div>
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-sm font-semibold text-gray-400 dark:bg-white/[0.06] dark:text-gray-400">{index + 1}</div>
                             <div>
                               <div className="font-medium text-gray-50 dark:text-white">{step.title}</div>
-                              <div className="mt-1 text-sm leading-6 text-gray-300 dark:text-gray-400">{step.instruction || step.description || "No instruction yet."}</div>
-                              {step.expected_output && <div className="mt-2 text-xs text-gray-400 dark:text-gray-500">Expected: {step.expected_output}</div>}
+                              <div className="mt-1 text-sm leading-6 text-gray-400 dark:text-gray-500">{step.instruction || step.description || "No instruction yet."}</div>
+                              {step.expected_output && <div className="mt-2 text-xs text-gray-500 dark:text-gray-500">Output: {step.expected_output}</div>}
                             </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
@@ -890,7 +869,7 @@ export function WorkflowsView() {
                   ))}
                 </div>
 
-                <div className="mt-4 grid gap-3 rounded-2xl border border-gray-700/70 bg-gray-900/80 p-4 dark:border-white/10 dark:bg-white/[0.03] lg:grid-cols-[1fr_1.5fr_1fr_auto]">
+                <div className="mt-4 grid gap-3 rounded-xl border border-gray-800/70 bg-gray-950/35 p-3 dark:border-white/10 dark:bg-white/[0.02] lg:grid-cols-[1fr_1.5fr_1fr_auto]">
                   <input
                     value={newStep.title}
                     onChange={(e) => setNewStep((v) => ({ ...v, title: e.target.value }))}
@@ -912,7 +891,7 @@ export function WorkflowsView() {
                   <button
                     onClick={addStep}
                     disabled={saving || !newStep.title.trim()}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-950 shadow-sm shadow-gray-950/10 hover:bg-gray-100 disabled:opacity-50 dark:bg-white dark:text-gray-950 dark:hover:bg-gray-200"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-gray-200 disabled:opacity-50"
                   >
                     <Plus size={16} /> Add
                   </button>
@@ -923,10 +902,10 @@ export function WorkflowsView() {
             <div className={`${panelClass} p-8 text-center text-gray-400 dark:text-gray-500`}>Select or create a workflow to configure its steps.</div>
           )}
 
-          <div className={`${panelClass} p-5`}>
-            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-semibold text-gray-50 dark:text-white">Recent runs</h3>
-              <span className="text-xs text-gray-400 dark:text-gray-500">Auto-refreshes while the app is open</span>
+          <div className={`${panelClass} p-4`}>
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-base font-semibold text-gray-50 dark:text-white">Recent runs</h3>
+              <span className="text-xs text-gray-500 dark:text-gray-500">Auto-refreshes</span>
             </div>
             <div className="space-y-3">
               {runs.length === 0 ? (
@@ -943,8 +922,8 @@ export function WorkflowsView() {
                     </div>
                     <StatusPill status={run.status} />
                   </div>
-                  {run.result && <div className="mt-3 line-clamp-3 rounded-xl bg-gray-800 p-3 text-xs leading-5 text-gray-300 dark:bg-black/20 dark:text-gray-400">{run.result}</div>}
-                  {run.error && <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-50 p-3 text-xs leading-5 text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-100">{run.error}</div>}
+                  {run.result && <div className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500 dark:text-gray-500">{run.result}</div>}
+                  {run.error && <div className="mt-2 rounded-lg border border-rose-500/25 bg-rose-500/10 p-3 text-xs leading-5 text-rose-200">{run.error}</div>}
                 </div>
               ))}
             </div>
