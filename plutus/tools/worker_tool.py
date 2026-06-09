@@ -57,6 +57,7 @@ class WorkerTool(Tool):
             "YOU choose which model each worker uses based on the task:\n"
             "- 'claude-haiku': Fast & cheap — fetching data, summaries, simple lookups\n"
             "- 'claude-sonnet': Balanced — standard tasks needing some reasoning\n"
+            "- 'claude-fable': Creative — nuanced writing and ideation\n"
             "- 'claude-opus': Smartest — complex analysis, writing, deep research\n"
             "- 'gpt-5.2': OpenAI alternative for complex tasks\n"
             "- 'gpt-5.4': OpenAI latest — supports native computer use\n"
@@ -95,11 +96,12 @@ class WorkerTool(Tool):
                 },
                 "model_key": {
                     "type": "string",
-                    "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "gpt-5.4", "auto"],
+                    "enum": ["claude-haiku", "claude-sonnet", "claude-fable", "claude-opus", "gpt-5.2", "gpt-5.4", "auto"],
                     "description": (
                         "Which model the worker should use. YOU decide based on the task:\n"
                         "- 'claude-haiku': Simple tasks (fetching, summarizing, lookups)\n"
                         "- 'claude-sonnet': Medium tasks (browsing, standard work)\n"
+                        "- 'claude-fable': Creative tasks (writing, ideation, tone)\n"
                         "- 'claude-opus': Hard tasks (analysis, writing, research)\n"
                         "- 'gpt-5.2': OpenAI alternative\n"
                         "- 'gpt-5.4': OpenAI latest — native computer use\n"
@@ -115,7 +117,7 @@ class WorkerTool(Tool):
                             "prompt": {"type": "string", "description": "Task instruction"},
                             "model_key": {
                                 "type": "string",
-                                "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2", "gpt-5.4", "auto"],
+                                "enum": ["claude-haiku", "claude-sonnet", "claude-fable", "claude-opus", "gpt-5.2", "gpt-5.4", "auto"],
                                 "description": "Model for this worker",
                             },
                         },

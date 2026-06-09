@@ -45,6 +45,7 @@ const providerEnvVars: Record<string, string> = {
 const defaultModels: Record<string, { id: string; label: string; desc: string }[]> = {
   anthropic: [
     { id: "claude-opus-4-6", label: "Claude Opus 4-6", desc: "Most capable — complex reasoning & analysis" },
+    { id: "claude-fable-5", label: "Claude Fable 5", desc: "Creative — nuanced writing & ideation" },
     { id: "claude-sonnet-4-6", label: "Claude Sonnet 4-6", desc: "Balanced — great for most tasks" },
     { id: "claude-haiku-4-5", label: "Claude Haiku 4-5", desc: "Fast & efficient — simple tasks" },
   ],

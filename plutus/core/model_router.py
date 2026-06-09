@@ -71,6 +71,16 @@ AVAILABLE_MODELS: dict[str, ModelSpec] = {
         cost_per_1k_input=0.015,
         cost_per_1k_output=0.075,
     ),
+    "claude-fable": ModelSpec(
+        id="claude-fable-5",
+        provider="anthropic",
+        display_name="Claude Fable",
+        complexity_tier=Complexity.MODERATE,
+        description="Creative, nuanced model for writing, ideation, and expressive tasks.",
+        max_tokens=4096,
+        cost_per_1k_input=0.003,
+        cost_per_1k_output=0.015,
+    ),
     "claude-sonnet": ModelSpec(
         id="claude-sonnet-4-6",
         provider="anthropic",
@@ -183,7 +193,7 @@ class ModelRoutingConfig:
     (ModelConfig component). This config is only for worker/scheduler defaults.
     """
     enabled_models: list[str] = field(default_factory=lambda: [
-        "claude-opus", "claude-sonnet", "claude-haiku", "gpt-5.2", "gpt-5.4"
+        "claude-opus", "claude-fable", "claude-sonnet", "claude-haiku", "gpt-5.2", "gpt-5.4"
     ])
     cost_conscious: bool = False                 # Prefer cheaper worker models
     default_worker_model: str = "auto"           # "auto" or a specific model key
@@ -378,8 +388,8 @@ class ModelRouter:
         """Select the best available model for a given complexity tier."""
         # Normal preference order
         preference_map = {
-            Complexity.COMPLEX: ["claude-opus", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
-            Complexity.MODERATE: ["claude-sonnet", "claude-haiku", "gpt-5.4", "gpt-5.2"],
+            Complexity.COMPLEX: ["claude-opus", "claude-fable", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
+            Complexity.MODERATE: ["claude-fable", "claude-sonnet", "claude-haiku", "gpt-5.4", "gpt-5.2"],
             Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
         }
 
@@ -387,7 +397,7 @@ class ModelRouter:
         if self._config.cost_conscious:
             preference_map = {
                 Complexity.COMPLEX: ["claude-sonnet", "claude-haiku", "gpt-5.4", "gpt-5.2"],
-                Complexity.MODERATE: ["claude-haiku", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
+                Complexity.MODERATE: ["claude-haiku", "claude-sonnet", "claude-fable", "gpt-5.4", "gpt-5.2"],
                 Complexity.SIMPLE: ["claude-haiku", "claude-sonnet", "gpt-5.4", "gpt-5.2"],
             }
 

@@ -110,7 +110,7 @@ class SchedulerTool(Tool):
                 },
                 "model_key": {
                     "type": "string",
-                    "enum": ["claude-haiku", "claude-sonnet", "claude-opus", "gpt-5.2"],
+                    "enum": ["claude-haiku", "claude-sonnet", "claude-fable", "claude-opus", "gpt-5.2"],
                     "description": "Which model to use for this job. Omit for auto-selection.",
                 },
                 "spawn_worker": {

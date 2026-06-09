@@ -46,6 +46,7 @@ const providers = [
 const defaultModels: Record<string, { id: string; label: string; desc: string }[]> = {
   anthropic: [
     { id: "claude-opus-4-6",   label: "Opus 4-6",   desc: "Most capable" },
+    { id: "claude-fable-5",    label: "Fable 5",    desc: "Creative" },
     { id: "claude-sonnet-4-6", label: "Sonnet 4-6", desc: "Balanced" },
     { id: "claude-haiku-4-5",  label: "Haiku 4-5",  desc: "Fast" },
   ],
